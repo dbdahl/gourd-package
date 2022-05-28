@@ -1,0 +1,25 @@
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source."https://github.com/dbdahl/rust-dahl-bellnumber.git"]
+git = "https://github.com/dbdahl/rust-dahl-bellnumber.git"
+rev = "b521e67"
+replace-with = "vendored-sources"
+
+[source."https://github.com/dbdahl/rust-dahl-partition.git"]
+git = "https://github.com/dbdahl/rust-dahl-partition.git"
+rev = "419ac7d"
+replace-with = "vendored-sources"
+
+[source."https://github.com/dbdahl/rust-dahl-randompartition.git"]
+git = "https://github.com/dbdahl/rust-dahl-randompartition.git"
+rev = "85c33a2"
+replace-with = "vendored-sources"
+
+[source."https://github.com/dbdahl/rust-dahl-salso.git"]
+git = "https://github.com/dbdahl/rust-dahl-salso.git"
+rev = "b438a37"
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "vendor"

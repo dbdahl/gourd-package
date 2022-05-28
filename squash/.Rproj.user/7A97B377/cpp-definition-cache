@@ -1,0 +1,155 @@
+[
+    {
+        "file": "/home/dahl/docs/devel/squash-package/squash/src/rust/vendor/dahl-bellnumber/dahl-bellnumber.h",
+        "file_last_write": 1653406023.0,
+        "definitions": []
+    },
+    {
+        "file": "/home/dahl/docs/devel/squash-package/squash/src/rust/vendor/dahl-partition/dahl-partition.h",
+        "file_last_write": 1653406023.0,
+        "definitions": []
+    },
+    {
+        "file": "/home/dahl/docs/devel/squash-package/squash/src/rust/vendor/dahl-randompartition/dahl-randompartition.h",
+        "file_last_write": 1653406023.0,
+        "definitions": [
+            {
+                "usr": "c:dahl-randompartition.h@T@CppParameters",
+                "kind": 8,
+                "parent_name": "",
+                "name": "CppParameters",
+                "file": "/home/dahl/docs/devel/squash-package/squash/src/rust/vendor/dahl-randompartition/dahl-randompartition.h",
+                "line": 6,
+                "column": 30
+            },
+            {
+                "usr": "c:dahl-randompartition.h@T@CrpParameters",
+                "kind": 8,
+                "parent_name": "",
+                "name": "CrpParameters",
+                "file": "/home/dahl/docs/devel/squash-package/squash/src/rust/vendor/dahl-randompartition/dahl-randompartition.h",
+                "line": 8,
+                "column": 30
+            },
+            {
+                "usr": "c:dahl-randompartition.h@T@EpaParameters",
+                "kind": 8,
+                "parent_name": "",
+                "name": "EpaParameters",
+                "file": "/home/dahl/docs/devel/squash-package/squash/src/rust/vendor/dahl-randompartition/dahl-randompartition.h",
+                "line": 10,
+                "column": 30
+            },
+            {
+                "usr": "c:dahl-randompartition.h@T@FixedPartitionParameters",
+                "kind": 8,
+                "parent_name": "",
+                "name": "FixedPartitionParameters",
+                "file": "/home/dahl/docs/devel/squash-package/squash/src/rust/vendor/dahl-randompartition/dahl-randompartition.h",
+                "line": 12,
+                "column": 41
+            },
+            {
+                "usr": "c:dahl-randompartition.h@T@FrpParameters",
+                "kind": 8,
+                "parent_name": "",
+                "name": "FrpParameters",
+                "file": "/home/dahl/docs/devel/squash-package/squash/src/rust/vendor/dahl-randompartition/dahl-randompartition.h",
+                "line": 14,
+                "column": 30
+            },
+            {
+                "usr": "c:dahl-randompartition.h@T@JlpParameters",
+                "kind": 8,
+                "parent_name": "",
+                "name": "JlpParameters",
+                "file": "/home/dahl/docs/devel/squash-package/squash/src/rust/vendor/dahl-randompartition/dahl-randompartition.h",
+                "line": 16,
+                "column": 30
+            },
+            {
+                "usr": "c:dahl-randompartition.h@T@LspParameters",
+                "kind": 8,
+                "parent_name": "",
+                "name": "LspParameters",
+                "file": "/home/dahl/docs/devel/squash-package/squash/src/rust/vendor/dahl-randompartition/dahl-randompartition.h",
+                "line": 18,
+                "column": 30
+            },
+            {
+                "usr": "c:dahl-randompartition.h@T@SpParameters",
+                "kind": 8,
+                "parent_name": "",
+                "name": "SpParameters",
+                "file": "/home/dahl/docs/devel/squash-package/squash/src/rust/vendor/dahl-randompartition/dahl-randompartition.h",
+                "line": 20,
+                "column": 29
+            },
+            {
+                "usr": "c:dahl-randompartition.h@T@UpParameters",
+                "kind": 8,
+                "parent_name": "",
+                "name": "UpParameters",
+                "file": "/home/dahl/docs/devel/squash-package/squash/src/rust/vendor/dahl-randompartition/dahl-randompartition.h",
+                "line": 22,
+                "column": 29
+            },
+            {
+                "usr": "c:@S@Rr_Sexp_Vector_Intsxp",
+                "kind": 3,
+                "parent_name": "",
+                "name": "Rr_Sexp_Vector_Intsxp",
+                "file": "/home/dahl/docs/devel/squash-package/squash/src/rust/vendor/dahl-randompartition/dahl-randompartition.h",
+                "line": 24,
+                "column": 16
+            },
+            {
+                "usr": "c:dahl-randompartition.h@T@Rr_Sexp_Vector_Intsxp",
+                "kind": 8,
+                "parent_name": "",
+                "name": "Rr_Sexp_Vector_Intsxp",
+                "file": "/home/dahl/docs/devel/squash-package/squash/src/rust/vendor/dahl-randompartition/dahl-randompartition.h",
+                "line": 28,
+                "column": 3
+            },
+            {
+                "usr": "c:@S@Rr_Sexp",
+                "kind": 3,
+                "parent_name": "",
+                "name": "Rr_Sexp",
+                "file": "/home/dahl/docs/devel/squash-package/squash/src/rust/vendor/dahl-randompartition/dahl-randompartition.h",
+                "line": 30,
+                "column": 16
+            },
+            {
+                "usr": "c:dahl-randompartition.h@T@Rr_Sexp",
+                "kind": 8,
+                "parent_name": "",
+                "name": "Rr_Sexp",
+                "file": "/home/dahl/docs/devel/squash-package/squash/src/rust/vendor/dahl-randompartition/dahl-randompartition.h",
+                "line": 32,
+                "column": 3
+            }
+        ]
+    },
+    {
+        "file": "/home/dahl/docs/devel/squash-package/squash/src/rust/vendor/dahl-salso/dahl-salso.h",
+        "file_last_write": 1653406023.0,
+        "definitions": []
+    },
+    {
+        "file": "/home/dahl/docs/devel/squash-package/squash/src/shim.c",
+        "file_last_write": 1653403838.0,
+        "definitions": [
+            {
+                "usr": "c:@F@R_init_squash",
+                "kind": 6,
+                "parent_name": "",
+                "name": "R_init_squash(void *)",
+                "file": "/home/dahl/docs/devel/squash-package/squash/src/shim.c",
+                "line": 2,
+                "column": 6
+            }
+        ]
+    }
+]
