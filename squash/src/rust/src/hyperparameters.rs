@@ -1,6 +1,7 @@
 use na::{DMatrix, DVector};
 use nalgebra as na;
 
+#[allow(dead_code)]
 pub struct Hyperparameters {
     precision_response_shape: f64,
     precision_response_rate: f64,
@@ -13,6 +14,7 @@ pub struct Hyperparameters {
 }
 
 impl Hyperparameters {
+    #[allow(dead_code)]
     pub fn new(
         precision_response_shape: f64,
         precision_response_rate: f64,
@@ -56,21 +58,33 @@ impl Hyperparameters {
             clustered_coefficients_precision_times_mean,
         })
     }
+
+    #[allow(dead_code)]
     pub fn precision_response_shape(&self) -> f64 {
         self.precision_response_shape
     }
+
+    #[allow(dead_code)]
     pub fn precision_response_rate(&self) -> f64 {
         self.precision_response_rate
     }
+
+    #[allow(dead_code)]
     pub fn global_coefficients_precision(&self) -> &DMatrix<f64> {
         &self.global_coefficients_precision
     }
+
+    #[allow(dead_code)]
     pub fn global_coefficients_precision_times_mean(&self) -> &DVector<f64> {
         &self.global_coefficients_precision_times_mean
     }
+
+    #[allow(dead_code)]
     pub fn clustered_coefficients_precision(&self) -> &DMatrix<f64> {
         &self.clustered_coefficients_precision
     }
+
+    #[allow(dead_code)]
     pub fn clustered_coefficients_precision_times_mean(&self) -> &DVector<f64> {
         &self.clustered_coefficients_precision_times_mean
     }

@@ -1,6 +1,5 @@
 use nalgebra::{DMatrix, DVector};
 use rand::prelude::*;
-use rand::thread_rng;
 use rand_distr::StandardNormal;
 
 pub fn sample_multivariate_normal_repeatedly<R: Rng>(
@@ -21,6 +20,7 @@ pub fn sample_multivariate_normal_repeatedly<R: Rng>(
     Some(result)
 }
 
+#[allow(dead_code)]
 pub fn sample_multivariate_normal<R: Rng>(
     mean: DVector<f64>,
     precision: DMatrix<f64>,

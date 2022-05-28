@@ -2,13 +2,12 @@ use crate::data::Data;
 use crate::hyperparameters::Hyperparameters;
 use crate::mvnorm::sample_multivariate_normal;
 use dahl_randompartition::clust::Clustering;
-use na::{DMatrix, DVector};
+use na::DVector;
 use nalgebra as na;
 use rand::Rng;
-use rand_distr::Normal;
 use rand_distr::{Distribution, Gamma};
-use roxido::rbindings::drand48_data;
 
+#[allow(dead_code)]
 pub struct State {
     precision_response: f64,
     global_coefficients: DVector<f64>,
@@ -17,6 +16,28 @@ pub struct State {
 }
 
 impl State {
+    #[allow(dead_code)]
+    fn precision_response(&self) -> f64 {
+        self.precision_response
+    }
+
+    #[allow(dead_code)]
+    fn global_coefficients(&self) -> &DVector<f64> {
+        &self.global_coefficients
+    }
+
+    #[allow(dead_code)]
+    fn mcmc_iteration<T: Rng>(
+        &mut self,
+        data: &Data,
+        hyperparameters: &Hyperparameters,
+        rng: &mut T,
+    ) {
+        self.update_precision_response(data, hyperparameters, rng);
+        self.update_global_coefficients(data, hyperparameters, rng);
+    }
+
+    #[allow(dead_code)]
     fn update_precision_response<T: Rng>(
         &mut self,
         data: &Data,
@@ -25,12 +46,14 @@ impl State {
     ) {
         let shape = hyperparameters.precision_response_shape() + 0.5 * data.n_items() as f64;
         let residuals = data.response()
-            - data.global_covariates() * &self.global_coefficients
+            - data.global_covariates() * self.global_coefficients()
             - self.dot_products(data);
         let sum_of_squared_residuals: f64 = residuals.fold(0.0, |acc, x| acc + x * x);
         let rate = hyperparameters.precision_response_rate() + 0.5 * sum_of_squared_residuals;
         self.precision_response = Gamma::new(shape, rate).unwrap().sample(rng);
     }
+
+    #[allow(dead_code)]
     fn update_global_coefficients<T: Rng>(
         &mut self,
         data: &Data,
@@ -38,12 +61,13 @@ impl State {
         rng: &mut T,
     ) {
         let precision = hyperparameters.global_coefficients_precision()
-            + self.precision_response * data.global_covariates_transpose_times_self();
+            + self.precision_response() * data.global_covariates_transpose_times_self();
         let partial_residuals = data.response() - self.dot_products(data);
         let mean = hyperparameters.global_coefficients_precision_times_mean()
-            + self.precision_response * data.global_covariates_transpose() * partial_residuals;
+            + self.precision_response() * data.global_covariates_transpose() * partial_residuals;
         self.global_coefficients = sample_multivariate_normal(mean, precision, rng).unwrap();
     }
+
     fn dot_products(&self, data: &Data) -> DVector<f64> {
         DVector::from_iterator(
             data.n_items(),

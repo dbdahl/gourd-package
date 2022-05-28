@@ -4,18 +4,11 @@ mod mvnorm;
 mod registration;
 mod state;
 
-use crate::data::Data;
 use crate::mvnorm::sample_multivariate_normal_repeatedly;
-use crate::state::State;
-use nalgebra::{ComplexField, DMatrix, DVector, Matrix, OMatrix};
-use rand::prelude::*;
-use rand::thread_rng;
-use rand::{Rng, SeedableRng};
-use rand_distr::{Distribution, StandardNormal};
+use nalgebra::{DMatrix, DVector};
+use rand::SeedableRng;
 use rand_pcg::Pcg64Mcg;
 use roxido::*;
-
-fn mcmc(state: State, data: Data, n_iterations: u32) {}
 
 #[roxido]
 fn sample_multivariate_normal(n_samples: Rval, mean: Rval, precision: Rval) -> Rval {
