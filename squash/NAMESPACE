@@ -3,6 +3,8 @@
 export(convolve2)
 export(myrnorm)
 export(rmvnorm)
+export(state_r2rust)
+export(state_rust2r)
 export(zero)
 importFrom(cargo,run)
 importFrom(tools,R_user_dir)

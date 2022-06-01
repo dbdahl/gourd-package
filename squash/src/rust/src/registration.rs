@@ -30,6 +30,16 @@ fn sample_multivariate_normal(n: Rval, mean: Rval, precision: Rval) -> Rval {
 }
 
 #[roxido]
+fn state_r2rust(state: Rval) -> Rval {
+    Rval::nil()
+}
+
+#[roxido]
+fn state_rust2r(state: Rval) -> Rval {
+    Rval::nil()
+}
+
+#[roxido]
 fn zero(unnamed1: Rval, unnamed2: Rval, unnamed3: Rval, unnamed4: Rval) -> Rval {
     Rval::nil()
 }
@@ -39,8 +49,8 @@ use roxido::*;
 
 #[no_mangle]
 extern "C" fn R_init_squash_rust(info: *mut rbindings::DllInfo) {
-    let mut call_routines = Vec::with_capacity(4);
-    let mut _names: Vec<std::ffi::CString> = Vec::with_capacity(4);
+    let mut call_routines = Vec::with_capacity(6);
+    let mut _names: Vec<std::ffi::CString> = Vec::with_capacity(6);
     _names.push(std::ffi::CString::new(".convolve2").unwrap());
     call_routines.push(rbindings::R_CallMethodDef {
         name: _names.last().unwrap().as_ptr(),
@@ -58,6 +68,18 @@ extern "C" fn R_init_squash_rust(info: *mut rbindings::DllInfo) {
         name: _names.last().unwrap().as_ptr(),
         fun: unsafe { std::mem::transmute(crate::sample_multivariate_normal as *const u8) },
         numArgs: 3,
+    });
+    _names.push(std::ffi::CString::new(".state_r2rust").unwrap());
+    call_routines.push(rbindings::R_CallMethodDef {
+        name: _names.last().unwrap().as_ptr(),
+        fun: unsafe { std::mem::transmute(crate::state_r2rust as *const u8) },
+        numArgs: 1,
+    });
+    _names.push(std::ffi::CString::new(".state_rust2r").unwrap());
+    call_routines.push(rbindings::R_CallMethodDef {
+        name: _names.last().unwrap().as_ptr(),
+        fun: unsafe { std::mem::transmute(crate::state_rust2r as *const u8) },
+        numArgs: 1,
     });
     _names.push(std::ffi::CString::new(".zero").unwrap());
     call_routines.push(rbindings::R_CallMethodDef {

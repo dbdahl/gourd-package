@@ -302,6 +302,21 @@ impl Rval {
         Self(pc.protect(unsafe { Rf_duplicate(self.0) }))
     }
 
+    pub fn external_pointer_encode<T>(x: T) -> Self {
+        unsafe {
+            // Move to Box<_> and then forget about it.
+            let ptr = Box::into_raw(Box::new(x)) as *mut c_void;
+            Self(R_MakeExternalPtr(ptr, R_NilValue, R_NilValue))
+        }
+    }
+
+    pub fn external_pointer_decode<T>(x: Self) -> T {
+        unsafe {
+            let ptr = R_ExternalPtrAddr(x.0) as *mut T;
+            *Box::from_raw(ptr)
+        }
+    }
+
     /// Get the value `NULL`.
     pub fn nil() -> Self {
         Self(unsafe { R_NilValue })

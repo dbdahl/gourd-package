@@ -80,6 +80,11 @@ impl Hyperparameters {
     }
 
     #[allow(dead_code)]
+    pub fn clustered_coefficients_mean(&self) -> &DVector<f64> {
+        &self.clustered_coefficients_mean
+    }
+
+    #[allow(dead_code)]
     pub fn clustered_coefficients_precision(&self) -> &DMatrix<f64> {
         &self.clustered_coefficients_precision
     }
