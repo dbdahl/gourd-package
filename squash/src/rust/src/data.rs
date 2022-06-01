@@ -1,4 +1,5 @@
 use nalgebra::{DMatrix, DVector};
+use roxido::*;
 
 #[allow(dead_code)]
 pub struct Data {
@@ -34,27 +35,39 @@ impl Data {
         })
     }
 
-    #[allow(dead_code)]
+    pub fn from_r(data: Rval, pc: &mut Pc) -> Self {
+        let (_, response_slice) = data.get_list_element(0).coerce_double(pc).unwrap();
+        let n_items = response_slice.len();
+        let response = DVector::from_column_slice(response_slice);
+        let (global_covariates_rval, global_covariates_slice) =
+            data.get_list_element(1).coerce_double(pc).unwrap();
+        let n_global_covariates = global_covariates_rval.ncol();
+        let global_covariates =
+            DMatrix::from_column_slice(n_items, n_global_covariates, global_covariates_slice);
+        let (clustered_covariates_rval, clustered_covariates_slice) =
+            data.get_list_element(2).coerce_double(pc).unwrap();
+        let n_clustered_covariates = clustered_covariates_rval.ncol();
+        let clustered_covariates =
+            DMatrix::from_column_slice(n_items, n_clustered_covariates, clustered_covariates_slice);
+        Data::new(response, global_covariates, clustered_covariates).unwrap()
+    }
+
     pub fn response(&self) -> &DVector<f64> {
         &self.response
     }
 
-    #[allow(dead_code)]
     pub fn global_covariates(&self) -> &DMatrix<f64> {
         &self.global_covariates
     }
 
-    #[allow(dead_code)]
     pub fn global_covariates_transpose(&self) -> &DMatrix<f64> {
         &self.global_covariates_transpose
     }
 
-    #[allow(dead_code)]
     pub fn global_covariates_transpose_times_self(&self) -> &DMatrix<f64> {
         &self.global_covariates_transpose_times_self
     }
 
-    #[allow(dead_code)]
     pub fn clustered_covariates(&self) -> &DMatrix<f64> {
         &self.clustered_covariates
     }
@@ -64,18 +77,15 @@ impl Data {
         self.missing_items = Some(items);
     }
 
-    #[allow(dead_code)]
     pub fn n_items(&self) -> usize {
         self.global_covariates.nrows()
     }
 
-    #[allow(dead_code)]
-    pub fn n_global_coefficients(&self) -> usize {
+    pub fn n_global_covariates(&self) -> usize {
         self.global_covariates.ncols()
     }
 
-    #[allow(dead_code)]
-    pub fn n_clustered_coefficients(&self) -> usize {
+    pub fn n_clustered_covariates(&self) -> usize {
         self.clustered_covariates.ncols()
     }
 }

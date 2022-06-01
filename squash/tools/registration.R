@@ -1,5 +1,7 @@
 .Call <- base::.Call
 .convolve2 <- NULL
+.data_r2rust <- NULL
+.hyperparameters_r2rust <- NULL
 .myrnorm <- NULL
 .sample_multivariate_normal <- NULL
 .state_r2rust <- NULL

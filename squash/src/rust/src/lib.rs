@@ -7,7 +7,7 @@ mod state;
 use crate::data::Data;
 use crate::hyperparameters::Hyperparameters;
 use crate::mvnorm::sample_multivariate_normal_repeatedly;
-use crate::state::State;
+use crate::state::{State, StateFixedComponents};
 use nalgebra::{DMatrix, DVector};
 use rand::SeedableRng;
 use rand_pcg::Pcg64Mcg;
@@ -24,78 +24,35 @@ fn state_rust2r(state: Rval) -> Rval {
 }
 
 #[roxido]
-fn mk_data(response: Rval, global_covariates: Rval, clustered_covariates: Rval) -> Rval {
-    let (_, response_slice) = response.coerce_double(&mut pc).unwrap();
-    let n_items = response_slice.len();
-    let response = DVector::from_column_slice(response_slice);
-    let (_, global_covariates_slice) = global_covariates.coerce_double(&mut pc).unwrap();
-    let n_global_covariates = global_covariates.ncol();
-    let global_covariates =
-        DMatrix::from_column_slice(n_items, n_global_covariates, global_covariates_slice);
-    let (_, clustered_covariates_slice) = clustered_covariates.coerce_double(&mut pc).unwrap();
-    let n_clustered_covariates = clustered_covariates.ncol();
-    let clustered_covariates =
-        DMatrix::from_column_slice(n_items, n_clustered_covariates, clustered_covariates_slice);
-    let data = Data::new(response, global_covariates, clustered_covariates).unwrap();
-    Rval::external_pointer_encode(data)
+fn hyperparameters_r2rust(hyperparameters: Rval) -> Rval {
+    Rval::external_pointer_encode(Hyperparameters::from_r(hyperparameters, &mut pc))
 }
 
 #[roxido]
-fn mk_hyperparameters(
-    precision_response_shape: Rval,
-    precision_response_rate: Rval,
-    global_coefficients_mean: Rval,
-    global_coefficients_precision: Rval,
-    clustered_coefficients_mean: Rval,
-    clustered_coefficients_precision: Rval,
-) -> Rval {
-    let precision_response_shape = precision_response_shape.as_f64();
-    let precision_response_rate = precision_response_rate.as_f64();
-    let global_coefficients_mean =
-        DVector::from_column_slice(global_coefficients_mean.coerce_double(&mut pc).unwrap().1);
-    let global_coefficients_precision = DMatrix::from_column_slice(
-        global_coefficients_mean.len(),
-        global_coefficients_mean.len(),
-        global_coefficients_precision
-            .coerce_double(&mut pc)
-            .unwrap()
-            .1,
-    );
-    let clustered_coefficients_mean = DVector::from_column_slice(
-        clustered_coefficients_mean
-            .coerce_double(&mut pc)
-            .unwrap()
-            .1,
-    );
-    let clustered_coefficients_precision = DMatrix::from_column_slice(
-        clustered_coefficients_mean.len(),
-        clustered_coefficients_mean.len(),
-        clustered_coefficients_precision
-            .coerce_double(&mut pc)
-            .unwrap()
-            .1,
-    );
-    let hyperparameters = Hyperparameters::new(
-        precision_response_shape,
-        precision_response_rate,
-        global_coefficients_mean,
-        global_coefficients_precision,
-        clustered_coefficients_mean,
-        clustered_coefficients_precision,
-    )
-    .unwrap();
-    Rval::external_pointer_encode(hyperparameters)
+fn data_r2rust(data: Rval) -> Rval {
+    Rval::external_pointer_encode(Data::from_r(data, &mut pc))
 }
 
 #[roxido]
-fn fit(n_updates: Rval, state: Rval, data: Rval, hyperparameters: Rval) -> Rval {
+fn fit(n_updates: Rval, data: Rval, state: Rval, fixed: Rval, hyperparameters: Rval) -> Rval {
     let n_updates = n_updates.as_usize();
-    let mut state = Rval::external_pointer_decode::<State>(state);
     let data = Rval::external_pointer_decode::<Data>(data);
+    let mut state = Rval::external_pointer_decode::<State>(state);
+    let fixed = StateFixedComponents::from_r(fixed, &mut pc);
     let hyperparameters = Rval::external_pointer_decode::<Hyperparameters>(hyperparameters);
+    if data.n_global_covariates() != state.n_global_covariates()
+        || hyperparameters.n_global_covariates() != state.n_global_covariates()
+    {
+        panic!("Inconsistent number of global covariates.")
+    }
+    if data.n_clustered_covariates() != state.n_clustered_covariates()
+        || hyperparameters.n_clustered_covariates() != state.n_clustered_covariates()
+    {
+        panic!("Inconsistent number of clustered covariates.")
+    }
     let mut rng = Pcg64Mcg::from_seed(r::random_bytes::<16>());
     for _ in 0..n_updates {
-        state = state.mcmc_iteration(&data, &hyperparameters, &mut rng);
+        state = state.mcmc_iteration(&fixed, &data, &hyperparameters, &mut rng);
     }
     Rval::external_pointer_encode(state)
 }

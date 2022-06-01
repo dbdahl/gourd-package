@@ -6,13 +6,13 @@ use dahl_randompartition::crp::CrpParameters;
 use dahl_randompartition::mcmc::update_neal_algorithm8_v2;
 use dahl_randompartition::perm::Permutation;
 use dahl_randompartition::prelude::Mass;
-use na::DVector;
-use nalgebra as na;
+use nalgebra::DVector;
 use rand::Rng;
+use rand::SeedableRng;
 use rand_distr::{Distribution, Gamma};
+use rand_pcg::Pcg64Mcg;
 use roxido::*;
 
-#[allow(dead_code)]
 pub struct State {
     precision_response: f64,
     global_coefficients: DVector<f64>,
@@ -69,7 +69,7 @@ impl State {
         let permutation =
             Permutation::from_slice(state.get_list_element(4).coerce_integer(pc).unwrap().1)
                 .unwrap();
-        State::new(
+        Self::new(
             precision_response,
             global_coefficients,
             clustering,
@@ -105,66 +105,68 @@ impl State {
         result
     }
 
-    #[allow(dead_code)]
-    fn precision_response(&self) -> f64 {
-        self.precision_response
+    pub fn n_global_covariates(&self) -> usize {
+        self.global_coefficients.len()
     }
 
-    #[allow(dead_code)]
-    fn global_coefficients(&self) -> &DVector<f64> {
-        &self.global_coefficients
-    }
-
-    #[allow(dead_code)]
-    fn permutation(&self) -> &Permutation {
-        &self.permutation
+    pub fn n_clustered_covariates(&self) -> usize {
+        self.clustered_coefficients[0].len()
     }
 
     pub fn mcmc_iteration<T: Rng>(
         mut self,
+        fixed: &StateFixedComponents,
         data: &Data,
         hyperparameters: &Hyperparameters,
         rng: &mut T,
     ) -> Self {
-        self.precision_response = Self::update_precision_response(
-            &self.global_coefficients,
-            &self.clustering,
-            &self.clustered_coefficients,
-            data,
-            hyperparameters,
-            rng,
-        );
-        self.global_coefficients = Self::update_global_coefficients(
-            self.precision_response,
-            &self.clustering,
-            &self.clustered_coefficients,
-            data,
-            hyperparameters,
-            rng,
-        );
-        self.clustering = Self::update_clustering(
-            self.clustering,
-            &mut self.clustered_coefficients,
-            self.precision_response,
-            &self.global_coefficients,
-            &self.permutation,
-            data,
-            hyperparameters,
-            rng,
-        );
-        self.clustered_coefficients = Self::update_clustered_coefficients(
-            self.clustered_coefficients,
-            &self.clustering,
-            self.precision_response,
-            &self.global_coefficients,
-            data,
-            hyperparameters,
-            rng,
-        );
+        if !fixed.precision_response {
+            self.precision_response = Self::update_precision_response(
+                &self.global_coefficients,
+                &self.clustering,
+                &self.clustered_coefficients,
+                data,
+                hyperparameters,
+                rng,
+            );
+        }
+        if !fixed.global_coefficients {
+            self.global_coefficients = Self::update_global_coefficients(
+                self.precision_response,
+                &self.clustering,
+                &self.clustered_coefficients,
+                data,
+                hyperparameters,
+                rng,
+            );
+        }
+        if !fixed.clustering {
+            self.clustering = Self::update_clustering(
+                self.clustering,
+                &mut self.clustered_coefficients,
+                self.precision_response,
+                &self.global_coefficients,
+                &self.permutation,
+                data,
+                hyperparameters,
+                rng,
+            );
+            self.clustered_coefficients = Self::update_clustered_coefficients(
+                self.clustered_coefficients,
+                &self.clustering,
+                self.precision_response,
+                &self.global_coefficients,
+                data,
+                hyperparameters,
+                rng,
+            );
+        }
+        if !fixed.permutation {
+            panic!("Random permutation is not yet implemented.")
+        }
         self
     }
 
-    #[allow(dead_code)]
     fn update_precision_response<T: Rng>(
         global_coefficients: &DVector<f64>,
         clustering: &Clustering,
@@ -182,7 +184,6 @@ impl State {
         Gamma::new(shape, rate).unwrap().sample(rng)
     }
 
-    #[allow(dead_code)]
     fn update_global_coefficients<T: Rng>(
         precision_response: f64,
         clustering: &Clustering,
@@ -210,8 +211,6 @@ impl State {
         hyperparameters: &Hyperparameters,
         rng: &mut T,
     ) -> Clustering {
-        use rand::SeedableRng;
-        use rand_pcg::Pcg64Mcg;
         let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
         rng.fill(&mut seed);
         let mut rng2 = Pcg64Mcg::from_seed(seed);
@@ -269,7 +268,7 @@ impl State {
                 + precision_response * wt.clone() * &w;
             let partial_residuals = data.response().select_rows(&indices)
                 - data.global_covariates().select_rows(&indices) * global_coefficients;
-            let mean = hyperparameters.global_coefficients_precision_times_mean()
+            let mean = hyperparameters.clustered_coefficients_precision_times_mean()
                 + precision_response * wt * partial_residuals;
             *clustered_coefficient = sample_multivariate_normal_v2(mean, precision, rng).unwrap()
         }
@@ -288,5 +287,32 @@ impl State {
                 .zip(clustering.allocation())
                 .map(|(w, &label)| (w * &clustered_coefficients[label])[(0, 0)]),
         )
+    }
+}
+
+pub struct StateFixedComponents {
+    precision_response: bool,
+    global_coefficients: bool,
+    clustering: bool,
+    permutation: bool,
+}
+
+impl StateFixedComponents {
+    pub fn new(
+        precision_response: bool,
+        global_coefficients: bool,
+        clustering: bool,
+        permutation: bool,
+    ) -> Self {
+        Self {
+            precision_response,
+            global_coefficients,
+            clustering,
+            permutation,
+        }
+    }
+    pub fn from_r(x: Rval, pc: &mut Pc) -> Self {
+        let (_, x) = x.coerce_logical(pc).unwrap();
+        Self::new(x[0] != 0, x[1] != 0, x[2] != 0, x[3] != 0)
     }
 }

@@ -1,5 +1,5 @@
-use na::{DMatrix, DVector};
-use nalgebra as na;
+use nalgebra::{DMatrix, DVector};
+use roxido::*;
 
 #[allow(dead_code)]
 pub struct Hyperparameters {
@@ -59,37 +59,83 @@ impl Hyperparameters {
         })
     }
 
-    #[allow(dead_code)]
+    pub fn from_r(hyperparameters: Rval, pc: &mut Pc) -> Self {
+        let precision_response_shape = hyperparameters.get_list_element(0).as_f64();
+        let precision_response_rate = hyperparameters.get_list_element(1).as_f64();
+        let (_, global_coefficients_mean_slice) = hyperparameters
+            .get_list_element(2)
+            .coerce_double(pc)
+            .unwrap();
+        let global_coefficients_mean = DVector::from_column_slice(global_coefficients_mean_slice);
+        let (global_coefficients_precision_rval, global_coefficients_precision_slice) =
+            hyperparameters
+                .get_list_element(3)
+                .coerce_double(pc)
+                .unwrap();
+        let global_coefficients_precision = DMatrix::from_column_slice(
+            global_coefficients_precision_rval.nrow(),
+            global_coefficients_precision_rval.ncol(),
+            global_coefficients_precision_slice,
+        );
+        let (_, clustered_coefficients_mean_slice) = hyperparameters
+            .get_list_element(4)
+            .coerce_double(pc)
+            .unwrap();
+        let clustered_coefficients_mean =
+            DVector::from_column_slice(clustered_coefficients_mean_slice);
+        let (clustered_coefficients_precision_rval, clustered_coefficients_precision_slice) =
+            hyperparameters
+                .get_list_element(5)
+                .coerce_double(pc)
+                .unwrap();
+        let clustered_coefficients_precision = DMatrix::from_column_slice(
+            clustered_coefficients_precision_rval.nrow(),
+            clustered_coefficients_precision_rval.ncol(),
+            clustered_coefficients_precision_slice,
+        );
+        Self::new(
+            precision_response_shape,
+            precision_response_rate,
+            global_coefficients_mean,
+            global_coefficients_precision,
+            clustered_coefficients_mean,
+            clustered_coefficients_precision,
+        )
+        .unwrap()
+    }
+
+    pub fn n_global_covariates(&self) -> usize {
+        self.global_coefficients_mean.len()
+    }
+
+    pub fn n_clustered_covariates(&self) -> usize {
+        self.clustered_coefficients_mean.len()
+    }
+
     pub fn precision_response_shape(&self) -> f64 {
         self.precision_response_shape
     }
 
-    #[allow(dead_code)]
     pub fn precision_response_rate(&self) -> f64 {
         self.precision_response_rate
     }
 
-    #[allow(dead_code)]
     pub fn global_coefficients_precision(&self) -> &DMatrix<f64> {
         &self.global_coefficients_precision
     }
 
-    #[allow(dead_code)]
     pub fn global_coefficients_precision_times_mean(&self) -> &DVector<f64> {
         &self.global_coefficients_precision_times_mean
     }
 
-    #[allow(dead_code)]
     pub fn clustered_coefficients_mean(&self) -> &DVector<f64> {
         &self.clustered_coefficients_mean
     }
 
-    #[allow(dead_code)]
     pub fn clustered_coefficients_precision(&self) -> &DMatrix<f64> {
         &self.clustered_coefficients_precision
     }
 
-    #[allow(dead_code)]
     pub fn clustered_coefficients_precision_times_mean(&self) -> &DVector<f64> {
         &self.clustered_coefficients_precision_times_mean
     }
