@@ -1,5 +1,5 @@
 #' @export
-fit <- function(data, state, hyperparameters, fixed=rep(FALSE,4), nUpdates=500, thin=10, progress=TRUE) {
+fit <- function(data, state, hyperparameters, fixed=rep(FALSE,4), nIterations=1000, thin=10, progress=TRUE) {
   # Verify data
   if ( ! is.list(data) || length(data) != 3 || any(names(data) != c("response", "global_covariates", "clustered_covariates")) ) {
     stop("'data' must be a named list of elements: 1. 'response', 2. 'global_covariates', 3. 'clustered_covariates'")
@@ -95,7 +95,7 @@ fit <- function(data, state, hyperparameters, fixed=rep(FALSE,4), nUpdates=500, 
   }
   hyperparameters <- .Call(.hyperparameters_r2rust, hyperparameters)
   # Run MCMC
-  samples <- vector(mode="list", floor(nUpdates/thin))
+  samples <- vector(mode="list", floor(nIterations/thin))
   if ( progress ) { pb <- txtProgressBar(0,length(samples),style=3) }
   for ( i in seq_along(samples) ) {
     state <- .Call(.fit, thin, data, state, fixed, hyperparameters)

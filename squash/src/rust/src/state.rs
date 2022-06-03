@@ -87,7 +87,7 @@ impl State {
             .clustering
             .allocation()
             .iter()
-            .map(|&label| i32::try_from(label).unwrap())
+            .map(|&label| i32::try_from(label + 1).unwrap())
             .collect();
         result.set_list_element(2, Rval::new(&x[..], pc));
         let rval = Rval::new_list(self.clustered_coefficients.len(), pc);
@@ -99,7 +99,7 @@ impl State {
             .permutation
             .as_slice()
             .iter()
-            .map(|&label| i32::try_from(label).unwrap())
+            .map(|&label| i32::try_from(label + 1).unwrap())
             .collect();
         result.set_list_element(4, Rval::new(&x[..], pc));
         result
@@ -111,6 +111,18 @@ impl State {
 
     pub fn n_clustered_covariates(&self) -> usize {
         self.clustered_coefficients[0].len()
+    }
+
+    pub fn canonicalize(mut self) -> Self {
+        let (clustering, map) = self.clustering.relabel(0, None, true);
+        let map = map.unwrap();
+        let mut new_clustered_coefficients = Vec::with_capacity(clustering.n_clusters());
+        for i in map {
+            new_clustered_coefficients.push(self.clustered_coefficients[i].clone());
+        }
+        self.clustering = clustering;
+        self.clustered_coefficients = new_clustered_coefficients;
+        self
     }
 
     pub fn mcmc_iteration<T: Rng>(

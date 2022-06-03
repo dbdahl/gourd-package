@@ -62,6 +62,7 @@ fn fit(n_updates: Rval, data: Rval, state: Rval, fixed: Rval, hyperparameters: R
     for _ in 0..n_updates {
         state = state.mcmc_iteration(&fixed, &data, &hyperparameters, &mut rng);
     }
+    state = state.canonicalize();
     Rval::external_pointer_encode(state)
 }
 
