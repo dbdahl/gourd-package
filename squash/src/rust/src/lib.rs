@@ -25,8 +25,8 @@ fn state_rust2r_as_reference(state: Rval) -> Rval {
 
 #[roxido]
 fn state_rust_free(state: Rval) -> Rval {
-    let state = Rval::external_pointer_decode_as_reference::<State>(state);
-    drop(state);
+    let state = Rval::external_pointer_decode::<State>(state);
+    drop(state); // It would happen anyway, but we're being explicit.
     Rval::nil()
 }
 
@@ -43,10 +43,11 @@ fn data_r2rust(data: Rval) -> Rval {
 #[roxido]
 fn fit(n_updates: Rval, data: Rval, state: Rval, fixed: Rval, hyperparameters: Rval) -> Rval {
     let n_updates = n_updates.as_usize();
-    let data = Rval::external_pointer_decode::<Data>(data);
+    let data = Rval::external_pointer_decode_as_reference::<Data>(data);
     let mut state = Rval::external_pointer_decode::<State>(state);
     let fixed = StateFixedComponents::from_r(fixed, &mut pc);
-    let hyperparameters = Rval::external_pointer_decode::<Hyperparameters>(hyperparameters);
+    let hyperparameters =
+        Rval::external_pointer_decode_as_reference::<Hyperparameters>(hyperparameters);
     if data.n_global_covariates() != state.n_global_covariates()
         || hyperparameters.n_global_covariates() != state.n_global_covariates()
     {
