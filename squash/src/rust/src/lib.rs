@@ -19,8 +19,15 @@ fn state_r2rust(state: Rval) -> Rval {
 }
 
 #[roxido]
-fn state_rust2r(state: Rval) -> Rval {
-    Rval::external_pointer_decode::<State>(state).to_r(&mut pc)
+fn state_rust2r_as_reference(state: Rval) -> Rval {
+    Rval::external_pointer_decode_as_reference::<State>(state).to_r(&mut pc)
+}
+
+#[roxido]
+fn state_rust_free(state: Rval) -> Rval {
+    let state = Rval::external_pointer_decode_as_reference::<State>(state);
+    drop(state);
+    Rval::nil()
 }
 
 #[roxido]

@@ -317,6 +317,13 @@ impl Rval {
         }
     }
 
+    pub fn external_pointer_decode_as_reference<T>(x: Self) -> &'static T {
+        unsafe {
+            let ptr = R_ExternalPtrAddr(x.0) as *mut T;
+            ptr.as_ref().unwrap()
+        }
+    }
+
     /// Get the value `NULL`.
     pub fn nil() -> Self {
         Self(unsafe { R_NilValue })
