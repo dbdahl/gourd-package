@@ -163,6 +163,8 @@ impl State {
                 hyperparameters,
                 rng,
             );
+        }
+        if !fixed.clustered_coefficients {
             self.clustered_coefficients = Self::update_clustered_coefficients(
                 self.clustered_coefficients,
                 &self.clustering,
@@ -307,6 +309,7 @@ pub struct StateFixedComponents {
     precision_response: bool,
     global_coefficients: bool,
     clustering: bool,
+    clustered_coefficients: bool,
     permutation: bool,
 }
 
@@ -315,17 +318,19 @@ impl StateFixedComponents {
         precision_response: bool,
         global_coefficients: bool,
         clustering: bool,
+        clustered_coefficients: bool,
         permutation: bool,
     ) -> Self {
         Self {
             precision_response,
             global_coefficients,
             clustering,
+            clustered_coefficients,
             permutation,
         }
     }
     pub fn from_r(x: Rval, pc: &mut Pc) -> Self {
         let (_, x) = x.coerce_logical(pc).unwrap();
-        Self::new(x[0] != 0, x[1] != 0, x[2] != 0, x[3] != 0)
+        Self::new(x[0] != 0, x[1] != 0, x[2] != 0, x[3] != 0, x[4] != 0)
     }
 }

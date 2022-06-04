@@ -1,5 +1,5 @@
 #' @export
-fit <- function(data, state, hyperparameters, fixed=rep(FALSE,4), nIterations=1000, burnin=500, thin=10, progress=TRUE) {
+fit <- function(data, state, hyperparameters, fixed=rep(FALSE,5), nIterations=1000, burnin=500, thin=10, progress=TRUE) {
   # Verify data
   if ( ! is.list(data) || length(data) != 3 || any(names(data) != c("response", "global_covariates", "clustered_covariates")) ) {
     stop("'data' must be a named list of elements: 1. 'response', 2. 'global_covariates', 3. 'clustered_covariates'")
