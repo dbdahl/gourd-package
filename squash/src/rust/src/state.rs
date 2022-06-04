@@ -193,7 +193,8 @@ impl State {
             - Self::dot_products(clustering, clustered_coefficients, data);
         let sum_of_squared_residuals: f64 = residuals.fold(0.0, |acc, x| acc + x * x);
         let rate = hyperparameters.precision_response_rate() + 0.5 * sum_of_squared_residuals;
-        Gamma::new(shape, rate).unwrap().sample(rng)
+        let scale = 1.0 / rate;
+        Gamma::new(shape, scale).unwrap().sample(rng)
     }
 
     fn update_global_coefficients<T: Rng>(
