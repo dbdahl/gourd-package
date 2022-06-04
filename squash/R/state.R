@@ -1,5 +1,5 @@
 #' @export
-fit <- function(data, state, hyperparameters, fixed=rep(FALSE,4), nIterations=1000, thin=10, progress=TRUE) {
+fit <- function(data, state, hyperparameters, fixed=rep(FALSE,4), nIterations=1000, burnin=500, thin=10, progress=TRUE) {
   # Verify data
   if ( ! is.list(data) || length(data) != 3 || any(names(data) != c("response", "global_covariates", "clustered_covariates")) ) {
     stop("'data' must be a named list of elements: 1. 'response', 2. 'global_covariates', 3. 'clustered_covariates'")
@@ -95,11 +95,26 @@ fit <- function(data, state, hyperparameters, fixed=rep(FALSE,4), nIterations=10
   }
   hyperparameters <- .Call(.hyperparameters_r2rust, hyperparameters)
   # Run MCMC
-  samples <- vector(mode="list", floor(nIterations/thin))
-  if ( progress ) { pb <- txtProgressBar(0,length(samples),style=3) }
-  for ( i in seq_along(samples) ) {
+  if ( progress ) cat("Burning in...")
+  state <- .Call(.fit, burnin, data, state, fixed, hyperparameters)
+  if ( progress ) cat("\r")
+  nSamples <- floor((nIterations-burnin)/thin)
+  samples <- list(
+    precision_response=numeric(nSamples),
+    global_coefficients=matrix(0.0, nrow=nSamples, ncol=n_global_coefficients),
+    clustering=matrix(0L, nrow=nSamples, ncol=n_items),
+    clustered_coefficients=vector(mode="list", nSamples),
+    permutation=matrix(0L, nrow=nSamples, ncol=n_items)
+  )
+  if ( progress ) { pb <- txtProgressBar(0,nSamples,style=3) }
+  for ( i in seq_len(nSamples) ) {
     state <- .Call(.fit, thin, data, state, fixed, hyperparameters)
-    samples[[i]] <- .Call(.state_rust2r_as_reference,state)
+    tmp <- .Call(.state_rust2r_as_reference,state)
+    samples$precision_response[i] <- tmp[[1]]
+    samples$global_coefficients[i,] <- tmp[[2]]
+    samples$clustered_coefficients[[i]] <- tmp[[4]]
+    samples$clustering[i,] <- tmp[[3]]
+    samples$permutation[i,] <- tmp[[5]]
     if ( progress ) setTxtProgressBar(pb, i)
   }
   if ( progress ) close(pb)
