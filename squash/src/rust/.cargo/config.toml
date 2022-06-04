@@ -13,7 +13,7 @@ replace-with = "vendored-sources"
 
 [source."https://github.com/dbdahl/rust-dahl-randompartition.git"]
 git = "https://github.com/dbdahl/rust-dahl-randompartition.git"
-rev = "85c33a2"
+rev = "35b4033bc9"
 replace-with = "vendored-sources"
 
 [source."https://github.com/dbdahl/rust-dahl-salso.git"]
