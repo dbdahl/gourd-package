@@ -247,7 +247,7 @@ impl State {
                 }
             };
             let parameter = &clustered_coefficients[label];
-            -precision_response / 0.5
+            -0.5 * precision_response
                 * (*data.response().index(item)
                     - (data.global_covariates().row(item) * global_coefficients).index((0, 0))
                     - (data.clustered_covariates().row(item) * parameter).index((0, 0)))
