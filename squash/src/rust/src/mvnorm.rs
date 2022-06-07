@@ -22,7 +22,7 @@ pub fn sample_multivariate_normal_repeatedly<R: Rng>(
 
 #[allow(dead_code)]
 pub fn sample_multivariate_normal<R: Rng>(
-    mean: DVector<f64>,
+    mean: &DVector<f64>,
     precision: DMatrix<f64>,
     rng: &mut R,
 ) -> Option<DVector<f64>> {

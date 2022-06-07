@@ -9,6 +9,7 @@ use crate::hyperparameters::Hyperparameters;
 use crate::mvnorm::sample_multivariate_normal_repeatedly;
 use crate::state::{State, StateFixedComponents};
 use nalgebra::{DMatrix, DVector};
+use rand::Rng;
 use rand::SeedableRng;
 use rand_pcg::Pcg64Mcg;
 use roxido::*;
@@ -24,13 +25,6 @@ fn state_rust2r_as_reference(state: Rval) -> Rval {
 }
 
 #[roxido]
-fn state_rust_free(state: Rval) -> Rval {
-    let state = Rval::external_pointer_decode::<State>(state);
-    drop(state); // It would happen anyway, but we're being explicit.
-    Rval::nil()
-}
-
-#[roxido]
 fn hyperparameters_r2rust(hyperparameters: Rval) -> Rval {
     Rval::external_pointer_encode(Hyperparameters::from_r(hyperparameters, &mut pc))
 }
@@ -38,6 +32,25 @@ fn hyperparameters_r2rust(hyperparameters: Rval) -> Rval {
 #[roxido]
 fn data_r2rust(data: Rval) -> Rval {
     Rval::external_pointer_encode(Data::from_r(data, &mut pc))
+}
+
+#[roxido]
+fn rust_free(x: Rval, tipe: Rval) -> Rval {
+    match tipe.as_i32() {
+        0 => {
+            let _ = Rval::external_pointer_decode::<Data>(x);
+        }
+        1 => {
+            let _ = Rval::external_pointer_decode::<State>(x);
+        }
+        2 => {
+            let _ = Rval::external_pointer_decode::<Hyperparameters>(x);
+        }
+        _ => {
+            panic!("Unrecognized type ID.")
+        }
+    };
+    Rval::nil()
 }
 
 #[roxido]
@@ -59,8 +72,11 @@ fn fit(n_updates: Rval, data: Rval, state: Rval, fixed: Rval, hyperparameters: R
         panic!("Inconsistent number of clustered covariates.")
     }
     let mut rng = Pcg64Mcg::from_seed(r::random_bytes::<16>());
+    let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
+    rng.fill(&mut seed);
+    let mut rng2 = Pcg64Mcg::from_seed(seed);
     for _ in 0..n_updates {
-        state = state.mcmc_iteration(&fixed, &data, &hyperparameters, &mut rng);
+        state = state.mcmc_iteration(&fixed, &data, &hyperparameters, &mut rng, &mut rng2);
     }
     state = state.canonicalize();
     Rval::external_pointer_encode(state)

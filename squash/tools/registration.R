@@ -5,7 +5,7 @@
 .hyperparameters_r2rust <- NULL
 .fit <- NULL
 .state_rust2r_as_reference <- NULL
-.state_rust_free <- NULL
+.rust_free <- NULL
 .myrnorm <- NULL
 .sample_multivariate_normal <- NULL
 .zero <- NULL

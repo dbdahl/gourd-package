@@ -8,9 +8,7 @@ use dahl_randompartition::perm::Permutation;
 use dahl_randompartition::prelude::Mass;
 use nalgebra::DVector;
 use rand::Rng;
-use rand::SeedableRng;
 use rand_distr::{Distribution, Gamma};
-use rand_pcg::Pcg64Mcg;
 use roxido::*;
 
 pub struct State {
@@ -131,6 +129,7 @@ impl State {
         data: &Data,
         hyperparameters: &Hyperparameters,
         rng: &mut T,
+        rng2: &mut T,
     ) -> Self {
         if !fixed.precision_response {
             self.precision_response = Self::update_precision_response(
@@ -162,6 +161,7 @@ impl State {
                 data,
                 hyperparameters,
                 rng,
+                rng2,
             );
         }
         if !fixed.clustered_coefficients {
@@ -225,19 +225,17 @@ impl State {
         data: &Data,
         hyperparameters: &Hyperparameters,
         rng: &mut T,
+        rng2: &mut T,
     ) -> Clustering {
-        let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
-        rng.fill(&mut seed);
-        let mut rng2 = Pcg64Mcg::from_seed(seed);
         let prior = CrpParameters::new_with_mass(data.n_items(), Mass::new(1.0));
         let mut log_likelihood_contribution_fn = |item: usize, label: usize, is_new: bool| {
             if is_new {
                 let parameter = sample_multivariate_normal(
-                    hyperparameters.clustered_coefficients_mean().to_owned(),
+                    &hyperparameters.clustered_coefficients_mean(),
                     hyperparameters
                         .clustered_coefficients_precision()
                         .to_owned(),
-                    &mut rng2,
+                    rng2,
                 )
                 .unwrap();
                 if label >= clustered_coefficients.len() {
@@ -248,7 +246,7 @@ impl State {
             };
             let parameter = &clustered_coefficients[label];
             -0.5 * precision_response
-                * (*data.response().index(item)
+                * (data.response()[item]
                     - (data.global_covariates().row(item) * global_coefficients).index((0, 0))
                     - (data.clustered_covariates().row(item) * parameter).index((0, 0)))
                 .powi(2)

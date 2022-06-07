@@ -118,6 +118,8 @@ fit <- function(data, state, hyperparameters, fixed=rep(FALSE,5), nIterations=10
     if ( progress ) setTxtProgressBar(pb, i)
   }
   if ( progress ) close(pb)
-  .Call(.state_rust_free,state)
+  .Call(.rust_free, data, 0)
+  .Call(.rust_free, state, 1)
+  .Call(.rust_free, hyperparameters, 2)
   samples
 }
