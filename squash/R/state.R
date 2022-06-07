@@ -1,5 +1,5 @@
 #' @export
-fit <- function(data, state, hyperparameters, fixed=rep(FALSE,5), nIterations=1000, burnin=500, thin=10, progress=TRUE) {
+fit <- function(data, state, fixed=rep(FALSE,5), hyperparameters, partitionDistribution=CRPPartition(n_items, 1), nIterations=1000, burnin=500, thin=10, progress=TRUE) {
   # Verify data
   if ( ! is.list(data) || length(data) != 3 || any(names(data) != c("response", "global_covariates", "clustered_covariates")) ) {
     stop("'data' must be a named list of elements: 1. 'response', 2. 'global_covariates', 3. 'clustered_covariates'")
@@ -94,9 +94,10 @@ fit <- function(data, state, hyperparameters, fixed=rep(FALSE,5), nIterations=10
     stop("Inconsistent number of clustered covariates.")
   }
   hyperparameters <- .Call(.hyperparameters_r2rust, hyperparameters)
+  partitionDistribution <- pumpkin::mkDistrPtr(partitionDistribution)  // DBD: Memory leak!!!!!
   # Run MCMC
   if ( progress ) cat("Burning in...")
-  state <- .Call(.fit, burnin, data, state, fixed, hyperparameters)
+  state <- .Call(.fit, burnin, data, state, fixed, hyperparameters, partitionDistribution)
   if ( progress ) cat("\r")
   nSamples <- floor((nIterations-burnin)/thin)
   samples <- list(
@@ -108,7 +109,7 @@ fit <- function(data, state, hyperparameters, fixed=rep(FALSE,5), nIterations=10
   )
   if ( progress ) { pb <- txtProgressBar(0,nSamples,style=3) }
   for ( i in seq_len(nSamples) ) {
-    state <- .Call(.fit, thin, data, state, fixed, hyperparameters)
+    state <- .Call(.fit, thin, data, state, fixed, hyperparameters, partitionDistribution)
     tmp <- .Call(.state_rust2r_as_reference,state)
     samples$precision_response[i] <- tmp[[1]]
     samples$global_coefficients[i,] <- tmp[[2]]
@@ -118,8 +119,8 @@ fit <- function(data, state, hyperparameters, fixed=rep(FALSE,5), nIterations=10
     if ( progress ) setTxtProgressBar(pb, i)
   }
   if ( progress ) close(pb)
-  .Call(.rust_free, data, 0)
-  .Call(.rust_free, state, 1)
-  .Call(.rust_free, hyperparameters, 2)
+  .Call(.rust_free, data)
+  .Call(.rust_free, state)
+  .Call(.rust_free, hyperparameters)
   samples
 }

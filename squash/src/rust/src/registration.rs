@@ -35,7 +35,7 @@ fn hyperparameters_r2rust(hyperparameters: Rval) -> Rval {
 }
 
 #[roxido]
-fn fit(burnin: Rval, data: Rval, state: Rval, fixed: Rval, hyperparameters: Rval) -> Rval {
+fn fit(burnin: Rval, data: Rval, state: Rval, fixed: Rval, hyperparameters: Rval, partitionDistribution: Rval) -> Rval {
     Rval::nil()
 }
 
@@ -45,7 +45,7 @@ fn state_rust2r_as_reference(state: Rval) -> Rval {
 }
 
 #[roxido]
-fn rust_free(data: Rval, unnamed1: Rval) -> Rval {
+fn rust_free(data: Rval) -> Rval {
     Rval::nil()
 }
 
@@ -99,7 +99,7 @@ extern "C" fn R_init_squash_rust(info: *mut rbindings::DllInfo) {
     call_routines.push(rbindings::R_CallMethodDef {
         name: _names.last().unwrap().as_ptr(),
         fun: unsafe { std::mem::transmute(crate::fit as *const u8) },
-        numArgs: 5,
+        numArgs: 6,
     });
     _names.push(std::ffi::CString::new(".state_rust2r_as_reference").unwrap());
     call_routines.push(rbindings::R_CallMethodDef {
@@ -111,7 +111,7 @@ extern "C" fn R_init_squash_rust(info: *mut rbindings::DllInfo) {
     call_routines.push(rbindings::R_CallMethodDef {
         name: _names.last().unwrap().as_ptr(),
         fun: unsafe { std::mem::transmute(crate::rust_free as *const u8) },
-        numArgs: 2,
+        numArgs: 1,
     });
     _names.push(std::ffi::CString::new(".myrnorm").unwrap());
     call_routines.push(rbindings::R_CallMethodDef {

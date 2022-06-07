@@ -302,24 +302,47 @@ impl Rval {
         Self(pc.protect(unsafe { Rf_duplicate(self.0) }))
     }
 
-    pub fn external_pointer_encode<T>(x: T) -> Self {
+    /// Move Rust object to an R external pointer
+    ///
+    /// This method moves a Rust object to an R external pointer and then, as far as Rust is concerned, leaks the memory.
+    /// The programming is then responsible to release the memory by calling [`Self::external_pointer_decode`].
+    ///
+    pub fn external_pointer_encode<T>(x: T, tag: Self) -> Self {
         unsafe {
             // Move to Box<_> and then forget about it.
             let ptr = Box::into_raw(Box::new(x)) as *mut c_void;
-            Self(R_MakeExternalPtr(ptr, R_NilValue, R_NilValue))
+            Self(R_MakeExternalPtr(ptr, tag.0, R_NilValue))
         }
     }
 
-    pub fn external_pointer_decode<T>(x: Self) -> T {
+    /// Get tag for an R external pointer
+    ///
+    /// This method get the tag associated with an R external pointer, which was set by [`Self::external_pointer_encode`].
+    ///
+    pub fn external_pointer_tag(self) -> Self {
+        unsafe { Rval(R_ExternalPtrTag(self.0)) }
+    }
+
+    /// Move Rust object to an R external pointer DBD
+    ///
+    /// This method moves a Rust object to an R external pointer and then, as far as Rust is concerned, leaks the memory.
+    /// The programming is then responsible to release the memory by calling [`Self::external_pointer_decode`].
+    ///
+    pub fn external_pointer_decode<T>(self) -> T {
         unsafe {
-            let ptr = R_ExternalPtrAddr(x.0) as *mut T;
+            let ptr = R_ExternalPtrAddr(self.0) as *mut T;
             *Box::from_raw(ptr)
         }
     }
 
-    pub fn external_pointer_decode_as_reference<T>(x: Self) -> &'static T {
+    /// Move Rust object to an R external pointer DBD
+    ///
+    /// This method moves a Rust object to an R external pointer and then, as far as Rust is concerned, leaks the memory.
+    /// The programming is then responsible to release the memory by calling [`Self::external_pointer_decode`].
+    ///
+    pub fn external_pointer_decode_as_reference<T>(self) -> &'static T {
         unsafe {
-            let ptr = R_ExternalPtrAddr(x.0) as *mut T;
+            let ptr = R_ExternalPtrAddr(self.0) as *mut T;
             ptr.as_ref().unwrap()
         }
     }

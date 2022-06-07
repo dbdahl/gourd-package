@@ -8,6 +8,8 @@ use crate::data::Data;
 use crate::hyperparameters::Hyperparameters;
 use crate::mvnorm::sample_multivariate_normal_repeatedly;
 use crate::state::{State, StateFixedComponents};
+use dahl_randompartition::crp::CrpParameters;
+use dahl_randompartition::prelude::Mass;
 use nalgebra::{DMatrix, DVector};
 use rand::Rng;
 use rand::SeedableRng;
@@ -16,7 +18,7 @@ use roxido::*;
 
 #[roxido]
 fn state_r2rust(state: Rval) -> Rval {
-    Rval::external_pointer_encode(State::from_r(state, &mut pc))
+    Rval::external_pointer_encode(State::from_r(state, &mut pc), Rval::new("state", &mut pc))
 }
 
 #[roxido]
@@ -26,37 +28,48 @@ fn state_rust2r_as_reference(state: Rval) -> Rval {
 
 #[roxido]
 fn hyperparameters_r2rust(hyperparameters: Rval) -> Rval {
-    Rval::external_pointer_encode(Hyperparameters::from_r(hyperparameters, &mut pc))
+    Rval::external_pointer_encode(
+        Hyperparameters::from_r(hyperparameters, &mut pc),
+        Rval::new("hyperparameters", &mut pc),
+    )
 }
 
 #[roxido]
 fn data_r2rust(data: Rval) -> Rval {
-    Rval::external_pointer_encode(Data::from_r(data, &mut pc))
+    Rval::external_pointer_encode(Data::from_r(data, &mut pc), Rval::new("data", &mut pc))
 }
 
 #[roxido]
-fn rust_free(x: Rval, tipe: Rval) -> Rval {
-    match tipe.as_i32() {
-        0 => {
-            let _ = Rval::external_pointer_decode::<Data>(x);
+fn rust_free(x: Rval) -> Rval {
+    match x.external_pointer_tag().as_str() {
+        "data" => {
+            let _ = x.external_pointer_decode::<Data>();
         }
-        1 => {
-            let _ = Rval::external_pointer_decode::<State>(x);
+        "state" => {
+            let _ = x.external_pointer_decode::<State>();
         }
-        2 => {
-            let _ = Rval::external_pointer_decode::<Hyperparameters>(x);
+        "hyperparameters" => {
+            let _ = x.external_pointer_decode::<Hyperparameters>();
         }
-        _ => {
-            panic!("Unrecognized type ID.")
+        str => {
+            panic!("Unrecognized type ID: {}.", str)
         }
     };
     Rval::nil()
 }
 
 #[roxido]
-fn fit(n_updates: Rval, data: Rval, state: Rval, fixed: Rval, hyperparameters: Rval) -> Rval {
+fn fit(
+    n_updates: Rval,
+    data: Rval,
+    state: Rval,
+    fixed: Rval,
+    hyperparameters: Rval,
+    partition_distribution: Rval,
+) -> Rval {
     let n_updates = n_updates.as_usize();
     let data = Rval::external_pointer_decode_as_reference::<Data>(data);
+    let state_tag = state.external_pointer_tag();
     let mut state = Rval::external_pointer_decode::<State>(state);
     let fixed = StateFixedComponents::from_r(fixed, &mut pc);
     let hyperparameters =
@@ -75,11 +88,19 @@ fn fit(n_updates: Rval, data: Rval, state: Rval, fixed: Rval, hyperparameters: R
     let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
     rng.fill(&mut seed);
     let mut rng2 = Pcg64Mcg::from_seed(seed);
+    let partition_distribution = CrpParameters::new_with_mass(data.n_items(), Mass::new(1.0));
     for _ in 0..n_updates {
-        state = state.mcmc_iteration(&fixed, &data, &hyperparameters, &mut rng, &mut rng2);
+        state = state.mcmc_iteration(
+            &fixed,
+            &data,
+            &hyperparameters,
+            &partition_distribution,
+            &mut rng,
+            &mut rng2,
+        );
     }
     state = state.canonicalize();
-    Rval::external_pointer_encode(state)
+    Rval::external_pointer_encode(state, state_tag)
 }
 
 #[roxido]
