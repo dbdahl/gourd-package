@@ -59,7 +59,17 @@ pub fn sample_multivariate_normal_v2<R: Rng>(
     Some(result)
 }
 
-fn prepare(precision: DMatrix<f64>) -> Option<DMatrix<f64>> {
+#[allow(dead_code)]
+pub fn sample_multivariate_normal_v3<R: Rng>(
+    mean: &DVector<f64>,
+    l_inv_transpose: &DMatrix<f64>,
+    rng: &mut R,
+) -> DVector<f64> {
+    let u = DVector::from_fn(l_inv_transpose.nrows(), |_, _| StandardNormal.sample(rng));
+    mean + l_inv_transpose * u
+}
+
+pub fn prepare(precision: DMatrix<f64>) -> Option<DMatrix<f64>> {
     let n = precision.nrows();
     if !precision.is_square() || precision.nrows() != n {
         return None;

@@ -11,6 +11,7 @@ pub struct Hyperparameters {
     clustered_coefficients_mean: DVector<f64>,
     clustered_coefficients_precision: DMatrix<f64>,
     clustered_coefficients_precision_times_mean: DVector<f64>,
+    clustered_coefficients_precision_l_inv_transpose: DMatrix<f64>,
 }
 
 impl Hyperparameters {
@@ -47,6 +48,11 @@ impl Hyperparameters {
             global_coefficients_precision.clone() * &global_coefficients_mean;
         let clustered_coefficients_precision_times_mean =
             clustered_coefficients_precision.clone() * &clustered_coefficients_mean;
+        let clustered_coefficients_precision_l_inv_transpose =
+            match crate::mvnorm::prepare(clustered_coefficients_precision.clone()) {
+                Some(lit) => lit,
+                None => return None,
+            };
         Some(Self {
             precision_response_shape,
             precision_response_rate,
@@ -56,6 +62,7 @@ impl Hyperparameters {
             clustered_coefficients_mean,
             clustered_coefficients_precision,
             clustered_coefficients_precision_times_mean,
+            clustered_coefficients_precision_l_inv_transpose,
         })
     }
 
@@ -138,5 +145,9 @@ impl Hyperparameters {
 
     pub fn clustered_coefficients_precision_times_mean(&self) -> &DVector<f64> {
         &self.clustered_coefficients_precision_times_mean
+    }
+
+    pub fn clustered_coefficients_precision_l_inv_transpose(&self) -> &DMatrix<f64> {
+        &self.clustered_coefficients_precision_l_inv_transpose
     }
 }

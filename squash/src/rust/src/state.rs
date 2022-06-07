@@ -1,6 +1,6 @@
 use crate::data::Data;
 use crate::hyperparameters::Hyperparameters;
-use crate::mvnorm::{sample_multivariate_normal, sample_multivariate_normal_v2};
+use crate::mvnorm::{sample_multivariate_normal_v2, sample_multivariate_normal_v3};
 use dahl_randompartition::clust::Clustering;
 use dahl_randompartition::crp::CrpParameters;
 use dahl_randompartition::mcmc::update_neal_algorithm8_v2;
@@ -230,14 +230,11 @@ impl State {
         let prior = CrpParameters::new_with_mass(data.n_items(), Mass::new(1.0));
         let mut log_likelihood_contribution_fn = |item: usize, label: usize, is_new: bool| {
             if is_new {
-                let parameter = sample_multivariate_normal(
+                let parameter = sample_multivariate_normal_v3(
                     &hyperparameters.clustered_coefficients_mean(),
-                    hyperparameters
-                        .clustered_coefficients_precision()
-                        .to_owned(),
+                    &hyperparameters.clustered_coefficients_precision_l_inv_transpose(),
                     rng2,
-                )
-                .unwrap();
+                );
                 if label >= clustered_coefficients.len() {
                     clustered_coefficients.resize(label + 1, parameter);
                 } else {
