@@ -1,7 +1,7 @@
 use nalgebra::{DMatrix, DVector};
 use roxido::*;
 
-#[allow(dead_code)]
+#[derive(Debug)]
 pub struct Hyperparameters {
     precision_response_shape: f64,
     precision_response_rate: f64,
@@ -15,7 +15,6 @@ pub struct Hyperparameters {
 }
 
 impl Hyperparameters {
-    #[allow(dead_code)]
     pub fn new(
         precision_response_shape: f64,
         precision_response_rate: f64,

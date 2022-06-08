@@ -10,6 +10,7 @@ use rand::Rng;
 use rand_distr::{Distribution, Gamma};
 use roxido::*;
 
+#[derive(Debug)]
 pub struct State {
     precision_response: f64,
     global_coefficients: DVector<f64>,
@@ -102,6 +103,22 @@ impl State {
         result
     }
 
+    pub fn precision_response(&self) -> f64 {
+        self.precision_response
+    }
+
+    pub fn global_coefficients(&self) -> &DVector<f64> {
+        &self.global_coefficients
+    }
+
+    pub fn clustering(&self) -> &Clustering {
+        &self.clustering
+    }
+
+    pub fn clustered_coefficients(&self) -> &Vec<DVector<f64>> {
+        &self.clustered_coefficients
+    }
+
     pub fn n_global_covariates(&self) -> usize {
         self.global_coefficients.len()
     }
@@ -191,12 +208,13 @@ impl State {
     pub fn mcmc_iteration<S: FullConditional, T: Rng>(
         mut self,
         fixed: &StateFixedComponents,
-        data: &Data,
+        data: &mut Data,
         hyperparameters: &Hyperparameters,
         partition_distribution: &S,
         rng: &mut T,
         rng2: &mut T,
     ) -> Self {
+        data.impute(&self, rng);
         if !fixed.precision_response {
             self.precision_response = Self::update_precision_response(
                 &self.global_coefficients,

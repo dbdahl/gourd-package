@@ -83,7 +83,7 @@ fn fit(
     partition_distribution: Rval,
 ) -> Rval {
     let n_updates = n_updates.as_usize();
-    let data = Rval::external_pointer_decode_as_ref::<Data>(data);
+    let data = Rval::external_pointer_decode_as_mut_ref::<Data>(data);
     let state_tag = state.external_pointer_tag();
     let mut state = Rval::external_pointer_decode::<State>(state);
     let fixed = StateFixedComponents::from_r(fixed, &mut pc);
@@ -109,8 +109,8 @@ fn fit(
             for _ in 0..n_updates {
                 state = state.mcmc_iteration(
                     &fixed,
-                    &data,
-                    &hyperparameters,
+                    data,
+                    hyperparameters,
                     partition_distribution,
                     &mut rng,
                     &mut rng2,

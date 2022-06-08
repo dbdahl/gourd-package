@@ -35,7 +35,6 @@ pub fn sample_multivariate_normal<R: Rng>(
     Some(result)
 }
 
-#[allow(dead_code)]
 pub fn sample_multivariate_normal_v2<R: Rng>(
     mut precision_times_mean: DVector<f64>,
     precision: DMatrix<f64>,
@@ -59,7 +58,6 @@ pub fn sample_multivariate_normal_v2<R: Rng>(
     Some(result)
 }
 
-#[allow(dead_code)]
 pub fn sample_multivariate_normal_v3<R: Rng>(
     mean: &DVector<f64>,
     l_inv_transpose: &DMatrix<f64>,

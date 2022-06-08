@@ -1,7 +1,11 @@
+use crate::state::State;
 use nalgebra::{DMatrix, DVector};
+use rand::Rng;
+use rand_distr::Distribution;
+use rand_distr::Normal;
 use roxido::*;
 
-#[allow(dead_code)]
+#[derive(Debug)]
 pub struct Data {
     response: DVector<f64>,
     global_covariates: DMatrix<f64>,
@@ -12,7 +16,6 @@ pub struct Data {
 }
 
 impl Data {
-    #[allow(dead_code)]
     pub fn new(
         response: DVector<f64>,
         global_covariates: DMatrix<f64>,
@@ -52,8 +55,19 @@ impl Data {
         Data::new(response, global_covariates, clustered_covariates).unwrap()
     }
 
-    pub fn missing_items(&self) -> &Option<Vec<usize>> {
-        &self.missing_items
+    pub fn impute<T: Rng>(&mut self, state: &State, rng: &mut T) {
+        if let Some(missing_items) = &self.missing_items {
+            let stdev = 1.0 / state.precision_response().sqrt();
+            let normal = Normal::new(0.0, stdev).unwrap();
+            for &item in missing_items {
+                let label = state.clustering().allocation()[item];
+                let parameter = &state.clustered_coefficients()[label];
+                let mean = (self.global_covariates().row(item) * state.global_coefficients())
+                    .index((0, 0))
+                    + (self.clustered_covariates().row(item) * parameter).index((0, 0));
+                self.response[item] = mean + normal.sample(rng)
+            }
+        }
     }
 
     pub fn response(&self) -> &DVector<f64> {
@@ -76,7 +90,6 @@ impl Data {
         &self.clustered_covariates
     }
 
-    #[allow(dead_code)]
     pub fn declare_missing(&mut self, items: Vec<usize>) {
         self.missing_items = if items.is_empty() {
             None
