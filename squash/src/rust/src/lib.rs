@@ -8,8 +8,16 @@ use crate::data::Data;
 use crate::hyperparameters::Hyperparameters;
 use crate::mvnorm::sample_multivariate_normal_repeatedly;
 use crate::state::{State, StateFixedComponents};
+use dahl_randompartition::cpp::CppParameters;
 use dahl_randompartition::crp::CrpParameters;
-use dahl_randompartition::prelude::Mass;
+use dahl_randompartition::epa::EpaParameters;
+use dahl_randompartition::fixed::FixedPartitionParameters;
+use dahl_randompartition::frp::FrpParameters;
+use dahl_randompartition::jlp::JlpParameters;
+use dahl_randompartition::lsp::LspParameters;
+use dahl_randompartition::oldsp::OldSpParameters;
+use dahl_randompartition::sp::SpParameters;
+use dahl_randompartition::up::UpParameters;
 use nalgebra::{DMatrix, DVector};
 use rand::Rng;
 use rand::SeedableRng;
@@ -88,16 +96,41 @@ fn fit(
     let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
     rng.fill(&mut seed);
     let mut rng2 = Pcg64Mcg::from_seed(seed);
-    let partition_distribution = CrpParameters::new_with_mass(data.n_items(), Mass::new(1.0));
-    for _ in 0..n_updates {
-        state = state.mcmc_iteration(
-            &fixed,
-            &data,
-            &hyperparameters,
-            &partition_distribution,
-            &mut rng,
-            &mut rng2,
-        );
+    macro_rules! distr_macro {
+        ($tipe:ty) => {{
+            let partition_distribution =
+                partition_distribution.external_pointer_decode_as_reference::<$tipe>();
+            for _ in 0..n_updates {
+                state = state.mcmc_iteration(
+                    &fixed,
+                    &data,
+                    &hyperparameters,
+                    partition_distribution,
+                    &mut rng,
+                    &mut rng2,
+                );
+            }
+        }};
+    }
+    let prior_name = partition_distribution.external_pointer_tag().as_str();
+    match prior_name {
+        "fixed" => distr_macro!(FixedPartitionParameters),
+        "up" => distr_macro!(UpParameters),
+        "jlp" => distr_macro!(JlpParameters),
+        "crp" => distr_macro!(CrpParameters),
+        "epa" => distr_macro!(EpaParameters),
+        "lsp" => distr_macro!(LspParameters),
+        "cpp-up" => distr_macro!(CppParameters<UpParameters>),
+        "cpp-jlp" => distr_macro!(CppParameters<JlpParameters>),
+        "cpp-crp" => distr_macro!(CppParameters<CrpParameters>),
+        "frp" => distr_macro!(FrpParameters),
+        "oldsp-up" => distr_macro!(OldSpParameters<UpParameters>),
+        "oldsp-jlp" => distr_macro!(OldSpParameters<JlpParameters>),
+        "oldsp-crp" => distr_macro!(OldSpParameters<CrpParameters>),
+        "sp-up" => distr_macro!(SpParameters<UpParameters>),
+        "sp-jlp" => distr_macro!(SpParameters<JlpParameters>),
+        "sp-crp" => distr_macro!(SpParameters<CrpParameters>),
+        _ => panic!("Unsupported distribution: {}", prior_name),
     }
     state = state.canonicalize();
     Rval::external_pointer_encode(state, state_tag)

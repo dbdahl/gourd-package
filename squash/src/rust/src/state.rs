@@ -3,7 +3,7 @@ use crate::hyperparameters::Hyperparameters;
 use crate::mvnorm::{sample_multivariate_normal_v2, sample_multivariate_normal_v3};
 use dahl_randompartition::clust::Clustering;
 use dahl_randompartition::distr::FullConditional;
-use dahl_randompartition::mcmc::update_neal_algorithm8_v2;
+use dahl_randompartition::mcmc::update_neal_algorithm8;
 use dahl_randompartition::perm::Permutation;
 use nalgebra::DVector;
 use rand::Rng;
@@ -249,7 +249,7 @@ impl State {
                     - (data.clustered_covariates().row(item) * parameter).index((0, 0)))
                 .powi(2)
         };
-        update_neal_algorithm8_v2(
+        update_neal_algorithm8(
             1,
             clustering,
             &permutation,

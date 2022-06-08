@@ -94,7 +94,7 @@ fit <- function(data, state, fixed=rep(FALSE,5), hyperparameters, partitionDistr
     stop("Inconsistent number of clustered covariates.")
   }
   hyperparameters <- .Call(.hyperparameters_r2rust, hyperparameters)
-  partitionDistribution <- pumpkin::mkDistrPtr(partitionDistribution)  // DBD: Memory leak!!!!!
+  partitionDistribution <- pumpkin::mkDistrPtr(partitionDistribution)  # DBD: Memory leak!!!!!
   # Run MCMC
   if ( progress ) cat("Burning in...")
   state <- .Call(.fit, burnin, data, state, fixed, hyperparameters, partitionDistribution)
