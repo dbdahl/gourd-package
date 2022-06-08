@@ -1,5 +1,5 @@
 #' @export
-fit <- function(data, state, fixed=rep(FALSE,5), hyperparameters, partitionDistribution=CRPPartition(n_items, 1), nIterations=1000, burnin=500, thin=10, progress=TRUE) {
+fit <- function(data, state, fixed=rep(FALSE,5), hyperparameters, partitionDistribution=CRPPartition(n_items, 1), nIterations=1000, burnin=500, thin=10, logLikelihoodContributions=FALSE, missingItems=integer(0), progress=TRUE) {
   # Verify data
   if ( ! is.list(data) || length(data) != 3 || any(names(data) != c("response", "global_covariates", "clustered_covariates")) ) {
     stop("'data' must be a named list of elements: 1. 'response', 2. 'global_covariates', 3. 'clustered_covariates'")
@@ -16,9 +16,12 @@ fit <- function(data, state, fixed=rep(FALSE,5), hyperparameters, partitionDistr
   if ( ( nrow(data$global_covariates) != n_items ) || ( nrow(data$clustered_covariates) != n_items ) ) {
     stop("Elements of 'data' indicate an inconsistent number of observations.")
   }
+  if ( ( length(missingItems) > 0 ) && ( ! is.numeric(missingItems) || min(missingItems) < 1 || max(missingItems) > n_items ) ) {
+    stop("Elements of 'missing' are out of range.")
+  }
   n_global_coefficients <- ncol(data$global_covariates)
   n_clustered_coefficients <- ncol(data$clustered_covariates)
-  data <- .Call(.data_r2rust, data)
+  data <- .Call(.data_r2rust, data, missingItems)
   # Verify state
   if ( ! is.list(state) || length(state) != 5 || any(names(state) != c("precision_response", "global_coefficients", "clustering", "clustered_coefficients", "permutation")) ) {
     stop("'state' must be a named list of elements: 1. 'precision_response', 2. 'global_coefficients', 3. 'clustering', 4. 'clustered_coefficients, 5. 'permutation'")
@@ -97,7 +100,7 @@ fit <- function(data, state, fixed=rep(FALSE,5), hyperparameters, partitionDistr
   partitionDistribution <- pumpkin::mkDistrPtr(partitionDistribution)  # DBD: Memory leak!!!!!
   # Run MCMC
   if ( progress ) cat("Burning in...")
-  state <- .Call(.fit, burnin, data, state, fixed, hyperparameters, partitionDistribution)
+  state <- .Call(.fit, burnin, data, state, fixed, hyperparameters, partitionDistribution, missingItems)
   if ( progress ) cat("\r")
   nSamples <- floor((nIterations-burnin)/thin)
   samples <- list(
@@ -107,9 +110,15 @@ fit <- function(data, state, fixed=rep(FALSE,5), hyperparameters, partitionDistr
     clustered_coefficients=vector(mode="list", nSamples),
     permutation=matrix(0L, nrow=nSamples, ncol=n_items)
   )
+  if ( logLikelihoodContributions ) {
+    logLikeContr <- matrix(0.0, nrow=nSamples, ncol=n_items)
+  }
   if ( progress ) { pb <- txtProgressBar(0,nSamples,style=3) }
   for ( i in seq_len(nSamples) ) {
-    state <- .Call(.fit, thin, data, state, fixed, hyperparameters, partitionDistribution)
+    state <- .Call(.fit, thin, data, state, fixed, hyperparameters, partitionDistribution, missingItems)
+    if ( logLikelihoodContributions ) {
+      logLikeContr[i,] <- .Call(.log_likelihood_contributions, state, data)
+    }
     tmp <- .Call(.state_rust2r_as_reference,state)
     samples$precision_response[i] <- tmp[[1]]
     samples$global_coefficients[i,] <- tmp[[2]]
@@ -122,5 +131,9 @@ fit <- function(data, state, fixed=rep(FALSE,5), hyperparameters, partitionDistr
   .Call(.rust_free, data)
   .Call(.rust_free, state)
   .Call(.rust_free, hyperparameters)
-  samples
+  result <- list(samples=samples)
+  if ( logLikelihoodContributions ) {
+    result <- c(result, list(logLikelihoodContributions=logLikeContr))
+  }
+  result
 }

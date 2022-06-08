@@ -20,7 +20,7 @@ fn convolve2(a: Rval, b: Rval) -> Rval {
 }
 
 #[roxido]
-fn data_r2rust(data: Rval) -> Rval {
+fn data_r2rust(data: Rval, missingItems: Rval) -> Rval {
     Rval::nil()
 }
 
@@ -35,7 +35,12 @@ fn hyperparameters_r2rust(hyperparameters: Rval) -> Rval {
 }
 
 #[roxido]
-fn fit(burnin: Rval, data: Rval, state: Rval, fixed: Rval, hyperparameters: Rval, partitionDistribution: Rval) -> Rval {
+fn fit(burnin: Rval, data: Rval, state: Rval, fixed: Rval, hyperparameters: Rval, partitionDistribution: Rval, missingItems: Rval) -> Rval {
+    Rval::nil()
+}
+
+#[roxido]
+fn log_likelihood_contributions(state: Rval, data: Rval) -> Rval {
     Rval::nil()
 }
 
@@ -69,8 +74,8 @@ use roxido::*;
 
 #[no_mangle]
 extern "C" fn R_init_squash_rust(info: *mut rbindings::DllInfo) {
-    let mut call_routines = Vec::with_capacity(10);
-    let mut _names: Vec<std::ffi::CString> = Vec::with_capacity(10);
+    let mut call_routines = Vec::with_capacity(11);
+    let mut _names: Vec<std::ffi::CString> = Vec::with_capacity(11);
     _names.push(std::ffi::CString::new(".convolve2").unwrap());
     call_routines.push(rbindings::R_CallMethodDef {
         name: _names.last().unwrap().as_ptr(),
@@ -81,7 +86,7 @@ extern "C" fn R_init_squash_rust(info: *mut rbindings::DllInfo) {
     call_routines.push(rbindings::R_CallMethodDef {
         name: _names.last().unwrap().as_ptr(),
         fun: unsafe { std::mem::transmute(crate::data_r2rust as *const u8) },
-        numArgs: 1,
+        numArgs: 2,
     });
     _names.push(std::ffi::CString::new(".state_r2rust").unwrap());
     call_routines.push(rbindings::R_CallMethodDef {
@@ -99,7 +104,13 @@ extern "C" fn R_init_squash_rust(info: *mut rbindings::DllInfo) {
     call_routines.push(rbindings::R_CallMethodDef {
         name: _names.last().unwrap().as_ptr(),
         fun: unsafe { std::mem::transmute(crate::fit as *const u8) },
-        numArgs: 6,
+        numArgs: 7,
+    });
+    _names.push(std::ffi::CString::new(".log_likelihood_contributions").unwrap());
+    call_routines.push(rbindings::R_CallMethodDef {
+        name: _names.last().unwrap().as_ptr(),
+        fun: unsafe { std::mem::transmute(crate::log_likelihood_contributions as *const u8) },
+        numArgs: 2,
     });
     _names.push(std::ffi::CString::new(".state_rust2r_as_reference").unwrap());
     call_routines.push(rbindings::R_CallMethodDef {

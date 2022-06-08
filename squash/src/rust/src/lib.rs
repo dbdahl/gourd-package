@@ -31,7 +31,7 @@ fn state_r2rust(state: Rval) -> Rval {
 
 #[roxido]
 fn state_rust2r_as_reference(state: Rval) -> Rval {
-    Rval::external_pointer_decode_as_reference::<State>(state).to_r(&mut pc)
+    Rval::external_pointer_decode_as_ref::<State>(state).to_r(&mut pc)
 }
 
 #[roxido]
@@ -43,8 +43,15 @@ fn hyperparameters_r2rust(hyperparameters: Rval) -> Rval {
 }
 
 #[roxido]
-fn data_r2rust(data: Rval) -> Rval {
-    Rval::external_pointer_encode(Data::from_r(data, &mut pc), Rval::new("data", &mut pc))
+fn data_r2rust(data: Rval, missing_items: Rval) -> Rval {
+    let mut data = Data::from_r(data, &mut pc);
+    let (_, missing_items) = missing_items.coerce_integer(&mut pc).unwrap();
+    let missing_items: Vec<_> = missing_items
+        .iter()
+        .map(|x| usize::try_from(*x - 1).unwrap())
+        .collect();
+    data.declare_missing(missing_items);
+    Rval::external_pointer_encode(data, Rval::new("data", &mut pc))
 }
 
 #[roxido]
@@ -76,12 +83,11 @@ fn fit(
     partition_distribution: Rval,
 ) -> Rval {
     let n_updates = n_updates.as_usize();
-    let data = Rval::external_pointer_decode_as_reference::<Data>(data);
+    let data = Rval::external_pointer_decode_as_ref::<Data>(data);
     let state_tag = state.external_pointer_tag();
     let mut state = Rval::external_pointer_decode::<State>(state);
     let fixed = StateFixedComponents::from_r(fixed, &mut pc);
-    let hyperparameters =
-        Rval::external_pointer_decode_as_reference::<Hyperparameters>(hyperparameters);
+    let hyperparameters = Rval::external_pointer_decode_as_ref::<Hyperparameters>(hyperparameters);
     if data.n_global_covariates() != state.n_global_covariates()
         || hyperparameters.n_global_covariates() != state.n_global_covariates()
     {
@@ -99,7 +105,7 @@ fn fit(
     macro_rules! distr_macro {
         ($tipe:ty) => {{
             let partition_distribution =
-                partition_distribution.external_pointer_decode_as_reference::<$tipe>();
+                partition_distribution.external_pointer_decode_as_ref::<$tipe>();
             for _ in 0..n_updates {
                 state = state.mcmc_iteration(
                     &fixed,
@@ -134,6 +140,33 @@ fn fit(
     }
     state = state.canonicalize();
     Rval::external_pointer_encode(state, state_tag)
+}
+
+#[roxido]
+fn log_likelihood_contributions(state: Rval, data: Rval) -> Rval {
+    let state = Rval::external_pointer_decode_as_ref::<State>(state);
+    let data = Rval::external_pointer_decode_as_ref::<Data>(data);
+    let x = state.log_likelihood_contributions(data);
+    Rval::new(&x[..], &mut pc)
+}
+
+#[roxido]
+fn log_likelihood_of(state: Rval, data: Rval, items: Rval) -> Rval {
+    let state = Rval::external_pointer_decode_as_ref::<State>(state);
+    let data = Rval::external_pointer_decode_as_ref::<Data>(data);
+    let (_, items) = items.coerce_integer(&mut pc).unwrap();
+    let items: Vec<_> = items
+        .iter()
+        .map(|x| usize::try_from(*x - 1).unwrap())
+        .collect();
+    Rval::new(state.log_likelihood_of(data, items.iter()), &mut pc)
+}
+
+#[roxido]
+fn log_likelihood(state: Rval, data: Rval) -> Rval {
+    let state = Rval::external_pointer_decode_as_ref::<State>(state);
+    let data = Rval::external_pointer_decode_as_ref::<Data>(data);
+    Rval::new(state.log_likelihood(data), &mut pc)
 }
 
 #[roxido]

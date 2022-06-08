@@ -305,7 +305,7 @@ impl Rval {
     /// Move Rust object to an R external pointer
     ///
     /// This method moves a Rust object to an R external pointer and then, as far as Rust is concerned, leaks the memory.
-    /// The programming is then responsible to release the memory by calling [`Self::external_pointer_decode`].
+    /// Thus the programmer is then responsible to release the memory by calling [`Self::external_pointer_decode`].
     ///
     pub fn external_pointer_encode<T>(x: T, tag: Self) -> Self {
         unsafe {
@@ -323,10 +323,9 @@ impl Rval {
         unsafe { Rval(R_ExternalPtrTag(self.0)) }
     }
 
-    /// Move Rust object to an R external pointer DBD
+    /// Move an R external pointer to a Rust object
     ///
-    /// This method moves a Rust object to an R external pointer and then, as far as Rust is concerned, leaks the memory.
-    /// The programming is then responsible to release the memory by calling [`Self::external_pointer_decode`].
+    /// This method moves an R external pointer created by [`Self::external_pointer_encode`] to a Rust object and Rust will then manage its memory.
     ///
     pub fn external_pointer_decode<T>(self) -> T {
         unsafe {
@@ -335,15 +334,25 @@ impl Rval {
         }
     }
 
-    /// Move Rust object to an R external pointer DBD
+    /// Obtain a reference to a Rust object from an R external pointer
     ///
-    /// This method moves a Rust object to an R external pointer and then, as far as Rust is concerned, leaks the memory.
-    /// The programming is then responsible to release the memory by calling [`Self::external_pointer_decode`].
+    /// This method obtained a reference to a Rust object from an R external pointer created by [`Self::external_pointer_encode`].
     ///
-    pub fn external_pointer_decode_as_reference<T>(self) -> &'static T {
+    pub fn external_pointer_decode_as_ref<T>(self) -> &'static T {
         unsafe {
             let ptr = R_ExternalPtrAddr(self.0) as *mut T;
             ptr.as_ref().unwrap()
+        }
+    }
+
+    /// Obtain a mutable reference to a Rust object from an R external pointer
+    ///
+    /// This method obtained a mutable reference to a Rust object from an R external pointer created by [`Self::external_pointer_encode`].
+    ///
+    pub fn external_pointer_decode_as_mut_ref<T>(self) -> &'static mut T {
+        unsafe {
+            let ptr = R_ExternalPtrAddr(self.0) as *mut T;
+            ptr.as_mut().unwrap()
         }
     }
 

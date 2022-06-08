@@ -52,6 +52,10 @@ impl Data {
         Data::new(response, global_covariates, clustered_covariates).unwrap()
     }
 
+    pub fn missing_items(&self) -> &Option<Vec<usize>> {
+        &self.missing_items
+    }
+
     pub fn response(&self) -> &DVector<f64> {
         &self.response
     }
@@ -73,8 +77,16 @@ impl Data {
     }
 
     #[allow(dead_code)]
-    pub fn declare_missing(&mut self, items: Vec<usize>) {
-        self.missing_items = Some(items);
+    pub fn declare_missing(&mut self, mut items: Vec<usize>) {
+        self.missing_items = if items.is_empty() {
+            None
+        } else {
+            let max = *items.iter().max().unwrap();
+            if max >= self.n_items() {
+                panic!("Missing indices are out of bounds.")
+            }
+            Some(items)
+        }
     }
 
     pub fn n_items(&self) -> usize {

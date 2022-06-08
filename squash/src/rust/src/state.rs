@@ -122,6 +122,72 @@ impl State {
         self
     }
 
+    const NEGATIVE_LN_SQRT_2PI: f64 = -0.91893853320467274178032973640561763986139747363778;
+
+    #[inline]
+    fn log_likelihood_kernel(&self, data: &Data, item: usize, response: f64, label: usize) -> f64 {
+        let parameter = &self.clustered_coefficients[label];
+        (response
+            - (data.global_covariates().row(item) * &self.global_coefficients).index((0, 0))
+            - (data.clustered_covariates().row(item) * parameter).index((0, 0)))
+        .powi(2)
+    }
+
+    pub fn log_likelihood_contributions(&self, data: &Data) -> Vec<f64> {
+        let log_normalizing_constant =
+            Self::NEGATIVE_LN_SQRT_2PI + 0.5 * self.precision_response.ln();
+        let negative_half_precision = -0.5 * self.precision_response;
+        let mut result = Vec::with_capacity(data.n_items());
+        for ((item, &label), &response) in self
+            .clustering
+            .allocation()
+            .iter()
+            .enumerate()
+            .zip(data.response())
+        {
+            let x = log_normalizing_constant
+                + negative_half_precision * self.log_likelihood_kernel(data, item, response, label);
+            result.push(x);
+        }
+        result
+    }
+
+    pub fn log_likelihood_of<'a, T: Iterator<Item = &'a usize>>(
+        &'a self,
+        data: &Data,
+        items: T,
+    ) -> f64 {
+        let log_normalizing_constant =
+            Self::NEGATIVE_LN_SQRT_2PI + 0.5 * self.precision_response.ln();
+        let negative_half_precision = -0.5 * self.precision_response;
+        let mut sum = 0.0;
+        let mut len: u32 = 0;
+        for &item in items {
+            let label = self.clustering.allocation()[item];
+            let response = data.response()[item];
+            sum += self.log_likelihood_kernel(data, item, response, label);
+            len += 1;
+        }
+        (len as f64) * log_normalizing_constant + negative_half_precision + sum
+    }
+
+    pub fn log_likelihood(&self, data: &Data) -> f64 {
+        let log_normalizing_constant =
+            Self::NEGATIVE_LN_SQRT_2PI + 0.5 * self.precision_response.ln();
+        let negative_half_precision = -0.5 * self.precision_response;
+        let mut sum = 0.0;
+        for ((item, &label), &response) in self
+            .clustering
+            .allocation()
+            .iter()
+            .enumerate()
+            .zip(data.response())
+        {
+            sum += self.log_likelihood_kernel(data, item, response, label);
+        }
+        (data.n_items() as f64) * log_normalizing_constant + negative_half_precision + sum
+    }
+
     pub fn mcmc_iteration<S: FullConditional, T: Rng>(
         mut self,
         fixed: &StateFixedComponents,
@@ -229,11 +295,12 @@ impl State {
         rng: &mut T,
         rng2: &mut T,
     ) -> Clustering {
+        let negative_half_precision = -0.5 * precision_response;
         let mut log_likelihood_contribution_fn = |item: usize, label: usize, is_new: bool| {
             if is_new {
                 let parameter = sample_multivariate_normal_v3(
-                    &hyperparameters.clustered_coefficients_mean(),
-                    &hyperparameters.clustered_coefficients_precision_l_inv_transpose(),
+                    hyperparameters.clustered_coefficients_mean(),
+                    hyperparameters.clustered_coefficients_precision_l_inv_transpose(),
                     rng2,
                 );
                 if label >= clustered_coefficients.len() {
@@ -243,7 +310,7 @@ impl State {
                 }
             };
             let parameter = &clustered_coefficients[label];
-            -0.5 * precision_response
+            negative_half_precision
                 * (data.response()[item]
                     - (data.global_covariates().row(item) * global_coefficients).index((0, 0))
                     - (data.clustered_covariates().row(item) * parameter).index((0, 0)))
@@ -252,7 +319,7 @@ impl State {
         update_neal_algorithm8(
             1,
             clustering,
-            &permutation,
+            permutation,
             partition_distribution,
             &mut log_likelihood_contribution_fn,
             rng,
@@ -270,7 +337,7 @@ impl State {
     ) -> Vec<DVector<f64>> {
         for (label, clustered_coefficient) in clustered_coefficients.iter_mut().enumerate() {
             let indices = clustering.items_of(label);
-            if indices.len() == 0 {
+            if indices.is_empty() {
                 continue;
             }
             let w = data.clustered_covariates().select_rows(&indices);

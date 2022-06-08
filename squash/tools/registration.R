@@ -4,6 +4,7 @@
 .state_r2rust <- NULL
 .hyperparameters_r2rust <- NULL
 .fit <- NULL
+.log_likelihood_contributions <- NULL
 .state_rust2r_as_reference <- NULL
 .rust_free <- NULL
 .myrnorm <- NULL
