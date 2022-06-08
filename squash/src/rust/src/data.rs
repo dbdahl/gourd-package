@@ -77,7 +77,7 @@ impl Data {
     }
 
     #[allow(dead_code)]
-    pub fn declare_missing(&mut self, mut items: Vec<usize>) {
+    pub fn declare_missing(&mut self, items: Vec<usize>) {
         self.missing_items = if items.is_empty() {
             None
         } else {
