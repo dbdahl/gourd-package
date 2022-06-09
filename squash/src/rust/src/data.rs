@@ -13,6 +13,7 @@ pub struct Data {
     global_covariates_transpose_times_self: DMatrix<f64>,
     clustered_covariates: DMatrix<f64>,
     missing_items: Option<Vec<usize>>,
+    original_response: Option<DVector<f64>>,
 }
 
 impl Data {
@@ -35,6 +36,7 @@ impl Data {
             global_covariates_transpose_times_self,
             clustered_covariates,
             missing_items: None,
+            original_response: None,
         })
     }
 
@@ -91,14 +93,14 @@ impl Data {
     }
 
     pub fn declare_missing(&mut self, items: Vec<usize>) {
-        self.missing_items = if items.is_empty() {
-            None
+        (self.missing_items, self.original_response) = if items.is_empty() {
+            (None, None)
         } else {
             let max = *items.iter().max().unwrap();
             if max >= self.n_items() {
                 panic!("Missing indices are out of bounds.")
             }
-            Some(items)
+            (Some(items), Some(self.response.clone()))
         }
     }
 
@@ -112,5 +114,13 @@ impl Data {
 
     pub fn n_clustered_covariates(&self) -> usize {
         self.clustered_covariates.ncols()
+    }
+
+    pub fn missing_items(&self) -> &Option<Vec<usize>> {
+        &self.missing_items
+    }
+
+    pub fn original_response(&self) -> &Option<DVector<f64>> {
+        &self.original_response
     }
 }

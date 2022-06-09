@@ -169,6 +169,26 @@ impl State {
         result
     }
 
+    pub fn log_likelihood_contributions_of_missing(&self, data: &Data) -> Vec<f64> {
+        if let Some(missing_items) = data.missing_items() {
+            let response = data.original_response().as_ref().unwrap();
+            let log_normalizing_constant =
+                Self::NEGATIVE_LN_SQRT_2PI + 0.5 * self.precision_response.ln();
+            let negative_half_precision = -0.5 * self.precision_response;
+            let mut result = Vec::with_capacity(missing_items.len());
+            for &item in missing_items {
+                let label = self.clustering().allocation()[item];
+                let y = response[item];
+                let x = log_normalizing_constant
+                    + negative_half_precision * self.log_likelihood_kernel(data, item, y, label);
+                result.push(x);
+            }
+            result
+        } else {
+            Vec::new()
+        }
+    }
+
     pub fn log_likelihood_of<'a, T: Iterator<Item = &'a usize>>(
         &'a self,
         data: &Data,

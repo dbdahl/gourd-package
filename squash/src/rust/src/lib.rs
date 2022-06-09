@@ -151,6 +151,14 @@ fn log_likelihood_contributions(state: Rval, data: Rval) -> Rval {
 }
 
 #[roxido]
+fn log_likelihood_contributions_of_missing(state: Rval, data: Rval) -> Rval {
+    let state = Rval::external_pointer_decode_as_ref::<State>(state);
+    let data = Rval::external_pointer_decode_as_ref::<Data>(data);
+    let x = state.log_likelihood_contributions_of_missing(data);
+    Rval::new(&x[..], &mut pc)
+}
+
+#[roxido]
 fn log_likelihood_of(state: Rval, data: Rval, items: Rval) -> Rval {
     let state = Rval::external_pointer_decode_as_ref::<State>(state);
     let data = Rval::external_pointer_decode_as_ref::<Data>(data);

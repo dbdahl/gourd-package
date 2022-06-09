@@ -1,5 +1,5 @@
 #' @export
-fit <- function(data, state, fixed=rep(FALSE,5), hyperparameters, partitionDistribution=CRPPartition(n_items, 1), nIterations=1000, burnin=500, thin=10, logLikelihoodContributions=FALSE, missingItems=integer(0), progress=TRUE) {
+fit <- function(data, state, fixed=rep(FALSE,5), hyperparameters, partitionDistribution=CRPPartition(n_items, 1), nIterations=1000, burnin=500, thin=10, logLikelihoodContributions=c("none", "all", "missing")[1], missingItems=integer(0), progress=TRUE) {
   # Verify data
   if ( ! is.list(data) || length(data) != 3 || any(names(data) != c("response", "global_covariates", "clustered_covariates")) ) {
     stop("'data' must be a named list of elements: 1. 'response', 2. 'global_covariates', 3. 'clustered_covariates'")
@@ -110,14 +110,19 @@ fit <- function(data, state, fixed=rep(FALSE,5), hyperparameters, partitionDistr
     clustered_coefficients=vector(mode="list", nSamples),
     permutation=matrix(0L, nrow=nSamples, ncol=n_items)
   )
-  if ( logLikelihoodContributions ) {
-    logLikeContr <- matrix(0.0, nrow=nSamples, ncol=n_items)
+  if ( logLikelihoodContributions != "none" ) {
+    ncol <- if ( logLikelihoodContributions == "all" ) n_items else length(missingItems)
+    logLikeContr <- matrix(0.0, nrow=nSamples, ncol=ncol)
   }
   if ( progress ) { pb <- txtProgressBar(0,nSamples,style=3) }
   for ( i in seq_len(nSamples) ) {
     state <- .Call(.fit, thin, data, state, fixed, hyperparameters, partitionDistribution, missingItems)
-    if ( logLikelihoodContributions ) {
-      logLikeContr[i,] <- .Call(.log_likelihood_contributions, state, data)
+    if ( logLikelihoodContributions != "none" ) {
+      logLikeContr[i,] <- if ( logLikelihoodContributions == "all" ) {
+        .Call(.log_likelihood_contributions, state, data)
+      } else {
+        .Call(.log_likelihood_contributions_of_missing, state, data)
+      }
     }
     tmp <- .Call(.state_rust2r_as_reference,state)
     samples$precision_response[i] <- tmp[[1]]
@@ -132,7 +137,7 @@ fit <- function(data, state, fixed=rep(FALSE,5), hyperparameters, partitionDistr
   .Call(.rust_free, state)
   .Call(.rust_free, hyperparameters)
   result <- list(samples=samples)
-  if ( logLikelihoodContributions ) {
+  if ( logLikelihoodContributions != "none" ) {
     result <- c(result, list(logLikelihoodContributions=logLikeContr))
   }
   result
