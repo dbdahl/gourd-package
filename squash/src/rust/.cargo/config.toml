@@ -11,6 +11,11 @@ git = "https://github.com/dbdahl/rust-dahl-partition.git"
 rev = "419ac7d"
 replace-with = "vendored-sources"
 
+[source."https://github.com/dbdahl/rust-dahl-randompartition.git"]
+git = "https://github.com/dbdahl/rust-dahl-randompartition.git"
+rev = "e484368"
+replace-with = "vendored-sources"
+
 [source."https://github.com/dbdahl/rust-dahl-salso.git"]
 git = "https://github.com/dbdahl/rust-dahl-salso.git"
 rev = "b438a37"
@@ -18,3 +23,4 @@ replace-with = "vendored-sources"
 
 [source.vendored-sources]
 directory = "vendor"
+
