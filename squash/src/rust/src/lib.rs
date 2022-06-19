@@ -26,32 +26,32 @@ use roxido::*;
 
 #[roxido]
 fn state_r2rust(state: Rval) -> Rval {
-    Rval::external_pointer_encode(State::from_r(state, &mut pc), Rval::new("state", &mut pc))
+    Rval::external_pointer_encode(State::from_r(state, pc), Rval::new("state", pc))
 }
 
 #[roxido]
 fn state_rust2r_as_reference(state: Rval) -> Rval {
-    Rval::external_pointer_decode_as_ref::<State>(state).to_r(&mut pc)
+    Rval::external_pointer_decode_as_ref::<State>(state).to_r(pc)
 }
 
 #[roxido]
 fn hyperparameters_r2rust(hyperparameters: Rval) -> Rval {
     Rval::external_pointer_encode(
-        Hyperparameters::from_r(hyperparameters, &mut pc),
-        Rval::new("hyperparameters", &mut pc),
+        Hyperparameters::from_r(hyperparameters, pc),
+        Rval::new("hyperparameters", pc),
     )
 }
 
 #[roxido]
 fn data_r2rust(data: Rval, missing_items: Rval) -> Rval {
-    let mut data = Data::from_r(data, &mut pc);
-    let (_, missing_items) = missing_items.coerce_integer(&mut pc).unwrap();
+    let mut data = Data::from_r(data, pc);
+    let (_, missing_items) = missing_items.coerce_integer(pc).unwrap();
     let missing_items: Vec<_> = missing_items
         .iter()
         .map(|x| usize::try_from(*x - 1).unwrap())
         .collect();
     data.declare_missing(missing_items);
-    Rval::external_pointer_encode(data, Rval::new("data", &mut pc))
+    Rval::external_pointer_encode(data, Rval::new("data", pc))
 }
 
 #[roxido]
@@ -86,7 +86,7 @@ fn fit(
     let data = Rval::external_pointer_decode_as_mut_ref::<Data>(data);
     let state_tag = state.external_pointer_tag();
     let mut state = Rval::external_pointer_decode::<State>(state);
-    let fixed = StateFixedComponents::from_r(fixed, &mut pc);
+    let fixed = StateFixedComponents::from_r(fixed, pc);
     let hyperparameters = Rval::external_pointer_decode_as_ref::<Hyperparameters>(hyperparameters);
     if data.n_global_covariates() != state.n_global_covariates()
         || hyperparameters.n_global_covariates() != state.n_global_covariates()
@@ -147,7 +147,7 @@ fn log_likelihood_contributions(state: Rval, data: Rval) -> Rval {
     let state = Rval::external_pointer_decode_as_ref::<State>(state);
     let data = Rval::external_pointer_decode_as_ref::<Data>(data);
     let x = state.log_likelihood_contributions(data);
-    Rval::new(&x[..], &mut pc)
+    Rval::new(&x[..], pc)
 }
 
 #[roxido]
@@ -155,46 +155,46 @@ fn log_likelihood_contributions_of_missing(state: Rval, data: Rval) -> Rval {
     let state = Rval::external_pointer_decode_as_ref::<State>(state);
     let data = Rval::external_pointer_decode_as_ref::<Data>(data);
     let x = state.log_likelihood_contributions_of_missing(data);
-    Rval::new(&x[..], &mut pc)
+    Rval::new(&x[..], pc)
 }
 
 #[roxido]
 fn log_likelihood_of(state: Rval, data: Rval, items: Rval) -> Rval {
     let state = Rval::external_pointer_decode_as_ref::<State>(state);
     let data = Rval::external_pointer_decode_as_ref::<Data>(data);
-    let (_, items) = items.coerce_integer(&mut pc).unwrap();
+    let (_, items) = items.coerce_integer(pc).unwrap();
     let items: Vec<_> = items
         .iter()
         .map(|x| usize::try_from(*x - 1).unwrap())
         .collect();
-    Rval::new(state.log_likelihood_of(data, items.iter()), &mut pc)
+    Rval::new(state.log_likelihood_of(data, items.iter()), pc)
 }
 
 #[roxido]
 fn log_likelihood(state: Rval, data: Rval) -> Rval {
     let state = Rval::external_pointer_decode_as_ref::<State>(state);
     let data = Rval::external_pointer_decode_as_ref::<Data>(data);
-    Rval::new(state.log_likelihood(data), &mut pc)
+    Rval::new(state.log_likelihood(data), pc)
 }
 
 #[roxido]
 fn sample_multivariate_normal(n_samples: Rval, mean: Rval, precision: Rval) -> Rval {
     let n_samples = n_samples.as_usize();
     let n = mean.len();
-    let (_, mean) = mean.coerce_double(&mut pc).unwrap();
+    let (_, mean) = mean.coerce_double(pc).unwrap();
     let mean = DVector::from_iterator(n, mean.iter().cloned());
-    let (_, precision) = precision.coerce_double(&mut pc).unwrap();
+    let (_, precision) = precision.coerce_double(pc).unwrap();
     let precision = DMatrix::from_iterator(n, n, precision.iter().cloned());
-    let (rval, slice) = Rval::new_matrix_double(n, n_samples, &mut pc);
+    let (rval, slice) = Rval::new_matrix_double(n, n_samples, pc);
     let mut rng = Pcg64Mcg::from_seed(r::random_bytes::<16>());
     let x = sample_multivariate_normal_repeatedly(n_samples, mean, precision, &mut rng).unwrap();
     slice.clone_from_slice(x.as_slice());
-    rval.transpose(&mut pc)
+    rval.transpose(pc)
 }
 
 #[roxido]
 fn ready() -> Rval {
-    Rval::new(true, &mut pc)
+    Rval::new(true, pc)
 }
 
 #[roxido]
@@ -205,7 +205,7 @@ fn myrnorm(n: Rval, mean: Rval, sd: Rval) -> Rval {
         let (mean, sd) = (Rf_asReal(mean.0), Rf_asReal(sd.0));
         let length = isize::try_from(Rf_asInteger(n.0)).unwrap();
         let vec = Rf_protect(Rf_allocVector(REALSXP, length));
-        let slice = Rval(vec).slice_double().unwrap();
+        let slice = Rval(vec).slice_mut_double().unwrap();
         GetRNGstate();
         for x in slice {
             *x = Rf_rnorm(mean, sd);
@@ -218,9 +218,9 @@ fn myrnorm(n: Rval, mean: Rval, sd: Rval) -> Rval {
 
 #[roxido]
 fn convolve2(a: Rval, b: Rval) -> Rval {
-    let (a, xa) = a.coerce_double(&mut pc).unwrap();
-    let (b, xb) = b.coerce_double(&mut pc).unwrap();
-    let (ab, xab) = Rval::new_vector_double(a.len() + b.len() - 1, &mut pc);
+    let (a, xa) = a.coerce_double(pc).unwrap();
+    let (b, xb) = b.coerce_double(pc).unwrap();
+    let (ab, xab) = Rval::new_vector_double(a.len() + b.len() - 1, pc);
     for xabi in xab.iter_mut() {
         *xabi = 0.0
     }
@@ -239,7 +239,7 @@ fn zero(f: Rval, guesses: Rval, stol: Rval, rho: Rval) -> Rval {
     if tol <= 0.0 {
         panic!("non-positive tol value");
     }
-    let symbol = Rval::new_symbol("x", &mut pc);
+    let symbol = Rval::new_symbol("x", pc);
     let feval = |x: f64| {
         let mut pc = Pc::new();
         symbol.assign(Rval::new(x, &mut pc), rho);
@@ -247,11 +247,11 @@ fn zero(f: Rval, guesses: Rval, stol: Rval, rho: Rval) -> Rval {
     };
     let mut f0 = feval(x0);
     if f0 == 0.0 {
-        return Rval::new(x0, &mut pc);
+        return Rval::new(x0, pc);
     }
     let f1 = feval(x1);
     if f1 == 0.0 {
-        return Rval::new(x1, &mut pc);
+        return Rval::new(x1, pc);
     }
     if f0 * f1 > 0.0 {
         panic!("x[0] and x[1] have the same sign");
@@ -259,11 +259,11 @@ fn zero(f: Rval, guesses: Rval, stol: Rval, rho: Rval) -> Rval {
     loop {
         let xc = 0.5 * (x0 + x1);
         if (x0 - x1).abs() < tol {
-            return Rval::new(xc, &mut pc);
+            return Rval::new(xc, pc);
         }
         let fc = feval(xc);
         if fc == 0.0 {
-            return Rval::new(xc, &mut pc);
+            return Rval::new(xc, pc);
         }
         if f0 * fc > 0.0 {
             x0 = xc;
