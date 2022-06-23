@@ -8,6 +8,7 @@ use crate::data::Data;
 use crate::hyperparameters::Hyperparameters;
 use crate::mvnorm::sample_multivariate_normal_repeatedly;
 use crate::state::{State, StateFixedComponents};
+use dahl_randompartition::clust::Clustering;
 use dahl_randompartition::cpp::CppParameters;
 use dahl_randompartition::crp::CrpParameters;
 use dahl_randompartition::epa::EpaParameters;
@@ -16,6 +17,9 @@ use dahl_randompartition::frp::FrpParameters;
 use dahl_randompartition::jlp::JlpParameters;
 use dahl_randompartition::lsp::LspParameters;
 use dahl_randompartition::oldsp::OldSpParameters;
+use dahl_randompartition::perm::Permutation;
+use dahl_randompartition::prelude::Mass;
+use dahl_randompartition::shrink::Shrinkage;
 use dahl_randompartition::sp::SpParameters;
 use dahl_randompartition::up::UpParameters;
 use nalgebra::{DMatrix, DVector};
@@ -70,6 +74,90 @@ fn rust_free(x: Rval) -> Rval {
             panic!("Unrecognized type ID: {}.", str)
         }
     };
+    Rval::nil()
+}
+
+struct Group {
+    data: Data,
+    state: State,
+    hyperparameters: Hyperparameters,
+}
+
+struct All(Vec<Group>);
+
+#[roxido]
+fn all(all: Rval) -> Rval {
+    let mut vec = Vec::with_capacity(all.len());
+    let mut n_items = None;
+    for i in 0..all.len() {
+        let list = all.get_list_element(i);
+        let (data, state, hyperparameters) = (
+            list.get_list_element(0),
+            list.get_list_element(1),
+            list.get_list_element(2),
+        );
+        let data = Data::from_r(data, pc);
+        let state = State::from_r(state, pc);
+        let hyperparameters = Hyperparameters::from_r(hyperparameters, pc);
+        if n_items.is_none() {
+            n_items = Some(data.n_items());
+        }
+        assert_eq!(data.n_items(), n_items.unwrap());
+        assert_eq!(state.clustering().n_items(), n_items.unwrap());
+        assert_eq!(
+            hyperparameters.n_global_covariates(),
+            data.n_global_covariates()
+        );
+        assert_eq!(
+            hyperparameters.n_clustered_covariates(),
+            data.n_clustered_covariates()
+        );
+        vec.push(Group {
+            data,
+            state,
+            hyperparameters,
+        });
+    }
+    assert!(!all.is_empty());
+    let all = All(vec);
+    Rval::external_pointer_encode(all, Rval::new("all", pc))
+}
+
+#[roxido]
+fn fit_all(all: Rval, shrinkage: Rval, n_updates: Rval) -> Rval {
+    let mut all: All = all.external_pointer_decode();
+    let n_items = all.0[0].data.n_items();
+    let fixed = StateFixedComponents::new(false, false, false, false, true);
+    let shrinkage = Shrinkage::constant(shrinkage.as_f64(), n_items).unwrap();
+    let n_updates = n_updates.as_usize();
+    let mut rng = Pcg64Mcg::from_seed(r::random_bytes::<16>());
+    let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
+    rng.fill(&mut seed);
+    let mut rng2 = Pcg64Mcg::from_seed(seed);
+    let baseline_partition = Clustering::one_cluster(n_items);
+    let permutation = Permutation::natural_and_fixed(n_items);
+    let baseline_distribution = CrpParameters::new_with_mass(n_items, Mass::new(1.0));
+    let partition_distribution = SpParameters::new(
+        baseline_partition,
+        shrinkage,
+        permutation,
+        baseline_distribution,
+    )
+    .unwrap();
+    for _ in 0..n_updates {
+        // for group in all.0.iter_mut() {
+        all = all.0.into_iter().map(|mut group| {
+            group.state = group.state.mcmc_iteration(
+                &fixed,
+                &mut group.data,
+                &group.hyperparameters,
+                &partition_distribution,
+                &mut rng,
+                &mut rng2,
+            );
+            group
+        });
+    }
     Rval::nil()
 }
 

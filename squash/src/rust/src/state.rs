@@ -55,8 +55,11 @@ impl State {
         let precision_response = state.get_list_element(0).as_f64();
         let (_, global_coefficients_slice) = state.get_list_element(1).coerce_double(pc).unwrap();
         let global_coefficients = DVector::from_column_slice(global_coefficients_slice);
-        let (_, clustering_slice) = state.get_list_element(2).coerce_integer(pc).unwrap();
-        let clustering = Clustering::from_slice(clustering_slice);
+        let clustering = {
+            let (_, clustering_slice) = state.get_list_element(2).coerce_integer(pc).unwrap();
+            let clust: Vec<_> = clustering_slice.iter().map(|&x| (x as usize) - 1).collect();
+            Clustering::from_vector(clust)
+        };
         let clustered_coefficients_rval = state.get_list_element(3);
         let mut clustered_coefficients = Vec::with_capacity(clustered_coefficients_rval.len());
         for i in 0..clustered_coefficients.capacity() {
@@ -64,9 +67,11 @@ impl State {
             let (_, slice) = element.coerce_double(pc).unwrap();
             clustered_coefficients.push(DVector::from_column_slice(slice));
         }
-        let permutation =
-            Permutation::from_slice(state.get_list_element(4).coerce_integer(pc).unwrap().1)
-                .unwrap();
+        let permutation = {
+            let perm = state.get_list_element(4).coerce_integer(pc).unwrap().1;
+            let perm: Vec<_> = perm.iter().map(|&x| (x as usize) - 1).collect();
+            Permutation::from_vector(perm).unwrap()
+        };
         Self::new(
             precision_response,
             global_coefficients,

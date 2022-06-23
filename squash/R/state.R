@@ -149,3 +149,7 @@ fit <- function(data, state, fixed=rep(FALSE,5), hyperparameters, partitionDistr
   }
   result
 }
+
+all <- function(all) {
+  .Call(.all, all)
+}

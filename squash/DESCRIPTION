@@ -10,4 +10,4 @@ Imports: cargo (>=  0.2.0)
 SystemRequirements: Cargo (>= 1.60) for installation from sources: see INSTALL file
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.1.2
+RoxygenNote: 7.2.0

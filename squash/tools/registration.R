@@ -1,4 +1,5 @@
 .Call <- base::.Call
+.all <- NULL
 .convolve2 <- NULL
 .data_r2rust <- NULL
 .state_r2rust <- NULL
