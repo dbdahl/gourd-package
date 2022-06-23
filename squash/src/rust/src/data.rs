@@ -12,8 +12,7 @@ pub struct Data {
     global_covariates_transpose: DMatrix<f64>,
     global_covariates_transpose_times_self: DMatrix<f64>,
     clustered_covariates: DMatrix<f64>,
-    missing_items: Option<Vec<usize>>,
-    original_response: Option<DVector<f64>>,
+    missing: Vec<(usize, f64)>,
 }
 
 impl Data {
@@ -35,8 +34,7 @@ impl Data {
             global_covariates_transpose,
             global_covariates_transpose_times_self,
             clustered_covariates,
-            missing_items: None,
-            original_response: None,
+            missing: Vec::new(),
         })
     }
 
@@ -58,10 +56,10 @@ impl Data {
     }
 
     pub fn impute<T: Rng>(&mut self, state: &State, rng: &mut T) {
-        if let Some(missing_items) = &self.missing_items {
+        if !self.missing.is_empty() {
             let stdev = 1.0 / state.precision_response().sqrt();
             let normal = Normal::new(0.0, stdev).unwrap();
-            for &item in missing_items {
+            for &(item, _) in &self.missing {
                 let label = state.clustering().allocation()[item];
                 let parameter = &state.clustered_coefficients()[label];
                 let mean = (self.global_covariates().row(item) * state.global_coefficients())
@@ -93,15 +91,14 @@ impl Data {
     }
 
     pub fn declare_missing(&mut self, items: Vec<usize>) {
-        (self.missing_items, self.original_response) = if items.is_empty() {
-            (None, None)
-        } else {
-            let max = *items.iter().max().unwrap();
-            if max >= self.n_items() {
-                panic!("Missing indices are out of bounds.")
-            }
-            (Some(items), Some(self.response.clone()))
+        for &(index, value) in &self.missing {
+            self.response[index] = value
         }
+        self.missing = items
+            .iter()
+            .enumerate()
+            .map(|(index, &item)| (index, self.response[item]))
+            .collect();
     }
 
     pub fn n_items(&self) -> usize {
@@ -116,11 +113,7 @@ impl Data {
         self.clustered_covariates.ncols()
     }
 
-    pub fn missing_items(&self) -> &Option<Vec<usize>> {
-        &self.missing_items
-    }
-
-    pub fn original_response(&self) -> &Option<DVector<f64>> {
-        &self.original_response
+    pub fn missing(&self) -> &[(usize, f64)] {
+        &self.missing
     }
 }

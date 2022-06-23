@@ -11,11 +11,13 @@ use crate::state::{State, StateFixedComponents};
 use dahl_randompartition::clust::Clustering;
 use dahl_randompartition::cpp::CppParameters;
 use dahl_randompartition::crp::CrpParameters;
+use dahl_randompartition::distr::ProbabilityMassFunction;
 use dahl_randompartition::epa::EpaParameters;
 use dahl_randompartition::fixed::FixedPartitionParameters;
 use dahl_randompartition::frp::FrpParameters;
 use dahl_randompartition::jlp::JlpParameters;
 use dahl_randompartition::lsp::LspParameters;
+use dahl_randompartition::mcmc::update_neal_algorithm_full;
 use dahl_randompartition::oldsp::OldSpParameters;
 use dahl_randompartition::perm::Permutation;
 use dahl_randompartition::prelude::Mass;
@@ -124,8 +126,8 @@ fn all(all: Rval) -> Rval {
 }
 
 #[roxido]
-fn fit_all(all: Rval, shrinkage: Rval, n_updates: Rval) -> Rval {
-    let mut all: All = all.external_pointer_decode();
+fn fit_all(all_ptr: Rval, shrinkage: Rval, n_updates: Rval) -> Rval {
+    let mut all: All = all_ptr.external_pointer_decode();
     let n_items = all.0[0].data.n_items();
     let fixed = StateFixedComponents::new(false, false, false, false, true);
     let shrinkage = Shrinkage::constant(shrinkage.as_f64(), n_items).unwrap();
@@ -134,31 +136,61 @@ fn fit_all(all: Rval, shrinkage: Rval, n_updates: Rval) -> Rval {
     let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
     rng.fill(&mut seed);
     let mut rng2 = Pcg64Mcg::from_seed(seed);
-    let baseline_partition = Clustering::one_cluster(n_items);
     let permutation = Permutation::natural_and_fixed(n_items);
-    let baseline_distribution = CrpParameters::new_with_mass(n_items, Mass::new(1.0));
-    let partition_distribution = SpParameters::new(
-        baseline_partition,
-        shrinkage,
-        permutation,
-        baseline_distribution,
-    )
-    .unwrap();
-    for _ in 0..n_updates {
-        // for group in all.0.iter_mut() {
-        all = all.0.into_iter().map(|mut group| {
-            group.state = group.state.mcmc_iteration(
-                &fixed,
-                &mut group.data,
-                &group.hyperparameters,
-                &partition_distribution,
+    let hyperpartition_prior_distribution = CrpParameters::new_with_mass(n_items, Mass::new(1.0));
+    for missing_item in 0..n_items {
+        for group in all.0.iter_mut() {
+            group.data.declare_missing(vec![missing_item]);
+        }
+        let mut partition_distribution = SpParameters::new(
+            Clustering::one_cluster(n_items),
+            shrinkage.clone(),
+            Permutation::natural_and_fixed(n_items),
+            CrpParameters::new_with_mass(n_items, Mass::new(1.0)),
+        )
+        .unwrap();
+        for _ in 0..n_updates {
+            for group in all.0.iter_mut() {
+                group.state.mcmc_iteration(
+                    &fixed,
+                    &mut group.data,
+                    &group.hyperparameters,
+                    &partition_distribution,
+                    &mut rng,
+                    &mut rng2,
+                );
+            }
+            let mut baseline_partition_tmp = partition_distribution.baseline_partition.clone();
+            let mut log_likelihood_contribution_fn = |proposed_baseline_partition: &Clustering| {
+                partition_distribution.baseline_partition = proposed_baseline_partition.clone();
+                let mut sum = 0.0;
+                for group in all.0.iter() {
+                    sum += partition_distribution.log_pmf(group.state.clustering());
+                }
+                sum
+            };
+            update_neal_algorithm_full(
+                1,
+                &mut baseline_partition_tmp,
+                &permutation,
+                &hyperpartition_prior_distribution,
+                &mut log_likelihood_contribution_fn,
                 &mut rng,
-                &mut rng2,
             );
-            group
-        });
+            partition_distribution.baseline_partition = baseline_partition_tmp;
+            println!("BP: {}", partition_distribution.baseline_partition);
+            /*
+            let mut sum = 0.0;
+            for group in all.0.iter_mut() {
+                sum += group
+                    .state
+                    .log_likelihood_contributions_of_missing(&group.data);
+            }
+            sum
+            */
+        }
     }
-    Rval::nil()
+    Rval::new(0.0, pc)
 }
 
 #[roxido]
@@ -195,7 +227,7 @@ fn fit(
             let partition_distribution =
                 partition_distribution.external_pointer_decode_as_ref::<$tipe>();
             for _ in 0..n_updates {
-                state = state.mcmc_iteration(
+                state.mcmc_iteration(
                     &fixed,
                     data,
                     hyperparameters,

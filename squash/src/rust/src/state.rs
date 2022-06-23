@@ -175,23 +175,19 @@ impl State {
     }
 
     pub fn log_likelihood_contributions_of_missing(&self, data: &Data) -> Vec<f64> {
-        if let Some(missing_items) = data.missing_items() {
-            let response = data.original_response().as_ref().unwrap();
+        let mut result = Vec::with_capacity(data.missing().len());
+        if result.capacity() > 0 {
             let log_normalizing_constant =
                 Self::NEGATIVE_LN_SQRT_2PI + 0.5 * self.precision_response.ln();
             let negative_half_precision = -0.5 * self.precision_response;
-            let mut result = Vec::with_capacity(missing_items.len());
-            for &item in missing_items {
+            for &(item, y) in data.missing() {
                 let label = self.clustering().allocation()[item];
-                let y = response[item];
                 let x = log_normalizing_constant
                     + negative_half_precision * self.log_likelihood_kernel(data, item, y, label);
                 result.push(x);
             }
-            result
-        } else {
-            Vec::new()
         }
+        result
     }
 
     pub fn log_likelihood_of<'a, T: Iterator<Item = &'a usize>>(
@@ -231,17 +227,18 @@ impl State {
     }
 
     pub fn mcmc_iteration<S: FullConditional, T: Rng>(
-        mut self,
+        &mut self,
         fixed: &StateFixedComponents,
         data: &mut Data,
         hyperparameters: &Hyperparameters,
         partition_distribution: &S,
         rng: &mut T,
         rng2: &mut T,
-    ) -> Self {
+    ) {
         data.impute(&self, rng);
         if !fixed.precision_response {
-            self.precision_response = Self::update_precision_response(
+            Self::update_precision_response(
+                &mut self.precision_response,
                 &self.global_coefficients,
                 &self.clustering,
                 &self.clustered_coefficients,
@@ -251,7 +248,8 @@ impl State {
             );
         }
         if !fixed.global_coefficients {
-            self.global_coefficients = Self::update_global_coefficients(
+            Self::update_global_coefficients(
+                &mut self.global_coefficients,
                 self.precision_response,
                 &self.clustering,
                 &self.clustered_coefficients,
@@ -261,8 +259,8 @@ impl State {
             );
         }
         if !fixed.clustering {
-            self.clustering = Self::update_clustering(
-                self.clustering,
+            Self::update_clustering(
+                &mut self.clustering,
                 &mut self.clustered_coefficients,
                 self.precision_response,
                 &self.global_coefficients,
@@ -275,8 +273,8 @@ impl State {
             );
         }
         if !fixed.clustered_coefficients {
-            self.clustered_coefficients = Self::update_clustered_coefficients(
-                self.clustered_coefficients,
+            Self::update_clustered_coefficients(
+                &mut self.clustered_coefficients,
                 &self.clustering,
                 self.precision_response,
                 &self.global_coefficients,
@@ -288,17 +286,17 @@ impl State {
         if !fixed.permutation {
             panic!("Random permutation is not yet implemented.")
         }
-        self
     }
 
     fn update_precision_response<T: Rng>(
+        precision_response: &mut f64,
         global_coefficients: &DVector<f64>,
         clustering: &Clustering,
         clustered_coefficients: &[DVector<f64>],
         data: &Data,
         hyperparameters: &Hyperparameters,
         rng: &mut T,
-    ) -> f64 {
+    ) {
         let shape = hyperparameters.precision_response_shape() + 0.5 * data.n_items() as f64;
         let residuals = data.response()
             - data.global_covariates() * global_coefficients
@@ -306,28 +304,30 @@ impl State {
         let sum_of_squared_residuals: f64 = residuals.fold(0.0, |acc, x| acc + x * x);
         let rate = hyperparameters.precision_response_rate() + 0.5 * sum_of_squared_residuals;
         let scale = 1.0 / rate;
-        Gamma::new(shape, scale).unwrap().sample(rng)
+        *precision_response = Gamma::new(shape, scale).unwrap().sample(rng);
     }
 
     fn update_global_coefficients<T: Rng>(
+        global_coefficients: &mut DVector<f64>,
         precision_response: f64,
         clustering: &Clustering,
         clustered_coefficients: &[DVector<f64>],
         data: &Data,
         hyperparameters: &Hyperparameters,
         rng: &mut T,
-    ) -> DVector<f64> {
+    ) {
         let precision = hyperparameters.global_coefficients_precision()
             + precision_response * data.global_covariates_transpose_times_self();
         let partial_residuals =
             data.response() - Self::dot_products(clustering, clustered_coefficients, data);
         let precision_times_mean = hyperparameters.global_coefficients_precision_times_mean()
             + precision_response * data.global_covariates_transpose() * partial_residuals;
-        sample_multivariate_normal_v2(precision_times_mean, precision, rng).unwrap()
+        *global_coefficients =
+            sample_multivariate_normal_v2(precision_times_mean, precision, rng).unwrap();
     }
 
     fn update_clustering<S: FullConditional, T: Rng>(
-        clustering: Clustering,
+        clustering: &mut Clustering,
         clustered_coefficients: &mut Vec<DVector<f64>>,
         precision_response: f64,
         global_coefficients: &DVector<f64>,
@@ -337,7 +337,7 @@ impl State {
         partition_distribution: &S,
         rng: &mut T,
         rng2: &mut T,
-    ) -> Clustering {
+    ) {
         let negative_half_precision = -0.5 * precision_response;
         let mut log_likelihood_contribution_fn = |item: usize, label: usize, is_new: bool| {
             if is_new {
@@ -370,14 +370,14 @@ impl State {
     }
 
     fn update_clustered_coefficients<T: Rng>(
-        mut clustered_coefficients: Vec<DVector<f64>>,
+        clustered_coefficients: &mut Vec<DVector<f64>>,
         clustering: &Clustering,
         precision_response: f64,
         global_coefficients: &DVector<f64>,
         data: &Data,
         hyperparameters: &Hyperparameters,
         rng: &mut T,
-    ) -> Vec<DVector<f64>> {
+    ) {
         for (label, clustered_coefficient) in clustered_coefficients.iter_mut().enumerate() {
             let indices = clustering.items_of(label);
             if indices.is_empty() {
@@ -393,7 +393,6 @@ impl State {
                 + precision_response * wt * partial_residuals;
             *clustered_coefficient = sample_multivariate_normal_v2(mean, precision, rng).unwrap()
         }
-        clustered_coefficients
     }
 
     fn dot_products(
