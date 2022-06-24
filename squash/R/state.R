@@ -51,7 +51,6 @@ fit <- function(data, state, fixed=rep(FALSE,5), hyperparameters, partitionDistr
   if ( length(state$clustered_coefficients) != max(state$clustering) ) {
     stop("Inconsistent number of clusters.")
   }
-  state$clustering <- state$clustering - 1
   for ( coef in state$clustered_coefficients ) {
     if ( ! is.numeric(coef) || length(coef) != n_clustered_coefficients ) {
       stop("Inconsistent number of clustered covariates.")
@@ -69,7 +68,6 @@ fit <- function(data, state, fixed=rep(FALSE,5), hyperparameters, partitionDistr
   if ( ( min(state$permutation) != 1 ) || ( max(state$permutation) != n_items ) ) {
     stop("'state$permutation' must range between one and the number of items.")
   }
-  state$permutation <- state$permutation - 1
   state <- .Call(.state_r2rust, state)
   # Verify hyperparameters
   if ( ! is.list(hyperparameters) || length(hyperparameters) != 6 || any(names(hyperparameters) != c("precision_response_shape", "precision_response_rate", "global_coefficients_mean", "global_coefficients_precision", "clustered_coefficients_mean", "clustered_coefficients_precision")) ) {
@@ -150,6 +148,7 @@ fit <- function(data, state, fixed=rep(FALSE,5), hyperparameters, partitionDistr
   result
 }
 
-all <- function(all) {
-  .Call(.all, all)
+fit_all <- function(all, shrinkage, nIterations) {
+  all_ptr <- .Call(.all, all)
+  .Call(.fit_all, all_ptr, shrinkage, nIterations)
 }

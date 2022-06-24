@@ -1,5 +1,4 @@
 .Call <- base::.Call
-.all <- NULL
 .convolve2 <- NULL
 .data_r2rust <- NULL
 .state_r2rust <- NULL
@@ -9,6 +8,8 @@
 .log_likelihood_contributions_of_missing <- NULL
 .state_rust2r_as_reference <- NULL
 .rust_free <- NULL
+.all <- NULL
+.fit_all <- NULL
 .myrnorm <- NULL
 .sample_multivariate_normal <- NULL
 .zero <- NULL

@@ -132,24 +132,31 @@ fn fit_all(all_ptr: Rval, shrinkage: Rval, n_updates: Rval) -> Rval {
     let fixed = StateFixedComponents::new(false, false, false, false, true);
     let shrinkage = Shrinkage::constant(shrinkage.as_f64(), n_items).unwrap();
     let n_updates = n_updates.as_usize();
+    let (result_rval, result_slice) = Rval::new_matrix_integer(n_items, n_updates, pc);
     let mut rng = Pcg64Mcg::from_seed(r::random_bytes::<16>());
     let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
     rng.fill(&mut seed);
     let mut rng2 = Pcg64Mcg::from_seed(seed);
     let permutation = Permutation::natural_and_fixed(n_items);
     let hyperpartition_prior_distribution = CrpParameters::new_with_mass(n_items, Mass::new(1.0));
-    for missing_item in 0..n_items {
-        for group in all.0.iter_mut() {
-            group.data.declare_missing(vec![missing_item]);
-        }
+    let baseline_partition_initial = all.0[rng.gen_range(0..all.0.len())]
+        .state
+        .clustering()
+        .clone();
+    //for missing_item in 0..n_items {
+    for _missing_item in 0..1 {
+        // println!("Missing: {}", missing_item);
+        // for group in all.0.iter_mut() {
+        //     group.data.declare_missing(vec![missing_item]);
+        // }
         let mut partition_distribution = SpParameters::new(
-            Clustering::one_cluster(n_items),
+            baseline_partition_initial.clone(),
             shrinkage.clone(),
             Permutation::natural_and_fixed(n_items),
             CrpParameters::new_with_mass(n_items, Mass::new(1.0)),
         )
         .unwrap();
-        for _ in 0..n_updates {
+        for update_index in 0..n_updates {
             for group in all.0.iter_mut() {
                 group.state.mcmc_iteration(
                     &fixed,
@@ -177,8 +184,13 @@ fn fit_all(all_ptr: Rval, shrinkage: Rval, n_updates: Rval) -> Rval {
                 &mut log_likelihood_contribution_fn,
                 &mut rng,
             );
-            partition_distribution.baseline_partition = baseline_partition_tmp;
-            println!("BP: {}", partition_distribution.baseline_partition);
+            partition_distribution.baseline_partition = baseline_partition_tmp.standardize();
+            partition_distribution
+                .baseline_partition
+                .relabel_into_slice(
+                    1_i32,
+                    &mut result_slice[(update_index * n_items)..((update_index + 1) * n_items)],
+                );
             /*
             let mut sum = 0.0;
             for group in all.0.iter_mut() {
@@ -190,7 +202,7 @@ fn fit_all(all_ptr: Rval, shrinkage: Rval, n_updates: Rval) -> Rval {
             */
         }
     }
-    Rval::new(0.0, pc)
+    result_rval
 }
 
 #[roxido]

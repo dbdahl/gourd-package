@@ -15,11 +15,6 @@ mod registration;
 use roxido::*;
 
 #[roxido]
-fn all(all: Rval) -> Rval {
-    Rval::nil()
-}
-
-#[roxido]
 fn convolve2(a: Rval, b: Rval) -> Rval {
     Rval::nil()
 }
@@ -65,6 +60,16 @@ fn rust_free(data: Rval) -> Rval {
 }
 
 #[roxido]
+fn all(all: Rval) -> Rval {
+    Rval::nil()
+}
+
+#[roxido]
+fn fit_all(all_ptr: Rval, shrinkage: Rval, nIterations: Rval) -> Rval {
+    Rval::nil()
+}
+
+#[roxido]
 fn myrnorm(n: Rval, mean: Rval, sd: Rval) -> Rval {
     Rval::nil()
 }
@@ -84,14 +89,8 @@ use roxido::*;
 
 #[no_mangle]
 extern "C" fn R_init_squash_rust(info: *mut rbindings::DllInfo) {
-    let mut call_routines = Vec::with_capacity(13);
-    let mut _names: Vec<std::ffi::CString> = Vec::with_capacity(13);
-    _names.push(std::ffi::CString::new(".all").unwrap());
-    call_routines.push(rbindings::R_CallMethodDef {
-        name: _names.last().unwrap().as_ptr(),
-        fun: unsafe { std::mem::transmute(crate::all as *const u8) },
-        numArgs: 1,
-    });
+    let mut call_routines = Vec::with_capacity(14);
+    let mut _names: Vec<std::ffi::CString> = Vec::with_capacity(14);
     _names.push(std::ffi::CString::new(".convolve2").unwrap());
     call_routines.push(rbindings::R_CallMethodDef {
         name: _names.last().unwrap().as_ptr(),
@@ -145,6 +144,18 @@ extern "C" fn R_init_squash_rust(info: *mut rbindings::DllInfo) {
         name: _names.last().unwrap().as_ptr(),
         fun: unsafe { std::mem::transmute(crate::rust_free as *const u8) },
         numArgs: 1,
+    });
+    _names.push(std::ffi::CString::new(".all").unwrap());
+    call_routines.push(rbindings::R_CallMethodDef {
+        name: _names.last().unwrap().as_ptr(),
+        fun: unsafe { std::mem::transmute(crate::all as *const u8) },
+        numArgs: 1,
+    });
+    _names.push(std::ffi::CString::new(".fit_all").unwrap());
+    call_routines.push(rbindings::R_CallMethodDef {
+        name: _names.last().unwrap().as_ptr(),
+        fun: unsafe { std::mem::transmute(crate::fit_all as *const u8) },
+        numArgs: 3,
     });
     _names.push(std::ffi::CString::new(".myrnorm").unwrap());
     call_routines.push(rbindings::R_CallMethodDef {
