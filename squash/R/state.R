@@ -148,7 +148,7 @@ fit <- function(data, state, fixed=rep(FALSE,5), hyperparameters, partitionDistr
   result
 }
 
-fit_all <- function(all, shrinkage, nIterations) {
+fit_all <- function(all, shrinkage, nIterations, doBaselinePartition) {
   all_ptr <- .Call(.all, all)
-  .Call(.fit_all, all_ptr, shrinkage, nIterations)
+  .Call(.fit_all, all_ptr, shrinkage, nIterations, doBaselinePartition)
 }

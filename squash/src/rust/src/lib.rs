@@ -126,13 +126,18 @@ fn all(all: Rval) -> Rval {
 }
 
 #[roxido]
-fn fit_all(all_ptr: Rval, shrinkage: Rval, n_updates: Rval) -> Rval {
+fn fit_all(all_ptr: Rval, shrinkage: Rval, n_updates: Rval, do_baseline_partition: Rval) -> Rval {
     let mut all: All = all_ptr.external_pointer_decode();
     let n_items = all.0[0].data.n_items();
     let fixed = StateFixedComponents::new(false, false, false, false, true);
     let shrinkage = Shrinkage::constant(shrinkage.as_f64(), n_items).unwrap();
     let n_updates = n_updates.as_usize();
-    let (result_rval, result_slice) = Rval::new_matrix_integer(n_items, n_updates, pc);
+    let do_baseline_partition = do_baseline_partition.as_bool();
+    let (result_rval, result_slice) = if do_baseline_partition {
+        Rval::new_matrix_integer(n_items, n_updates, pc)
+    } else {
+        (Rval::nil(), &mut [] as &mut [i32])
+    };
     let mut rng = Pcg64Mcg::from_seed(r::random_bytes::<16>());
     let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
     rng.fill(&mut seed);
@@ -143,12 +148,16 @@ fn fit_all(all_ptr: Rval, shrinkage: Rval, n_updates: Rval) -> Rval {
         .state
         .clustering()
         .clone();
-    //for missing_item in 0..n_items {
-    for _missing_item in 0..1 {
-        // println!("Missing: {}", missing_item);
-        // for group in all.0.iter_mut() {
-        //     group.data.declare_missing(vec![missing_item]);
-        // }
+    let mut grand_sum = 0.0;
+    let upper = if do_baseline_partition { 1 } else { n_items };
+    for missing_item in 0..upper {
+        let mut sum = 0.0;
+        if !do_baseline_partition {
+            println!("Missing: {}", missing_item);
+            for group in all.0.iter_mut() {
+                group.data.declare_missing(vec![missing_item]);
+            }
+        }
         let mut partition_distribution = SpParameters::new(
             baseline_partition_initial.clone(),
             shrinkage.clone(),
@@ -184,25 +193,31 @@ fn fit_all(all_ptr: Rval, shrinkage: Rval, n_updates: Rval) -> Rval {
                 &mut log_likelihood_contribution_fn,
                 &mut rng,
             );
-            partition_distribution.baseline_partition = baseline_partition_tmp.standardize();
-            partition_distribution
-                .baseline_partition
-                .relabel_into_slice(
-                    1_i32,
-                    &mut result_slice[(update_index * n_items)..((update_index + 1) * n_items)],
-                );
-            /*
-            let mut sum = 0.0;
-            for group in all.0.iter_mut() {
-                sum += group
-                    .state
-                    .log_likelihood_contributions_of_missing(&group.data);
+            if do_baseline_partition {
+                partition_distribution.baseline_partition = baseline_partition_tmp.standardize();
+                partition_distribution
+                    .baseline_partition
+                    .relabel_into_slice(
+                        1_i32,
+                        &mut result_slice[(update_index * n_items)..((update_index + 1) * n_items)],
+                    );
+            } else {
+                for group in all.0.iter_mut() {
+                    sum += group
+                        .state
+                        .log_likelihood_contributions_of_missing(&group.data)
+                        .iter()
+                        .sum::<f64>();
+                }
             }
-            sum
-            */
         }
+        grand_sum += sum / (n_updates as f64);
     }
-    result_rval
+    if do_baseline_partition {
+        result_rval
+    } else {
+        Rval::new(grand_sum, pc)
+    }
 }
 
 #[roxido]

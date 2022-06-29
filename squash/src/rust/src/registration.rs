@@ -65,7 +65,7 @@ fn all(all: Rval) -> Rval {
 }
 
 #[roxido]
-fn fit_all(all_ptr: Rval, shrinkage: Rval, nIterations: Rval) -> Rval {
+fn fit_all(all_ptr: Rval, shrinkage: Rval, nIterations: Rval, doBaselinePartition: Rval) -> Rval {
     Rval::nil()
 }
 
@@ -155,7 +155,7 @@ extern "C" fn R_init_squash_rust(info: *mut rbindings::DllInfo) {
     call_routines.push(rbindings::R_CallMethodDef {
         name: _names.last().unwrap().as_ptr(),
         fun: unsafe { std::mem::transmute(crate::fit_all as *const u8) },
-        numArgs: 3,
+        numArgs: 4,
     });
     _names.push(std::ffi::CString::new(".myrnorm").unwrap());
     call_routines.push(rbindings::R_CallMethodDef {
