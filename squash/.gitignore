@@ -2,3 +2,10 @@
 .Rhistory
 .RData
 .Ruserdata
+src/*.a
+src/*.o
+src/*.so
+src/rust/.cargo
+src/rust/vendor
+src/rust/**/target
+src/rust/.idea
