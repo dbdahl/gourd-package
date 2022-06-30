@@ -1,4 +1,4 @@
-Package: squash
+Package: gourd
 Title: A Short Phrase in Title Case
 Version: 0.1.0
 Authors@R: c(person(given = "First", family = "Last", role = c("aut", "cre"),
