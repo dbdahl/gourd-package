@@ -15,11 +15,6 @@ mod registration;
 use roxido::*;
 
 #[roxido]
-fn convolve2(a: Rval, b: Rval) -> Rval {
-    Rval::nil()
-}
-
-#[roxido]
 fn data_r2rust(data: Rval, missingItems: Rval) -> Rval {
     Rval::nil()
 }
@@ -70,17 +65,7 @@ fn fit_all(all_ptr: Rval, shrinkage: Rval, nIterations: Rval, doBaselinePartitio
 }
 
 #[roxido]
-fn myrnorm(n: Rval, mean: Rval, sd: Rval) -> Rval {
-    Rval::nil()
-}
-
-#[roxido]
 fn sample_multivariate_normal(n: Rval, mean: Rval, precision: Rval) -> Rval {
-    Rval::nil()
-}
-
-#[roxido]
-fn zero(unnamed1: Rval, unnamed2: Rval, unnamed3: Rval, unnamed4: Rval) -> Rval {
     Rval::nil()
 }
 */
@@ -89,14 +74,8 @@ use roxido::*;
 
 #[no_mangle]
 extern "C" fn R_init_squash_rust(info: *mut rbindings::DllInfo) {
-    let mut call_routines = Vec::with_capacity(14);
-    let mut _names: Vec<std::ffi::CString> = Vec::with_capacity(14);
-    _names.push(std::ffi::CString::new(".convolve2").unwrap());
-    call_routines.push(rbindings::R_CallMethodDef {
-        name: _names.last().unwrap().as_ptr(),
-        fun: unsafe { std::mem::transmute(crate::convolve2 as *const u8) },
-        numArgs: 2,
-    });
+    let mut call_routines = Vec::with_capacity(11);
+    let mut _names: Vec<std::ffi::CString> = Vec::with_capacity(11);
     _names.push(std::ffi::CString::new(".data_r2rust").unwrap());
     call_routines.push(rbindings::R_CallMethodDef {
         name: _names.last().unwrap().as_ptr(),
@@ -157,23 +136,11 @@ extern "C" fn R_init_squash_rust(info: *mut rbindings::DllInfo) {
         fun: unsafe { std::mem::transmute(crate::fit_all as *const u8) },
         numArgs: 4,
     });
-    _names.push(std::ffi::CString::new(".myrnorm").unwrap());
-    call_routines.push(rbindings::R_CallMethodDef {
-        name: _names.last().unwrap().as_ptr(),
-        fun: unsafe { std::mem::transmute(crate::myrnorm as *const u8) },
-        numArgs: 3,
-    });
     _names.push(std::ffi::CString::new(".sample_multivariate_normal").unwrap());
     call_routines.push(rbindings::R_CallMethodDef {
         name: _names.last().unwrap().as_ptr(),
         fun: unsafe { std::mem::transmute(crate::sample_multivariate_normal as *const u8) },
         numArgs: 3,
-    });
-    _names.push(std::ffi::CString::new(".zero").unwrap());
-    call_routines.push(rbindings::R_CallMethodDef {
-        name: _names.last().unwrap().as_ptr(),
-        fun: unsafe { std::mem::transmute(crate::zero as *const u8) },
-        numArgs: 4,
     });
     call_routines.push(rbindings::R_CallMethodDef {
         name: std::ptr::null(),

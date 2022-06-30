@@ -32,7 +32,7 @@ use roxido::*;
 
 #[roxido]
 fn state_r2rust(state: Rval) -> Rval {
-    Rval::external_pointer_encode(State::from_r(state, pc), Rval::new("state", pc))
+    Rval::external_pointer_encode(State::from_r(state, pc), rval!("state"))
 }
 
 #[roxido]
@@ -44,7 +44,7 @@ fn state_rust2r_as_reference(state: Rval) -> Rval {
 fn hyperparameters_r2rust(hyperparameters: Rval) -> Rval {
     Rval::external_pointer_encode(
         Hyperparameters::from_r(hyperparameters, pc),
-        Rval::new("hyperparameters", pc),
+        rval!("hyperparameters"),
     )
 }
 
@@ -57,7 +57,7 @@ fn data_r2rust(data: Rval, missing_items: Rval) -> Rval {
         .map(|x| usize::try_from(*x - 1).unwrap())
         .collect();
     data.declare_missing(missing_items);
-    Rval::external_pointer_encode(data, Rval::new("data", pc))
+    Rval::external_pointer_encode(data, rval!("data"))
 }
 
 #[roxido]
@@ -122,7 +122,7 @@ fn all(all: Rval) -> Rval {
     }
     assert!(!all.is_empty());
     let all = All(vec);
-    Rval::external_pointer_encode(all, Rval::new("all", pc))
+    Rval::external_pointer_encode(all, rval!("all"))
 }
 
 #[roxido]
@@ -216,7 +216,7 @@ fn fit_all(all_ptr: Rval, shrinkage: Rval, n_updates: Rval, do_baseline_partitio
     if do_baseline_partition {
         result_rval
     } else {
-        Rval::new(grand_sum, pc)
+        rval!(grand_sum)
     }
 }
 
@@ -294,7 +294,7 @@ fn log_likelihood_contributions(state: Rval, data: Rval) -> Rval {
     let state = Rval::external_pointer_decode_as_ref::<State>(state);
     let data = Rval::external_pointer_decode_as_ref::<Data>(data);
     let x = state.log_likelihood_contributions(data);
-    Rval::new(&x[..], pc)
+    rval!(&x[..])
 }
 
 #[roxido]
@@ -302,7 +302,7 @@ fn log_likelihood_contributions_of_missing(state: Rval, data: Rval) -> Rval {
     let state = Rval::external_pointer_decode_as_ref::<State>(state);
     let data = Rval::external_pointer_decode_as_ref::<Data>(data);
     let x = state.log_likelihood_contributions_of_missing(data);
-    Rval::new(&x[..], pc)
+    rval!(&x[..])
 }
 
 #[roxido]
@@ -314,14 +314,14 @@ fn log_likelihood_of(state: Rval, data: Rval, items: Rval) -> Rval {
         .iter()
         .map(|x| usize::try_from(*x - 1).unwrap())
         .collect();
-    Rval::new(state.log_likelihood_of(data, items.iter()), pc)
+    rval!(state.log_likelihood_of(data, items.iter()))
 }
 
 #[roxido]
 fn log_likelihood(state: Rval, data: Rval) -> Rval {
     let state = Rval::external_pointer_decode_as_ref::<State>(state);
     let data = Rval::external_pointer_decode_as_ref::<Data>(data);
-    Rval::new(state.log_likelihood(data), pc)
+    rval!(state.log_likelihood(data))
 }
 
 #[roxido]
@@ -339,84 +339,3 @@ fn sample_multivariate_normal(n_samples: Rval, mean: Rval, precision: Rval) -> R
     rval.transpose(pc)
 }
 
-#[roxido]
-fn ready() -> Rval {
-    Rval::new(true, pc)
-}
-
-#[roxido]
-fn myrnorm(n: Rval, mean: Rval, sd: Rval) -> Rval {
-    unsafe {
-        use rbindings::*;
-        use std::convert::TryFrom;
-        let (mean, sd) = (Rf_asReal(mean.0), Rf_asReal(sd.0));
-        let length = isize::try_from(Rf_asInteger(n.0)).unwrap();
-        let vec = Rf_protect(Rf_allocVector(REALSXP, length));
-        let slice = Rval(vec).slice_mut_double().unwrap();
-        GetRNGstate();
-        for x in slice {
-            *x = Rf_rnorm(mean, sd);
-        }
-        PutRNGstate();
-        Rf_unprotect(1);
-        Rval(vec)
-    }
-}
-
-#[roxido]
-fn convolve2(a: Rval, b: Rval) -> Rval {
-    let (a, xa) = a.coerce_double(pc).unwrap();
-    let (b, xb) = b.coerce_double(pc).unwrap();
-    let (ab, xab) = Rval::new_vector_double(a.len() + b.len() - 1, pc);
-    for xabi in xab.iter_mut() {
-        *xabi = 0.0
-    }
-    for (i, xai) in xa.iter().enumerate() {
-        for (j, xbj) in xb.iter().enumerate() {
-            xab[i + j] += xai * xbj;
-        }
-    }
-    ab
-}
-
-#[roxido]
-fn zero(f: Rval, guesses: Rval, stol: Rval, rho: Rval) -> Rval {
-    let slice = guesses.slice_double().unwrap();
-    let (mut x0, mut x1, tol) = (slice[0], slice[1], stol.as_f64());
-    if tol <= 0.0 {
-        panic!("non-positive tol value");
-    }
-    let symbol = Rval::new_symbol("x", pc);
-    let feval = |x: f64| {
-        let mut pc = Pc::new();
-        symbol.assign(Rval::new(x, &mut pc), rho);
-        f.eval(rho, &mut pc).unwrap().as_f64()
-    };
-    let mut f0 = feval(x0);
-    if f0 == 0.0 {
-        return Rval::new(x0, pc);
-    }
-    let f1 = feval(x1);
-    if f1 == 0.0 {
-        return Rval::new(x1, pc);
-    }
-    if f0 * f1 > 0.0 {
-        panic!("x[0] and x[1] have the same sign");
-    }
-    loop {
-        let xc = 0.5 * (x0 + x1);
-        if (x0 - x1).abs() < tol {
-            return Rval::new(xc, pc);
-        }
-        let fc = feval(xc);
-        if fc == 0.0 {
-            return Rval::new(xc, pc);
-        }
-        if f0 * fc > 0.0 {
-            x0 = xc;
-            f0 = fc;
-        } else {
-            x1 = xc;
-        }
-    }
-}
