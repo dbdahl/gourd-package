@@ -2,8 +2,4 @@
 
 export(fit)
 export(rmvnorm)
-importFrom(cargo,run)
-importFrom(cargo,shlib_get)
-importFrom(cargo,shlib_set)
-importFrom(utils,untar)
 useDynLib(gourd, .registration = TRUE)
