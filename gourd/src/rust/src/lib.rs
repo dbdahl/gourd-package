@@ -7,7 +7,7 @@ mod state;
 use crate::data::Data;
 use crate::hyperparameters::Hyperparameters;
 use crate::mvnorm::sample_multivariate_normal_repeatedly;
-use crate::state::{State, StateFixedComponents};
+use crate::state::{McmcTuning, State};
 use dahl_randompartition::clust::Clustering;
 use dahl_randompartition::cpp::CppParameters;
 use dahl_randompartition::crp::CrpParameters;
@@ -129,7 +129,7 @@ fn all(all: Rval) -> Rval {
 fn fit_all(all_ptr: Rval, shrinkage: Rval, n_updates: Rval, do_baseline_partition: Rval) -> Rval {
     let mut all: All = all_ptr.external_pointer_decode();
     let n_items = all.0[0].data.n_items();
-    let fixed = StateFixedComponents::new(false, false, false, false, true);
+    let fixed = McmcTuning::new(false, false, false, false, 2);
     let shrinkage = Shrinkage::constant(shrinkage.as_f64(), n_items).unwrap();
     let n_updates = n_updates.as_usize();
     let do_baseline_partition = do_baseline_partition.as_bool();
@@ -225,16 +225,17 @@ fn fit(
     n_updates: Rval,
     data: Rval,
     state: Rval,
-    fixed: Rval,
     hyperparameters: Rval,
     partition_distribution: Rval,
+    mcmc_tuning: Rval,
+    _missing_items: Rval,
 ) -> Rval {
     let n_updates = n_updates.as_usize();
     let data = Rval::external_pointer_decode_as_mut_ref::<Data>(data);
     let state_tag = state.external_pointer_tag();
     let mut state = Rval::external_pointer_decode::<State>(state);
-    let fixed = StateFixedComponents::from_r(fixed, pc);
     let hyperparameters = Rval::external_pointer_decode_as_ref::<Hyperparameters>(hyperparameters);
+    let mcmc_tuning = McmcTuning::from_r(mcmc_tuning, pc);
     if data.n_global_covariates() != state.n_global_covariates()
         || hyperparameters.n_global_covariates() != state.n_global_covariates()
     {
@@ -249,13 +250,13 @@ fn fit(
     let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
     rng.fill(&mut seed);
     let mut rng2 = Pcg64Mcg::from_seed(seed);
-    macro_rules! distr_macro {
-        ($tipe:ty) => {{
+    macro_rules! mcmc_update {
+        ($tipe:ty, false) => {{
             let partition_distribution =
-                partition_distribution.external_pointer_decode_as_ref::<$tipe>();
+                partition_distribution.external_pointer_decode_as_mut_ref::<$tipe>();
             for _ in 0..n_updates {
                 state.mcmc_iteration(
-                    &fixed,
+                    &mcmc_tuning,
                     data,
                     hyperparameters,
                     partition_distribution,
@@ -264,25 +265,47 @@ fn fit(
                 );
             }
         }};
+        ($tipe:ty, true) => {{
+            let partition_distribution =
+                partition_distribution.external_pointer_decode_as_mut_ref::<$tipe>();
+            for _ in 0..n_updates {
+                state.mcmc_iteration(
+                    &mcmc_tuning,
+                    data,
+                    hyperparameters,
+                    partition_distribution,
+                    &mut rng,
+                    &mut rng2,
+                );
+                dahl_randompartition::mcmc::update_permutation(
+                    1,
+                    partition_distribution,
+                    mcmc_tuning.n_items_per_permutation_update,
+                    &state.clustering,
+                    &mut rng,
+                );
+                state.permutation = partition_distribution.permutation.clone();
+            }
+        }};
     }
     let prior_name = partition_distribution.external_pointer_tag().as_str();
     match prior_name {
-        "fixed" => distr_macro!(FixedPartitionParameters),
-        "up" => distr_macro!(UpParameters),
-        "jlp" => distr_macro!(JlpParameters),
-        "crp" => distr_macro!(CrpParameters),
-        "epa" => distr_macro!(EpaParameters),
-        "lsp" => distr_macro!(LspParameters),
-        "cpp-up" => distr_macro!(CppParameters<UpParameters>),
-        "cpp-jlp" => distr_macro!(CppParameters<JlpParameters>),
-        "cpp-crp" => distr_macro!(CppParameters<CrpParameters>),
-        "frp" => distr_macro!(FrpParameters),
-        "oldsp-up" => distr_macro!(OldSpParameters<UpParameters>),
-        "oldsp-jlp" => distr_macro!(OldSpParameters<JlpParameters>),
-        "oldsp-crp" => distr_macro!(OldSpParameters<CrpParameters>),
-        "sp-up" => distr_macro!(SpParameters<UpParameters>),
-        "sp-jlp" => distr_macro!(SpParameters<JlpParameters>),
-        "sp-crp" => distr_macro!(SpParameters<CrpParameters>),
+        "fixed" => mcmc_update!(FixedPartitionParameters, false),
+        "up" => mcmc_update!(UpParameters, false),
+        "jlp" => mcmc_update!(JlpParameters, true),
+        "crp" => mcmc_update!(CrpParameters, false),
+        "epa" => mcmc_update!(EpaParameters, true),
+        "lsp" => mcmc_update!(LspParameters, true),
+        "cpp-up" => mcmc_update!(CppParameters<UpParameters>, false),
+        "cpp-jlp" => mcmc_update!(CppParameters<JlpParameters>, false),
+        "cpp-crp" => mcmc_update!(CppParameters<CrpParameters>, false),
+        "frp" => mcmc_update!(FrpParameters, true),
+        "oldsp-up" => mcmc_update!(OldSpParameters<UpParameters>, true),
+        "oldsp-jlp" => mcmc_update!(OldSpParameters<JlpParameters>, true),
+        "oldsp-crp" => mcmc_update!(OldSpParameters<CrpParameters>, true),
+        "sp-up" => mcmc_update!(SpParameters<UpParameters>, true),
+        "sp-jlp" => mcmc_update!(SpParameters<JlpParameters>, true),
+        "sp-crp" => mcmc_update!(SpParameters<CrpParameters>, true),
         _ => panic!("Unsupported distribution: {}", prior_name),
     }
     state = state.canonicalize();
@@ -339,3 +362,299 @@ fn sample_multivariate_normal(n_samples: Rval, mean: Rval, precision: Rval) -> R
     rval.transpose(pc)
 }
 
+// Copied from pumpkin/src/rust/src/lib.rs
+
+use dahl_randompartition::epa::SquareMatrixBorrower;
+use dahl_randompartition::prelude::*;
+use std::convert::{TryFrom, TryInto};
+use std::os::raw::c_void;
+use std::ptr::NonNull;
+
+#[roxido]
+fn new_FixedPartitionParameters(baseline_partition: Rval) -> Rval {
+    let baseline_partition = mk_clustering(baseline_partition, pc);
+    let p = FixedPartitionParameters::new(baseline_partition);
+    new_distr_r_ptr("fixed", p, pc)
+}
+
+#[roxido]
+fn new_UpParameters(n_items: Rval) -> Rval {
+    let p = UpParameters::new(n_items.as_usize());
+    new_distr_r_ptr("up", p, pc)
+}
+
+#[roxido]
+fn new_JlpParameters(mass: Rval, permutation: Rval) -> Rval {
+    let permutation = mk_permutation(permutation, pc);
+    let p = JlpParameters::new(permutation.n_items(), Mass::new(mass.into()), permutation).unwrap();
+    new_distr_r_ptr("jlp", p, pc)
+}
+
+#[roxido]
+fn new_CrpParameters(n_items: Rval, mass: Rval, discount: Rval) -> Rval {
+    let n_items = n_items.as_usize();
+    let mass = mass.into();
+    let discount = discount.into();
+    let p = CrpParameters::new_with_mass_and_discount(
+        n_items,
+        Mass::new_with_variable_constraint(mass, discount),
+        Discount::new(discount),
+    );
+    new_distr_r_ptr("crp", p, pc)
+}
+
+#[roxido]
+fn new_EpaParameters(similarity: Rval, permutation: Rval, mass: Rval, discount: Rval) -> Rval {
+    let ni = similarity.nrow();
+    let similarity = SquareMatrixBorrower::from_slice(similarity.try_into().unwrap(), ni);
+    let permutation = mk_permutation(permutation, pc);
+    let mass = mass.into();
+    let discount = discount.into();
+    let p = EpaParameters::new(
+        similarity,
+        permutation,
+        Mass::new_with_variable_constraint(mass, discount),
+        Discount::new(discount),
+    );
+    new_distr_r_ptr("epa", p, pc)
+}
+
+#[roxido]
+fn new_LspParameters(baseline_partition: Rval, rate: Rval, mass: Rval, permutation: Rval) -> Rval {
+    let baseline_partition = mk_clustering(baseline_partition, pc);
+    let rate = rate.into();
+    let mass = mass.into();
+    let permutation = mk_permutation(permutation, pc);
+    let p = LspParameters::new_with_rate(
+        baseline_partition,
+        Rate::new(rate),
+        Mass::new(mass),
+        permutation,
+    )
+    .unwrap();
+    new_distr_r_ptr("lsp", p, pc)
+}
+
+#[roxido]
+fn new_CppParameters(
+    baseline_partition: Rval,
+    rate: Rval,
+    baseline_distribution: Rval,
+    use_vi: Rval,
+    a: Rval,
+) -> Rval {
+    let baseline_partition = mk_clustering(baseline_partition, pc);
+    let rate = rate.into();
+    let use_vi = use_vi.as_bool();
+    let a = a.into();
+    let (baseline_distribution_name, baseline_distribution_ptr) =
+        unwrap_distr_r_ptr(baseline_distribution);
+    macro_rules! distr_macro {
+        ($tipe:ty, $label:literal) => {{
+            let p = NonNull::new(baseline_distribution_ptr as *mut $tipe).unwrap();
+            let baseline_distribution = unsafe { p.as_ref().clone() };
+            new_distr_r_ptr(
+                $label,
+                CppParameters::new(
+                    baseline_partition,
+                    Rate::new(rate),
+                    baseline_distribution,
+                    use_vi,
+                    a,
+                )
+                .unwrap(),
+                pc,
+            )
+        }};
+    }
+    match baseline_distribution_name {
+        "up" => distr_macro!(UpParameters, "cpp-up"),
+        "jlp" => distr_macro!(JlpParameters, "cpp-jlp"),
+        "crp" => distr_macro!(CrpParameters, "cpp-crp"),
+        _ => panic!("Unsupported distribution: {}", baseline_distribution_name),
+    }
+}
+
+#[roxido]
+fn new_FrpParameters(
+    baseline_partition: Rval,
+    shrinkage: Rval,
+    permutation: Rval,
+    mass: Rval,
+    discount: Rval,
+    power: Rval,
+) -> Rval {
+    let baseline_partition = mk_clustering(baseline_partition, pc);
+    let shrinkage = mk_shrinkage(shrinkage, pc);
+    let permutation = mk_permutation(permutation, pc);
+    let mass = mass.into();
+    let discount = discount.into();
+    let power = power.into();
+    let p = FrpParameters::new(
+        baseline_partition,
+        shrinkage,
+        permutation,
+        Mass::new_with_variable_constraint(mass, discount),
+        Discount::new(discount),
+        Power::new(power),
+    )
+    .unwrap();
+    new_distr_r_ptr("frp", p, pc)
+}
+
+#[roxido]
+fn new_OldSpParameters(
+    baseline_partition: Rval,
+    shrinkage: Rval,
+    permutation: Rval,
+    baseline_distribution: Rval,
+    use_vi: Rval,
+    a: Rval,
+    scaling_exponent: Rval,
+) -> Rval {
+    let baseline_partition = mk_clustering(baseline_partition, pc);
+    let shrinkage = mk_shrinkage(shrinkage, pc);
+    let permutation = mk_permutation(permutation, pc);
+    let use_vi = use_vi.as_bool();
+    let a = a.into();
+    let scaling_exponent = scaling_exponent.into();
+    let (baseline_distribution_name, baseline_distribution_ptr) =
+        unwrap_distr_r_ptr(baseline_distribution);
+    macro_rules! distr_macro {
+        ($tipe:ty, $label:literal) => {{
+            let p = NonNull::new(baseline_distribution_ptr as *mut $tipe).unwrap();
+            let baseline_distribution = unsafe { p.as_ref().clone() };
+            new_distr_r_ptr(
+                $label,
+                OldSpParameters::new(
+                    baseline_partition,
+                    shrinkage,
+                    permutation,
+                    baseline_distribution,
+                    use_vi,
+                    a,
+                    scaling_exponent,
+                )
+                .unwrap(),
+                pc,
+            )
+        }};
+    }
+    match baseline_distribution_name {
+        "up" => distr_macro!(UpParameters, "oldsp-up"),
+        "jlp" => distr_macro!(JlpParameters, "oldsp-jlp"),
+        "crp" => distr_macro!(CrpParameters, "oldsp-crp"),
+        _ => panic!("Unsupported distribution: {}", baseline_distribution_name),
+    }
+}
+
+#[roxido]
+fn new_SpParameters(
+    baseline_partition: Rval,
+    shrinkage: Rval,
+    permutation: Rval,
+    baseline_distribution: Rval,
+) -> Rval {
+    let baseline_partition = mk_clustering(baseline_partition, pc);
+    let shrinkage = mk_shrinkage(shrinkage, pc);
+    let permutation = mk_permutation(permutation, pc);
+    let (baseline_distribution_name, baseline_distribution_ptr) =
+        unwrap_distr_r_ptr(baseline_distribution);
+    macro_rules! distr_macro {
+        ($tipe:ty, $label:literal) => {{
+            let p = NonNull::new(baseline_distribution_ptr as *mut $tipe).unwrap();
+            let baseline_distribution = unsafe { p.as_ref().clone() };
+            new_distr_r_ptr(
+                $label,
+                SpParameters::new(
+                    baseline_partition,
+                    shrinkage,
+                    permutation,
+                    baseline_distribution,
+                )
+                .unwrap(),
+                pc,
+            )
+        }};
+    }
+    match baseline_distribution_name {
+        "up" => distr_macro!(UpParameters, "sp-up"),
+        "jlp" => distr_macro!(JlpParameters, "sp-jlp"),
+        "crp" => distr_macro!(CrpParameters, "sp-crp"),
+        _ => panic!("Unsupported distribution: {}", baseline_distribution_name),
+    }
+}
+
+fn mk_clustering(partition: Rval, pc: &mut Pc) -> Clustering {
+    Clustering::from_slice(partition.coerce_integer(pc).unwrap().1)
+}
+
+fn mk_shrinkage(shrinkage: Rval, pc: &mut Pc) -> Shrinkage {
+    Shrinkage::from(shrinkage.coerce_double(pc).unwrap().1).unwrap()
+}
+
+fn mk_permutation(permutation: Rval, pc: &mut Pc) -> Permutation {
+    let vector = permutation
+        .coerce_integer(pc)
+        .unwrap()
+        .1
+        .iter()
+        .map(|x| *x as usize)
+        .collect();
+    Permutation::from_vector(vector).unwrap()
+}
+
+fn new_distr_r_ptr<T>(name: &str, value: T, pc: &mut Pc) -> Rval {
+    use rbindings::*;
+    unsafe {
+        // Move to Box<_> and then forget about it.
+        let ptr = Box::into_raw(Box::new(value)) as *mut c_void;
+        let tag = Rval::new_character(name, pc).0;
+        let sexp = pc.protect(R_MakeExternalPtr(ptr, tag, R_NilValue));
+        R_RegisterCFinalizerEx(sexp, Some(free_distr_r_ptr), 0);
+        Rval(sexp)
+    }
+}
+
+#[no_mangle]
+extern "C" fn free_distr_r_ptr(sexp: rbindings::SEXP) {
+    fn free_r_ptr_helper<T>(sexp: rbindings::SEXP) {
+        unsafe {
+            let ptr = rbindings::R_ExternalPtrAddr(sexp) as *mut T;
+            if !ptr.is_null() {
+                // Convert the raw pointer back to a Box<_> and drop it.
+                Box::from_raw(ptr);
+            }
+        }
+    }
+    unsafe {
+        match Rval(rbindings::R_ExternalPtrTag(sexp)).try_into().unwrap() {
+            "fixed" => free_r_ptr_helper::<FixedPartitionParameters>(sexp),
+            "up" => free_r_ptr_helper::<UpParameters>(sexp),
+            "jlp" => free_r_ptr_helper::<JlpParameters>(sexp),
+            "crp" => free_r_ptr_helper::<CrpParameters>(sexp),
+            "epa" => free_r_ptr_helper::<EpaParameters>(sexp),
+            "lsp" => free_r_ptr_helper::<LspParameters>(sexp),
+            "cpp-up" => free_r_ptr_helper::<CppParameters<UpParameters>>(sexp),
+            "cpp-jlp" => free_r_ptr_helper::<CppParameters<JlpParameters>>(sexp),
+            "cpp-crp" => free_r_ptr_helper::<CppParameters<CrpParameters>>(sexp),
+            "frp" => free_r_ptr_helper::<FrpParameters>(sexp),
+            "oldsp-up" => free_r_ptr_helper::<OldSpParameters<UpParameters>>(sexp),
+            "oldsp-jlp" => free_r_ptr_helper::<OldSpParameters<JlpParameters>>(sexp),
+            "oldsp-crp" => free_r_ptr_helper::<OldSpParameters<CrpParameters>>(sexp),
+            "sp-up" => free_r_ptr_helper::<SpParameters<UpParameters>>(sexp),
+            "sp-jlp" => free_r_ptr_helper::<SpParameters<JlpParameters>>(sexp),
+            "sp-crp" => free_r_ptr_helper::<SpParameters<CrpParameters>>(sexp),
+            name => panic!("Unsupported distribution: {}", name),
+        }
+    }
+}
+
+fn unwrap_distr_r_ptr(x: Rval) -> (&'static str, *mut c_void) {
+    unsafe {
+        (
+            Rval(rbindings::R_ExternalPtrTag(x.0)).try_into().unwrap(),
+            rbindings::R_ExternalPtrAddr(x.0),
+        )
+    }
+}

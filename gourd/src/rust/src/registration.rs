@@ -30,7 +30,7 @@ fn hyperparameters_r2rust(hyperparameters: Rval) -> Rval {
 }
 
 #[roxido]
-fn fit(burnin: Rval, data: Rval, state: Rval, fixed: Rval, hyperparameters: Rval, partitionDistribution: Rval, missingItems: Rval) -> Rval {
+fn fit(burnin: Rval, data: Rval, state: Rval, hyperparameters: Rval, partitionDistribution: Rval, mcmcTuning: Rval, missingItems: Rval) -> Rval {
     Rval::nil()
 }
 
@@ -65,6 +65,56 @@ fn fit_all(all_ptr: Rval, shrinkage: Rval, nIterations: Rval, doBaselinePartitio
 }
 
 #[roxido]
+fn new_FixedPartitionParameters(unnamed1: Rval) -> Rval {
+    Rval::nil()
+}
+
+#[roxido]
+fn new_CrpParameters(unnamed1: Rval, unnamed2: Rval, unnamed3: Rval) -> Rval {
+    Rval::nil()
+}
+
+#[roxido]
+fn new_FrpParameters(unnamed1: Rval, unnamed2: Rval, unnamed3: Rval, unnamed4: Rval, unnamed5: Rval, unnamed6: Rval) -> Rval {
+    Rval::nil()
+}
+
+#[roxido]
+fn new_LspParameters(unnamed1: Rval, unnamed2: Rval, unnamed3: Rval, unnamed4: Rval) -> Rval {
+    Rval::nil()
+}
+
+#[roxido]
+fn new_CppParameters(unnamed1: Rval, unnamed2: Rval, p: Rval, unnamed3: Rval, unnamed4: Rval) -> Rval {
+    Rval::nil()
+}
+
+#[roxido]
+fn new_EpaParameters(unnamed1: Rval, unnamed2: Rval, unnamed3: Rval, unnamed4: Rval) -> Rval {
+    Rval::nil()
+}
+
+#[roxido]
+fn new_OldSpParameters(unnamed1: Rval, unnamed2: Rval, unnamed3: Rval, p: Rval, unnamed4: Rval, unnamed5: Rval, unnamed6: Rval) -> Rval {
+    Rval::nil()
+}
+
+#[roxido]
+fn new_SpParameters(unnamed1: Rval, unnamed2: Rval, unnamed3: Rval, p: Rval) -> Rval {
+    Rval::nil()
+}
+
+#[roxido]
+fn new_UpParameters(unnamed1: Rval) -> Rval {
+    Rval::nil()
+}
+
+#[roxido]
+fn new_JlpParameters(unnamed1: Rval, unnamed2: Rval) -> Rval {
+    Rval::nil()
+}
+
+#[roxido]
 fn sample_multivariate_normal(n: Rval, mean: Rval, precision: Rval) -> Rval {
     Rval::nil()
 }
@@ -74,8 +124,8 @@ use roxido::*;
 
 #[no_mangle]
 extern "C" fn R_init_gourd_rust(info: *mut rbindings::DllInfo) {
-    let mut call_routines = Vec::with_capacity(11);
-    let mut _names: Vec<std::ffi::CString> = Vec::with_capacity(11);
+    let mut call_routines = Vec::with_capacity(21);
+    let mut _names: Vec<std::ffi::CString> = Vec::with_capacity(21);
     _names.push(std::ffi::CString::new(".data_r2rust").unwrap());
     call_routines.push(rbindings::R_CallMethodDef {
         name: _names.last().unwrap().as_ptr(),
@@ -135,6 +185,66 @@ extern "C" fn R_init_gourd_rust(info: *mut rbindings::DllInfo) {
         name: _names.last().unwrap().as_ptr(),
         fun: unsafe { std::mem::transmute(crate::fit_all as *const u8) },
         numArgs: 4,
+    });
+    _names.push(std::ffi::CString::new(".new_FixedPartitionParameters").unwrap());
+    call_routines.push(rbindings::R_CallMethodDef {
+        name: _names.last().unwrap().as_ptr(),
+        fun: unsafe { std::mem::transmute(crate::new_FixedPartitionParameters as *const u8) },
+        numArgs: 1,
+    });
+    _names.push(std::ffi::CString::new(".new_CrpParameters").unwrap());
+    call_routines.push(rbindings::R_CallMethodDef {
+        name: _names.last().unwrap().as_ptr(),
+        fun: unsafe { std::mem::transmute(crate::new_CrpParameters as *const u8) },
+        numArgs: 3,
+    });
+    _names.push(std::ffi::CString::new(".new_FrpParameters").unwrap());
+    call_routines.push(rbindings::R_CallMethodDef {
+        name: _names.last().unwrap().as_ptr(),
+        fun: unsafe { std::mem::transmute(crate::new_FrpParameters as *const u8) },
+        numArgs: 6,
+    });
+    _names.push(std::ffi::CString::new(".new_LspParameters").unwrap());
+    call_routines.push(rbindings::R_CallMethodDef {
+        name: _names.last().unwrap().as_ptr(),
+        fun: unsafe { std::mem::transmute(crate::new_LspParameters as *const u8) },
+        numArgs: 4,
+    });
+    _names.push(std::ffi::CString::new(".new_CppParameters").unwrap());
+    call_routines.push(rbindings::R_CallMethodDef {
+        name: _names.last().unwrap().as_ptr(),
+        fun: unsafe { std::mem::transmute(crate::new_CppParameters as *const u8) },
+        numArgs: 5,
+    });
+    _names.push(std::ffi::CString::new(".new_EpaParameters").unwrap());
+    call_routines.push(rbindings::R_CallMethodDef {
+        name: _names.last().unwrap().as_ptr(),
+        fun: unsafe { std::mem::transmute(crate::new_EpaParameters as *const u8) },
+        numArgs: 4,
+    });
+    _names.push(std::ffi::CString::new(".new_OldSpParameters").unwrap());
+    call_routines.push(rbindings::R_CallMethodDef {
+        name: _names.last().unwrap().as_ptr(),
+        fun: unsafe { std::mem::transmute(crate::new_OldSpParameters as *const u8) },
+        numArgs: 7,
+    });
+    _names.push(std::ffi::CString::new(".new_SpParameters").unwrap());
+    call_routines.push(rbindings::R_CallMethodDef {
+        name: _names.last().unwrap().as_ptr(),
+        fun: unsafe { std::mem::transmute(crate::new_SpParameters as *const u8) },
+        numArgs: 4,
+    });
+    _names.push(std::ffi::CString::new(".new_UpParameters").unwrap());
+    call_routines.push(rbindings::R_CallMethodDef {
+        name: _names.last().unwrap().as_ptr(),
+        fun: unsafe { std::mem::transmute(crate::new_UpParameters as *const u8) },
+        numArgs: 1,
+    });
+    _names.push(std::ffi::CString::new(".new_JlpParameters").unwrap());
+    call_routines.push(rbindings::R_CallMethodDef {
+        name: _names.last().unwrap().as_ptr(),
+        fun: unsafe { std::mem::transmute(crate::new_JlpParameters as *const u8) },
+        numArgs: 2,
     });
     _names.push(std::ffi::CString::new(".sample_multivariate_normal").unwrap());
     call_routines.push(rbindings::R_CallMethodDef {

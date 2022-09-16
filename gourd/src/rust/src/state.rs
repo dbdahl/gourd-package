@@ -12,11 +12,11 @@ use roxido::*;
 
 #[derive(Debug)]
 pub struct State {
-    precision_response: f64,
-    global_coefficients: DVector<f64>,
-    clustering: Clustering,
-    clustered_coefficients: Vec<DVector<f64>>,
-    permutation: Permutation,
+    pub precision_response: f64,
+    pub global_coefficients: DVector<f64>,
+    pub clustering: Clustering,
+    pub clustered_coefficients: Vec<DVector<f64>>,
+    pub permutation: Permutation,
 }
 
 impl State {
@@ -228,7 +228,7 @@ impl State {
 
     pub fn mcmc_iteration<S: FullConditional, T: Rng>(
         &mut self,
-        fixed: &StateFixedComponents,
+        mcmc_tuning: &McmcTuning,
         data: &mut Data,
         hyperparameters: &Hyperparameters,
         partition_distribution: &S,
@@ -236,7 +236,7 @@ impl State {
         rng2: &mut T,
     ) {
         data.impute(&self, rng);
-        if !fixed.precision_response {
+        if mcmc_tuning.update_precision_response {
             Self::update_precision_response(
                 &mut self.precision_response,
                 &self.global_coefficients,
@@ -247,7 +247,7 @@ impl State {
                 rng,
             );
         }
-        if !fixed.global_coefficients {
+        if mcmc_tuning.update_global_coefficients {
             Self::update_global_coefficients(
                 &mut self.global_coefficients,
                 self.precision_response,
@@ -258,13 +258,14 @@ impl State {
                 rng,
             );
         }
-        if !fixed.clustering {
+        if mcmc_tuning.update_clustering {
+            let permutation = Permutation::natural_and_fixed(self.clustering.n_items());
             Self::update_clustering(
                 &mut self.clustering,
                 &mut self.clustered_coefficients,
                 self.precision_response,
                 &self.global_coefficients,
-                &self.permutation,
+                &permutation,
                 data,
                 hyperparameters,
                 partition_distribution,
@@ -272,7 +273,7 @@ impl State {
                 rng2,
             );
         }
-        if !fixed.clustered_coefficients {
+        if mcmc_tuning.update_clustered_coefficients {
             Self::update_clustered_coefficients(
                 &mut self.clustered_coefficients,
                 &self.clustering,
@@ -282,9 +283,6 @@ impl State {
                 hyperparameters,
                 rng,
             );
-        }
-        if !fixed.permutation {
-            panic!("Random permutation is not yet implemented.")
         }
     }
 
@@ -324,6 +322,20 @@ impl State {
             + precision_response * data.global_covariates_transpose() * partial_residuals;
         *global_coefficients =
             sample_multivariate_normal_v2(precision_times_mean, precision, rng).unwrap();
+    }
+
+    fn dot_products(
+        clustering: &Clustering,
+        clustered_coefficients: &[DVector<f64>],
+        data: &Data,
+    ) -> DVector<f64> {
+        DVector::from_iterator(
+            data.n_items(),
+            data.clustered_covariates()
+                .row_iter()
+                .zip(clustering.allocation())
+                .map(|(w, &label)| (w * &clustered_coefficients[label])[(0, 0)]),
+        )
     }
 
     fn update_clustering<S: FullConditional, T: Rng>(
@@ -394,48 +406,39 @@ impl State {
             *clustered_coefficient = sample_multivariate_normal_v2(mean, precision, rng).unwrap()
         }
     }
-
-    fn dot_products(
-        clustering: &Clustering,
-        clustered_coefficients: &[DVector<f64>],
-        data: &Data,
-    ) -> DVector<f64> {
-        DVector::from_iterator(
-            data.n_items(),
-            data.clustered_covariates()
-                .row_iter()
-                .zip(clustering.allocation())
-                .map(|(w, &label)| (w * &clustered_coefficients[label])[(0, 0)]),
-        )
-    }
 }
 
-pub struct StateFixedComponents {
-    precision_response: bool,
-    global_coefficients: bool,
-    clustering: bool,
-    clustered_coefficients: bool,
-    permutation: bool,
+pub struct McmcTuning {
+    pub update_precision_response: bool,
+    pub update_global_coefficients: bool,
+    pub update_clustering: bool,
+    pub update_clustered_coefficients: bool,
+    pub n_items_per_permutation_update: u32,
 }
 
-impl StateFixedComponents {
+impl McmcTuning {
     pub fn new(
-        precision_response: bool,
-        global_coefficients: bool,
-        clustering: bool,
-        clustered_coefficients: bool,
-        permutation: bool,
+        update_precision_response: bool,
+        update_global_coefficients: bool,
+        update_clustering: bool,
+        update_clustered_coefficients: bool,
+        n_items_per_permutation_update: u32,
     ) -> Self {
         Self {
-            precision_response,
-            global_coefficients,
-            clustering,
-            clustered_coefficients,
-            permutation,
+            update_precision_response,
+            update_global_coefficients,
+            update_clustering,
+            update_clustered_coefficients,
+            n_items_per_permutation_update,
         }
     }
-    pub fn from_r(x: Rval, pc: &mut Pc) -> Self {
-        let (_, x) = x.coerce_logical(pc).unwrap();
-        Self::new(x[0] != 0, x[1] != 0, x[2] != 0, x[3] != 0, x[4] != 0)
+    pub fn from_r(x: Rval, _pc: &mut Pc) -> Self {
+        Self::new(
+            x.get_list_element(0).as_bool(),
+            x.get_list_element(1).as_bool(),
+            x.get_list_element(2).as_bool(),
+            x.get_list_element(3).as_bool(),
+            x.get_list_element(4).as_i32().try_into().unwrap(),
+        )
     }
 }

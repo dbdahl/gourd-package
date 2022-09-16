@@ -1,5 +1,5 @@
 #' @export
-fit <- function(data, state, fixed=rep(FALSE,5), hyperparameters, partitionDistribution=CRPPartition(n_items, 1), nIterations=1000, burnin=500, thin=10, save=list(samples=TRUE, logLikelihoodContributions=c("none", "all", "missing")[1]), missingItems=integer(0), progress=TRUE) {
+fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition(n_items, 1), nIterations=1000, burnin=500, thin=10, mcmcTuning=list(TRUE, TRUE, TRUE, TRUE, length(data$response)/2), missingItems=integer(0), save=list(samples=TRUE, logLikelihoodContributions=c("none", "all", "missing")[1]), progress=TRUE) {
   # Verify data
   if ( ! is.list(data) || length(data) != 3 || any(names(data) != c("response", "global_covariates", "clustered_covariates")) ) {
     stop("'data' must be a named list of elements: 1. 'response', 2. 'global_covariates', 3. 'clustered_covariates'")
@@ -95,10 +95,10 @@ fit <- function(data, state, fixed=rep(FALSE,5), hyperparameters, partitionDistr
     stop("Inconsistent number of clustered covariates.")
   }
   hyperparameters <- .Call(.hyperparameters_r2rust, hyperparameters)
-  partitionDistribution <- pumpkin::mkDistrPtr(partitionDistribution)  # DBD: Memory leak!!!!!
+  partitionDistribution <- mkDistrPtr(partitionDistribution)  # DBD: Memory leak!!!!!
   # Run MCMC
   if ( progress ) cat("Burning in...")
-  state <- .Call(.fit, burnin, data, state, fixed, hyperparameters, partitionDistribution, missingItems)
+  state <- .Call(.fit, burnin, data, state, hyperparameters, partitionDistribution, mcmcTuning, missingItems)
   if ( progress ) cat("\r")
   nSamples <- floor((nIterations-burnin)/thin)
   if ( save$samples ) {
@@ -116,7 +116,7 @@ fit <- function(data, state, fixed=rep(FALSE,5), hyperparameters, partitionDistr
   }
   if ( progress ) { pb <- txtProgressBar(0,nSamples,style=3) }
   for ( i in seq_len(nSamples) ) {
-    state <- .Call(.fit, thin, data, state, fixed, hyperparameters, partitionDistribution, missingItems)
+    state <- .Call(.fit, thin, data, state, hyperparameters, partitionDistribution, mcmcTuning, missingItems)
     if ( save$logLikelihoodContributions != "none" ) {
       logLikeContr[i,] <- if ( save$logLikelihoodContributions == "all" ) {
         .Call(.log_likelihood_contributions, state, data)
