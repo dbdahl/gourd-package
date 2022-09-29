@@ -10,8 +10,6 @@ approx              : Brendan Zabarauskas <bjzaba@yahoo.com.au>
 autocfg             : Josh Stone <cuviper@gmail.com>
 bytemuck            : Lokathor <zefria@gmail.com>
 cfg-if              : Alex Crichton <alex@alexcrichton.com>
-crossbeam           : The Crossbeam Project Developers
-crossbeam-deque     : The Crossbeam Project Developers
 dahl-bellnumber     : David B. Dahl <dahl@stat.byu.edu>
 dahl-partition      : David B. Dahl <dahl@stat.byu.edu>
 dahl-randompartition: David B. Dahl <dahl@stat.byu.edu>
@@ -21,24 +19,23 @@ hermit-abi          : Stefan Lankes
 lazy_static         : Marvin Löbel <loebel.marvin@gmail.com>
 libc                : The Rust Project Developers
 libm                : Jorge Aparicio <jorge@japaric.io>
-matrixmultiply      : bluss, R. Janis Goldschmidt
+matrixmultiply      : R. Janis Goldschmidt, bluss
 memoffset           : Gilad Naaman <gilad.naaman@gmail.com>
 nalgebra            : Sébastien Crozet <developer@crozet.re>
-nalgebra-macros     : Sébastien Crozet <developer@crozet.re>, Andreas Longva
-ndarray             : Jim Turner, Ulrik Sverdrup "bluss"
+nalgebra-macros     : Andreas Longva, Sébastien Crozet <developer@crozet.re>
+ndarray             : Ulrik Sverdrup "bluss", Jim Turner
 num-bigint          : The Rust Project Developers
 num-complex         : The Rust Project Developers
 num-integer         : The Rust Project Developers
 num-rational        : The Rust Project Developers
 num-traits          : The Rust Project Developers
 num_cpus            : Sean McArthur <sean@seanmonstar.com>
-once_cell           : Aleksey Kladov <aleksey.kladov@gmail.com>
 paste               : David Tolnay <dtolnay@gmail.com>
 ppv-lite86          : The CryptoCorrosion Contributors
-proc-macro2         : David Tolnay <dtolnay@gmail.com>, Alex Crichton <alex@alexcrichton.com>
+proc-macro2         : Alex Crichton <alex@alexcrichton.com>, David Tolnay <dtolnay@gmail.com>
 quote               : David Tolnay <dtolnay@gmail.com>
-rand                : The Rand Project Developers, The Rust Project Developers
-rand_chacha         : The Rand Project Developers, The Rust Project Developers, The CryptoCorrosion Contributors
+rand                : The Rust Project Developers, The Rand Project Developers
+rand_chacha         : The CryptoCorrosion Contributors, The Rand Project Developers, The Rust Project Developers
 rand_core           : The Rust Project Developers, The Rand Project Developers
 rand_distr          : The Rand Project Developers
 rand_pcg            : The Rand Project Developers

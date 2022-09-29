@@ -623,7 +623,7 @@ extern "C" fn free_distr_r_ptr(sexp: rbindings::SEXP) {
             let ptr = rbindings::R_ExternalPtrAddr(sexp) as *mut T;
             if !ptr.is_null() {
                 // Convert the raw pointer back to a Box<_> and drop it.
-                Box::from_raw(ptr);
+                let _ = Box::from_raw(ptr);
             }
         }
     }
