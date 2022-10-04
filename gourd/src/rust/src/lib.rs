@@ -1,11 +1,13 @@
 mod data;
 mod hyperparameters;
+mod monitor;
 mod mvnorm;
 mod registration;
 mod state;
 
 use crate::data::Data;
 use crate::hyperparameters::Hyperparameters;
+use crate::monitor::Monitor;
 use crate::mvnorm::sample_multivariate_normal_repeatedly;
 use crate::state::{McmcTuning, State};
 use dahl_randompartition::clust::Clustering;
@@ -31,6 +33,18 @@ use rand_pcg::Pcg64Mcg;
 use roxido::*;
 
 #[roxido]
+fn rngs_new() -> Rval {
+    let mut rng = Pcg64Mcg::from_seed(r::random_bytes::<16>());
+    let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
+    rng.fill(&mut seed);
+    let rng2 = Pcg64Mcg::from_seed(seed);
+    let result = Rval::new_list(2, pc);
+    result.set_list_element(0, Rval::external_pointer_encode(rng, rval!("rng")));
+    result.set_list_element(1, Rval::external_pointer_encode(rng2, rval!("rng")));
+    result
+}
+
+#[roxido]
 fn state_r2rust(state: Rval) -> Rval {
     Rval::external_pointer_encode(State::from_r(state, pc), rval!("state"))
 }
@@ -38,6 +52,16 @@ fn state_r2rust(state: Rval) -> Rval {
 #[roxido]
 fn state_rust2r_as_reference(state: Rval) -> Rval {
     Rval::external_pointer_decode_as_ref::<State>(state).to_r(pc)
+}
+
+#[roxido]
+fn monitor_new() -> Rval {
+    Rval::external_pointer_encode(Monitor::new(), rval!("monitor"))
+}
+
+#[roxido]
+fn monitor_rust2r_as_reference(monitor: Rval) -> Rval {
+    Rval::external_pointer_decode_as_ref::<Monitor>(monitor).to_r(pc)
 }
 
 #[roxido]
@@ -71,6 +95,12 @@ fn rust_free(x: Rval) -> Rval {
         }
         "hyperparameters" => {
             let _ = x.external_pointer_decode::<Hyperparameters>();
+        }
+        "monitor" => {
+            let _ = x.external_pointer_decode::<Monitor>();
+        }
+        "rng" => {
+            let _ = x.external_pointer_decode::<Pcg64Mcg>();
         }
         str => {
             panic!("Unrecognized type ID: {}.", str)
@@ -226,15 +256,19 @@ fn fit(
     data: Rval,
     state: Rval,
     hyperparameters: Rval,
+    monitor: Rval,
     partition_distribution: Rval,
     mcmc_tuning: Rval,
     _missing_items: Rval,
+    rngs: Rval,
 ) -> Rval {
     let n_updates = n_updates.as_usize();
     let data = Rval::external_pointer_decode_as_mut_ref::<Data>(data);
     let state_tag = state.external_pointer_tag();
     let mut state = Rval::external_pointer_decode::<State>(state);
     let hyperparameters = Rval::external_pointer_decode_as_ref::<Hyperparameters>(hyperparameters);
+    let monitor_tag = monitor.external_pointer_tag();
+    let mut monitor = Rval::external_pointer_decode::<Monitor>(monitor);
     let mcmc_tuning = McmcTuning::from_r(mcmc_tuning, pc);
     if data.n_global_covariates() != state.n_global_covariates()
         || hyperparameters.n_global_covariates() != state.n_global_covariates()
@@ -246,10 +280,12 @@ fn fit(
     {
         panic!("Inconsistent number of clustered covariates.")
     }
-    let mut rng = Pcg64Mcg::from_seed(r::random_bytes::<16>());
-    let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
-    rng.fill(&mut seed);
-    let mut rng2 = Pcg64Mcg::from_seed(seed);
+    let rng = rngs
+        .get_list_element(0)
+        .external_pointer_decode_as_mut_ref::<Pcg64Mcg>();
+    let rng2 = rngs
+        .get_list_element(1)
+        .external_pointer_decode_as_mut_ref::<Pcg64Mcg>();
     macro_rules! mcmc_update {
         ($tipe:ty, false) => {{
             let partition_distribution =
@@ -260,8 +296,8 @@ fn fit(
                     data,
                     hyperparameters,
                     partition_distribution,
-                    &mut rng,
-                    &mut rng2,
+                    rng,
+                    rng2,
                 );
             }
         }};
@@ -274,16 +310,17 @@ fn fit(
                     data,
                     hyperparameters,
                     partition_distribution,
-                    &mut rng,
-                    &mut rng2,
+                    rng,
+                    rng2,
                 );
-                dahl_randompartition::mcmc::update_permutation(
-                    1,
-                    partition_distribution,
-                    mcmc_tuning.n_items_per_permutation_update,
-                    &state.clustering,
-                    &mut rng,
-                );
+                monitor.permutation_acceptance_counter +=
+                    dahl_randompartition::mcmc::update_permutation(
+                        1,
+                        partition_distribution,
+                        mcmc_tuning.n_items_per_permutation_update,
+                        &state.clustering,
+                        rng,
+                    );
                 state.permutation = partition_distribution.permutation.clone();
             }
         }};
@@ -309,7 +346,17 @@ fn fit(
         _ => panic!("Unsupported distribution: {}", prior_name),
     }
     state = state.canonicalize();
-    Rval::external_pointer_encode(state, state_tag)
+    let result = Rval::new_list(2, pc);
+    result.set_list_element(0, Rval::external_pointer_encode(state, state_tag));
+    result.set_list_element(1, Rval::external_pointer_encode(monitor, monitor_tag));
+    result
+}
+
+#[roxido]
+fn monitor_reset(monitor: Rval) -> Rval {
+    let monitor = Rval::external_pointer_decode_as_mut_ref::<Monitor>(monitor);
+    monitor.reset();
+    Rval::nil()
 }
 
 #[roxido]

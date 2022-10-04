@@ -30,7 +30,22 @@ fn hyperparameters_r2rust(hyperparameters: Rval) -> Rval {
 }
 
 #[roxido]
-fn fit(burnin: Rval, data: Rval, state: Rval, hyperparameters: Rval, partitionDistribution: Rval, mcmcTuning: Rval, missingItems: Rval) -> Rval {
+fn monitor_new() -> Rval {
+    Rval::nil()
+}
+
+#[roxido]
+fn rngs_new() -> Rval {
+    Rval::nil()
+}
+
+#[roxido]
+fn fit(burnin: Rval, data: Rval, state: Rval, hyperparameters: Rval, monitor: Rval, partitionDistribution: Rval, mcmcTuning: Rval, missingItems: Rval, rngs: Rval) -> Rval {
+    Rval::nil()
+}
+
+#[roxido]
+fn monitor_reset(monitor: Rval) -> Rval {
     Rval::nil()
 }
 
@@ -46,6 +61,11 @@ fn log_likelihood_contributions_of_missing(state: Rval, data: Rval) -> Rval {
 
 #[roxido]
 fn state_rust2r_as_reference(state: Rval) -> Rval {
+    Rval::nil()
+}
+
+#[roxido]
+fn monitor_rust2r_as_reference(monitor: Rval) -> Rval {
     Rval::nil()
 }
 
@@ -124,8 +144,8 @@ use roxido::*;
 
 #[no_mangle]
 extern "C" fn R_init_gourd_rust(info: *mut rbindings::DllInfo) {
-    let mut call_routines = Vec::with_capacity(21);
-    let mut _names: Vec<std::ffi::CString> = Vec::with_capacity(21);
+    let mut call_routines = Vec::with_capacity(25);
+    let mut _names: Vec<std::ffi::CString> = Vec::with_capacity(25);
     _names.push(std::ffi::CString::new(".data_r2rust").unwrap());
     call_routines.push(rbindings::R_CallMethodDef {
         name: _names.last().unwrap().as_ptr(),
@@ -144,11 +164,29 @@ extern "C" fn R_init_gourd_rust(info: *mut rbindings::DllInfo) {
         fun: unsafe { std::mem::transmute(crate::hyperparameters_r2rust as *const u8) },
         numArgs: 1,
     });
+    _names.push(std::ffi::CString::new(".monitor_new").unwrap());
+    call_routines.push(rbindings::R_CallMethodDef {
+        name: _names.last().unwrap().as_ptr(),
+        fun: unsafe { std::mem::transmute(crate::monitor_new as *const u8) },
+        numArgs: 0,
+    });
+    _names.push(std::ffi::CString::new(".rngs_new").unwrap());
+    call_routines.push(rbindings::R_CallMethodDef {
+        name: _names.last().unwrap().as_ptr(),
+        fun: unsafe { std::mem::transmute(crate::rngs_new as *const u8) },
+        numArgs: 0,
+    });
     _names.push(std::ffi::CString::new(".fit").unwrap());
     call_routines.push(rbindings::R_CallMethodDef {
         name: _names.last().unwrap().as_ptr(),
         fun: unsafe { std::mem::transmute(crate::fit as *const u8) },
-        numArgs: 7,
+        numArgs: 9,
+    });
+    _names.push(std::ffi::CString::new(".monitor_reset").unwrap());
+    call_routines.push(rbindings::R_CallMethodDef {
+        name: _names.last().unwrap().as_ptr(),
+        fun: unsafe { std::mem::transmute(crate::monitor_reset as *const u8) },
+        numArgs: 1,
     });
     _names.push(std::ffi::CString::new(".log_likelihood_contributions").unwrap());
     call_routines.push(rbindings::R_CallMethodDef {
@@ -166,6 +204,12 @@ extern "C" fn R_init_gourd_rust(info: *mut rbindings::DllInfo) {
     call_routines.push(rbindings::R_CallMethodDef {
         name: _names.last().unwrap().as_ptr(),
         fun: unsafe { std::mem::transmute(crate::state_rust2r_as_reference as *const u8) },
+        numArgs: 1,
+    });
+    _names.push(std::ffi::CString::new(".monitor_rust2r_as_reference").unwrap());
+    call_routines.push(rbindings::R_CallMethodDef {
+        name: _names.last().unwrap().as_ptr(),
+        fun: unsafe { std::mem::transmute(crate::monitor_rust2r_as_reference as *const u8) },
         numArgs: 1,
     });
     _names.push(std::ffi::CString::new(".rust_free").unwrap());

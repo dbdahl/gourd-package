@@ -95,10 +95,15 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
     stop("Inconsistent number of clustered covariates.")
   }
   hyperparameters <- .Call(.hyperparameters_r2rust, hyperparameters)
+  monitor <- .Call(.monitor_new)
   partitionDistribution <- mkDistrPtr(partitionDistribution)  # DBD: Memory leak!!!!!
+  rngs <- .Call(.rngs_new)
   # Run MCMC
   if ( progress ) cat("Burning in...")
-  state <- .Call(.fit, burnin, data, state, hyperparameters, partitionDistribution, mcmcTuning, missingItems)
+  tmp <- .Call(.fit, burnin, data, state, hyperparameters, monitor, partitionDistribution, mcmcTuning, missingItems, rngs)
+  state <- tmp[[1]]
+  monitor <- tmp[[2]]
+  .Call(.monitor_reset, monitor);
   if ( progress ) cat("\r")
   nSamples <- floor((nIterations-burnin)/thin)
   if ( save$samples ) {
@@ -116,7 +121,9 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
   }
   if ( progress ) { pb <- txtProgressBar(0,nSamples,style=3) }
   for ( i in seq_len(nSamples) ) {
-    state <- .Call(.fit, thin, data, state, hyperparameters, partitionDistribution, mcmcTuning, missingItems)
+    tmp <- .Call(.fit, thin, data, state, hyperparameters, monitor, partitionDistribution, mcmcTuning, missingItems, rngs)
+    state <- tmp[[1]]
+    monitor <- tmp[[2]]
     if ( save$logLikelihoodContributions != "none" ) {
       logLikeContr[i,] <- if ( save$logLikelihoodContributions == "all" ) {
         .Call(.log_likelihood_contributions, state, data)
@@ -125,7 +132,7 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
       }
     }
     if ( save$samples ) {
-      tmp <- .Call(.state_rust2r_as_reference,state)
+      tmp <- .Call(.state_rust2r_as_reference, state)
       samples$precision_response[i] <- tmp[[1]]
       samples$global_coefficients[i,] <- tmp[[2]]
       samples$clustered_coefficients[[i]] <- tmp[[4]]
@@ -135,15 +142,19 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
     if ( progress ) setTxtProgressBar(pb, i)
   }
   if ( progress ) close(pb)
+  rates <- c(permutation_acceptance_rate = .Call(.monitor_rust2r_as_reference, monitor)[[1]] / (thin*nSamples) )
   .Call(.rust_free, data)
   .Call(.rust_free, state)
   .Call(.rust_free, hyperparameters)
+  .Call(.rust_free, monitor)
+  .Call(.rust_free, rngs[[1]])
+  .Call(.rust_free, rngs[[2]])
   result <- list()
   if ( save$samples ) {
-    result <- c(result, list(samples=samples))
+    result <- c(result, list(samples=samples, rates=rates))
   }
   if ( save$logLikelihoodContributions != "none" ) {
-    result <- c(result, list(logLikelihoodContributions=logLikeContr))
+    result <- c(result, list(logLikelihoodContributions=logLikeContr, rates=rates))
   }
   result
 }

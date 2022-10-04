@@ -22,7 +22,7 @@ libm                : Jorge Aparicio <jorge@japaric.io>
 matrixmultiply      : R. Janis Goldschmidt, bluss
 memoffset           : Gilad Naaman <gilad.naaman@gmail.com>
 nalgebra            : Sébastien Crozet <developer@crozet.re>
-nalgebra-macros     : Andreas Longva, Sébastien Crozet <developer@crozet.re>
+nalgebra-macros     : Sébastien Crozet <developer@crozet.re>, Andreas Longva
 ndarray             : Ulrik Sverdrup "bluss", Jim Turner
 num-bigint          : The Rust Project Developers
 num-complex         : The Rust Project Developers
@@ -32,11 +32,11 @@ num-traits          : The Rust Project Developers
 num_cpus            : Sean McArthur <sean@seanmonstar.com>
 paste               : David Tolnay <dtolnay@gmail.com>
 ppv-lite86          : The CryptoCorrosion Contributors
-proc-macro2         : Alex Crichton <alex@alexcrichton.com>, David Tolnay <dtolnay@gmail.com>
+proc-macro2         : David Tolnay <dtolnay@gmail.com>, Alex Crichton <alex@alexcrichton.com>
 quote               : David Tolnay <dtolnay@gmail.com>
-rand                : The Rust Project Developers, The Rand Project Developers
+rand                : The Rand Project Developers, The Rust Project Developers
 rand_chacha         : The CryptoCorrosion Contributors, The Rand Project Developers, The Rust Project Developers
-rand_core           : The Rust Project Developers, The Rand Project Developers
+rand_core           : The Rand Project Developers, The Rust Project Developers
 rand_distr          : The Rand Project Developers
 rand_pcg            : The Rand Project Developers
 rawpointer          : bluss
@@ -47,7 +47,7 @@ scopeguard          : bluss
 simba               : sebcrozet <developer@crozet.re>
 statrs              : Michael Ma
 syn                 : David Tolnay <dtolnay@gmail.com>
-typenum             : Paho Lurie-Gregg <paho@paholg.com>, Andre Bogus <bogusandre@gmail.com>
+typenum             : Andre Bogus <bogusandre@gmail.com>, Paho Lurie-Gregg <paho@paholg.com>
 unicode-ident       : David Tolnay <dtolnay@gmail.com>
 wasi                : The Cranelift Project Developers
 wide                : Lokathor <zefria@gmail.com>

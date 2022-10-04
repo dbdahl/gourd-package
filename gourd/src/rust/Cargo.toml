@@ -10,7 +10,7 @@ crate-type = ["staticlib"]
 
 [dependencies]
 roxido = { path="roxido" }
-dahl-randompartition = { git="https://github.com/dbdahl/rust-dahl-randompartition.git", rev="dd6443fbeb" }
+dahl-randompartition = { git="https://github.com/dbdahl/rust-dahl-randompartition.git", rev="671b567" }
 # dahl-randompartition = { path="/home/dahl/docs/devel/rust-dahl-randompartition" }
 nalgebra = "0.31.0"
 rand = "0.8.5"
