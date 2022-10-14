@@ -65,7 +65,7 @@ fn state_rust2r_as_reference(state: Rval) -> Rval {
 }
 
 #[roxido]
-fn monitor_rust2r_as_reference(monitor: Rval) -> Rval {
+fn monitor_rate(monitor: Rval) -> Rval {
     Rval::nil()
 }
 
@@ -206,10 +206,10 @@ extern "C" fn R_init_gourd_rust(info: *mut rbindings::DllInfo) {
         fun: unsafe { std::mem::transmute(crate::state_rust2r_as_reference as *const u8) },
         numArgs: 1,
     });
-    _names.push(std::ffi::CString::new(".monitor_rust2r_as_reference").unwrap());
+    _names.push(std::ffi::CString::new(".monitor_rate").unwrap());
     call_routines.push(rbindings::R_CallMethodDef {
         name: _names.last().unwrap().as_ptr(),
-        fun: unsafe { std::mem::transmute(crate::monitor_rust2r_as_reference as *const u8) },
+        fun: unsafe { std::mem::transmute(crate::monitor_rate as *const u8) },
         numArgs: 1,
     });
     _names.push(std::ffi::CString::new(".rust_free").unwrap());

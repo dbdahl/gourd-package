@@ -56,12 +56,19 @@ fn state_rust2r_as_reference(state: Rval) -> Rval {
 
 #[roxido]
 fn monitor_new() -> Rval {
-    Rval::external_pointer_encode(Monitor::new(), rval!("monitor"))
+    Rval::external_pointer_encode(Monitor::<u32>::new(), rval!("monitor"))
 }
 
 #[roxido]
-fn monitor_rust2r_as_reference(monitor: Rval) -> Rval {
-    Rval::external_pointer_decode_as_ref::<Monitor>(monitor).to_r(pc)
+fn monitor_rate(monitor: Rval) -> Rval {
+    rval!(Rval::external_pointer_decode_as_ref::<Monitor<u32>>(monitor).rate())
+}
+
+#[roxido]
+fn monitor_reset(monitor: Rval) -> Rval {
+    let monitor = Rval::external_pointer_decode_as_mut_ref::<Monitor<u32>>(monitor);
+    monitor.reset();
+    Rval::nil()
 }
 
 #[roxido]
@@ -97,7 +104,7 @@ fn rust_free(x: Rval) -> Rval {
             let _ = x.external_pointer_decode::<Hyperparameters>();
         }
         "monitor" => {
-            let _ = x.external_pointer_decode::<Monitor>();
+            let _ = x.external_pointer_decode::<Monitor<u32>>();
         }
         "rng" => {
             let _ = x.external_pointer_decode::<Pcg64Mcg>();
@@ -268,7 +275,7 @@ fn fit(
     let mut state = Rval::external_pointer_decode::<State>(state);
     let hyperparameters = Rval::external_pointer_decode_as_ref::<Hyperparameters>(hyperparameters);
     let monitor_tag = monitor.external_pointer_tag();
-    let mut monitor = Rval::external_pointer_decode::<Monitor>(monitor);
+    let mut monitor = Rval::external_pointer_decode::<Monitor<u32>>(monitor);
     let mcmc_tuning = McmcTuning::from_r(mcmc_tuning, pc);
     if data.n_global_covariates() != state.n_global_covariates()
         || hyperparameters.n_global_covariates() != state.n_global_covariates()
@@ -313,14 +320,15 @@ fn fit(
                     rng,
                     rng2,
                 );
-                monitor.permutation_acceptance_counter +=
+                monitor.monitor(1, |n_updates| {
                     dahl_randompartition::mcmc::update_permutation(
-                        1,
+                        n_updates,
                         partition_distribution,
                         mcmc_tuning.n_items_per_permutation_update,
                         &state.clustering,
                         rng,
-                    );
+                    )
+                });
                 state.permutation = partition_distribution.permutation.clone();
             }
         }};
@@ -350,13 +358,6 @@ fn fit(
     result.set_list_element(0, Rval::external_pointer_encode(state, state_tag));
     result.set_list_element(1, Rval::external_pointer_encode(monitor, monitor_tag));
     result
-}
-
-#[roxido]
-fn monitor_reset(monitor: Rval) -> Rval {
-    let monitor = Rval::external_pointer_decode_as_mut_ref::<Monitor>(monitor);
-    monitor.reset();
-    Rval::nil()
 }
 
 #[roxido]

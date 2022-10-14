@@ -1,30 +1,36 @@
-use roxido::*;
+use num_traits::cast::AsPrimitive;
+use num_traits::int::PrimInt;
+use num_traits::Zero;
+use rand_distr::num_traits;
+use std::ops::AddAssign;
 
 #[derive(Debug)]
-pub struct Monitor {
-    pub permutation_acceptance_counter: u32,
+pub struct Monitor<A> {
+    acceptance_counter: A,
+    attempts_counter: A,
 }
 
-impl Monitor {
+impl<A: PrimInt + AddAssign + AsPrimitive<f64>> Monitor<A> {
     pub fn new() -> Self {
         Self {
-            permutation_acceptance_counter: 0,
+            acceptance_counter: Zero::zero(),
+            attempts_counter: Zero::zero(),
         }
     }
 
-    pub fn to_r(&self, pc: &mut Pc) -> Rval {
-        let result = Rval::new_list(5, pc);
-        result.set_list_element(
-            0,
-            Rval::new(
-                i32::try_from(self.permutation_acceptance_counter).unwrap(),
-                pc,
-            ),
-        );
-        result
+    pub fn monitor<T: FnMut(A) -> A>(&mut self, n_attempts: A, mut f: T) {
+        self.acceptance_counter += f(n_attempts);
+        self.attempts_counter += n_attempts;
+    }
+
+    pub fn rate(&self) -> f64 {
+        let num: f64 = self.acceptance_counter.as_();
+        let den: f64 = self.attempts_counter.as_();
+        num / den
     }
 
     pub fn reset(&mut self) {
-        self.permutation_acceptance_counter = 0;
+        self.acceptance_counter = Zero::zero();
+        self.attempts_counter = Zero::zero();
     }
 }

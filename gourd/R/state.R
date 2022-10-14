@@ -142,7 +142,7 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
     if ( progress ) setTxtProgressBar(pb, i)
   }
   if ( progress ) close(pb)
-  rates <- c(permutation_acceptance_rate = .Call(.monitor_rust2r_as_reference, monitor)[[1]] / (thin*nSamples) )
+  rates <- c(permutation_acceptance_rate = .Call(.monitor_rate, monitor))
   .Call(.rust_free, data)
   .Call(.rust_free, state)
   .Call(.rust_free, hyperparameters)
