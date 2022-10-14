@@ -12,8 +12,10 @@ prebuild:
   Rscript -e 'cargo::prebuild(what="all")'
   scp -r src/rust/r_cargo_cross_compile {{scp_dest}}
 
-publish:
+is-clean:
   R-package is-clean
+
+publish: is-clean install
   R-package publish {{pkgname}}_*.tar.gz
   R-package tag
   echo "Please increment the version number in the files DESCRIPTION and NEWS."
