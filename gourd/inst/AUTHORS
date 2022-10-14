@@ -19,7 +19,7 @@ hermit-abi          : Stefan Lankes
 lazy_static         : Marvin Löbel <loebel.marvin@gmail.com>
 libc                : The Rust Project Developers
 libm                : Jorge Aparicio <jorge@japaric.io>
-matrixmultiply      : bluss, R. Janis Goldschmidt
+matrixmultiply      : R. Janis Goldschmidt, bluss
 memoffset           : Gilad Naaman <gilad.naaman@gmail.com>
 nalgebra            : Sébastien Crozet <developer@crozet.re>
 nalgebra-macros     : Sébastien Crozet <developer@crozet.re>, Andreas Longva
@@ -35,8 +35,8 @@ ppv-lite86          : The CryptoCorrosion Contributors
 proc-macro2         : Alex Crichton <alex@alexcrichton.com>, David Tolnay <dtolnay@gmail.com>
 quote               : David Tolnay <dtolnay@gmail.com>
 rand                : The Rand Project Developers, The Rust Project Developers
-rand_chacha         : The Rust Project Developers, The Rand Project Developers, The CryptoCorrosion Contributors
-rand_core           : The Rand Project Developers, The Rust Project Developers
+rand_chacha         : The CryptoCorrosion Contributors, The Rust Project Developers, The Rand Project Developers
+rand_core           : The Rust Project Developers, The Rand Project Developers
 rand_distr          : The Rand Project Developers
 rand_pcg            : The Rand Project Developers
 rawpointer          : bluss

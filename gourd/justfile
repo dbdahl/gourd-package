@@ -1,13 +1,20 @@
 scp_dest := "dahl:public"  # Change this to match the 'configure' script.
+pkgname := `basename $(pwd)`
 
 build:
-  rm -f *.tar.gz
+  rm -f {{pkgname}}_*.tar.gz
   R CMD build .
 
 install: build
-  R CMD INSTALL *.tar.gz
+  R CMD INSTALL {{pkgname}}_*.tar.gz
 
 prebuild:
   Rscript -e 'cargo::prebuild(what="all")'
   scp -r src/rust/r_cargo_cross_compile {{scp_dest}}
-  
+
+publish:
+  R-package is-clean
+  R-package publish {{pkgname}}_*.tar.gz
+  R-package tag
+  echo "Please increment the version number in the files DESCRIPTION and NEWS."
+
