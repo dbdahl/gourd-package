@@ -58,8 +58,8 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
   }
   state <- .Call(.state_r2rust, state)
   # Verify hyperparameters
-  if ( ! is.list(hyperparameters) || length(hyperparameters) != 9 || any(names(hyperparameters) != c("precision_response_shape", "precision_response_rate", "global_coefficients_mean", "global_coefficients_precision", "clustered_coefficients_mean", "clustered_coefficients_precision", "shrinkage_reference", "shrinkage_gamma_shape", "shrinkage_gamma_rate")) ) {
-    stop("'hyperparameters' must be a named list of elements: 1. 'precision_response_shape', 2. 'precision_response_rate', 3. 'global_coefficients_mean', 4. 'global_coefficients_precision', 5. 'clustered_coefficients_mean', 6. 'clustered_coefficients_precision', 7. 'shrinkage_reference', 8. 'shrinkage_gamma_shape', 9. 'shrinkage_gamma_rate'.")
+  if ( ! is.list(hyperparameters) || length(hyperparameters) != 9 || any(names(hyperparameters) != c("precision_response_shape", "precision_response_rate", "global_coefficients_mean", "global_coefficients_precision", "clustered_coefficients_mean", "clustered_coefficients_precision", "shrinkage_reference", "shrinkage_shape", "shrinkage_rate")) ) {
+    stop("'hyperparameters' must be a named list of elements: 1. 'precision_response_shape', 2. 'precision_response_rate', 3. 'global_coefficients_mean', 4. 'global_coefficients_precision', 5. 'clustered_coefficients_mean', 6. 'clustered_coefficients_precision', 7. 'shrinkage_reference', 8. 'shrinkage_shape', 9. 'shrinkage_rate'.")
   }
   if ( ! is.numeric(hyperparameters$precision_response_shape) || ! is.numeric(hyperparameters$precision_response_rate) || ! is.numeric(hyperparameters$global_coefficients_mean) || ! is.numeric(hyperparameters$global_coefficients_precision)  || ! is.numeric(hyperparameters$clustered_coefficients_mean) || ! is.numeric(hyperparameters$clustered_coefficients_precision) ) {
     stop("Elements of 'hyperparameters' must be numeric values.")
@@ -85,11 +85,11 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
   if ( length(hyperparameters$shrinkage_reference) != 1 || hyperparameters$shrinkage_reference < 1 || hyperparameters$shrinkage_reference > n_items ) {
     stop("'hyperparameters$shrinkage_reference' must be in [1, 2, ..., n_items].")
   }
-  if ( length(hyperparameters$shrinkage_gamma_shape) != 1 || hyperparameters$shrinkage_gamma_shape <= 0.0 ) {
-    stop("'hyperparameters$shrinkage_gamma_shape' must be a strictly positive scalar.")
+  if ( length(hyperparameters$shrinkage_shape) != 1 || hyperparameters$shrinkage_shape <= 0.0 ) {
+    stop("'hyperparameters$shrinkage_shape' must be a strictly positive scalar.")
   }
-  if ( length(hyperparameters$shrinkage_gamma_rate) != 1 || hyperparameters$shrinkage_gamma_rate <= 0.0 ) {
-    stop("'hyperparameters$shrinkage_gamma_rate' must be a strictly positive scalar.")
+  if ( length(hyperparameters$shrinkage_rate) != 1 || hyperparameters$shrinkage_rate <= 0.0 ) {
+    stop("'hyperparameters$shrinkage_rate' must be a strictly positive scalar.")
   }
   hyperparameters <- .Call(.hyperparameters_r2rust, hyperparameters)
   # Verify MCMC tuning parameters

@@ -13,8 +13,8 @@ pub struct Hyperparameters {
     clustered_coefficients_precision_times_mean: DVector<f64>,
     clustered_coefficients_precision_l_inv_transpose: DMatrix<f64>,
     pub shrinkage_reference: Option<usize>,
-    pub shrinkage_gamma_shape: Option<f64>,
-    pub shrinkage_gamma_rate: Option<f64>,
+    pub shrinkage_shape: Option<f64>,
+    pub shrinkage_rate: Option<f64>,
 }
 
 impl Hyperparameters {
@@ -26,8 +26,8 @@ impl Hyperparameters {
         clustered_coefficients_mean: DVector<f64>,
         clustered_coefficients_precision: DMatrix<f64>,
         shrinkage_reference: Option<usize>,
-        shrinkage_gamma_shape: Option<f64>,
-        shrinkage_gamma_rate: Option<f64>,
+        shrinkage_shape: Option<f64>,
+        shrinkage_rate: Option<f64>,
     ) -> Option<Self> {
         if precision_response_shape <= 0.0 {
             return None;
@@ -69,8 +69,8 @@ impl Hyperparameters {
             clustered_coefficients_precision_times_mean,
             clustered_coefficients_precision_l_inv_transpose,
             shrinkage_reference,
-            shrinkage_gamma_shape,
-            shrinkage_gamma_rate,
+            shrinkage_shape,
+            shrinkage_rate,
         })
     }
 
@@ -109,8 +109,8 @@ impl Hyperparameters {
             clustered_coefficients_precision_slice,
         );
         let shrinkage_reference = hyperparameters.get_list_element(6).as_usize() - 1;
-        let shrinkage_gamma_shape = hyperparameters.get_list_element(7).as_f64();
-        let shrinkage_gamma_rate = hyperparameters.get_list_element(8).as_f64();
+        let shrinkage_shape = hyperparameters.get_list_element(7).as_f64();
+        let shrinkage_rate = hyperparameters.get_list_element(8).as_f64();
         fn wrap(x: f64) -> Option<f64> {
             if x.is_nan() || x.is_infinite() || x <= 0.0 {
                 None
@@ -126,8 +126,8 @@ impl Hyperparameters {
             clustered_coefficients_mean,
             clustered_coefficients_precision,
             Some(shrinkage_reference),
-            wrap(shrinkage_gamma_shape),
-            wrap(shrinkage_gamma_rate),
+            wrap(shrinkage_shape),
+            wrap(shrinkage_rate),
         )
         .unwrap()
     }

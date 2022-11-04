@@ -339,7 +339,7 @@ fn fit(
                 state.mcmc_iteration(&mcmc_tuning, data, hyperparameters, partition_distribution, rng, rng2);
                 monitor.monitor(1, |n_updates| { dahl_randompartition::mcmc::update_permutation(n_updates, partition_distribution, mcmc_tuning.n_items_per_permutation_update, &state.clustering, rng) });
                 permutation_to_r(&partition_distribution.permutation, permutation);
-                dahl_randompartition::mcmc::update_scalar_shrinkage(1, partition_distribution, mcmc_tuning.shrinkage_slice_step_size.unwrap(), hyperparameters.shrinkage_gamma_shape.unwrap(), hyperparameters.shrinkage_gamma_rate.unwrap(), &state.clustering, rng);
+                dahl_randompartition::mcmc::update_scalar_shrinkage(1, partition_distribution, mcmc_tuning.shrinkage_slice_step_size.unwrap(), hyperparameters.shrinkage_shape.unwrap(), hyperparameters.shrinkage_rate.unwrap(), &state.clustering, rng);
                 rate_to_r(partition_distribution.rate, shrinkage);
             }
         }};
@@ -349,7 +349,7 @@ fn fit(
                 state.mcmc_iteration(&mcmc_tuning, data, hyperparameters, partition_distribution, rng, rng2);
                 monitor.monitor(1, |n_updates| { dahl_randompartition::mcmc::update_permutation(n_updates, partition_distribution, mcmc_tuning.n_items_per_permutation_update, &state.clustering, rng) });
                 permutation_to_r(&partition_distribution.permutation, permutation);
-                dahl_randompartition::mcmc::update_vector_shrinkage(1, partition_distribution, hyperparameters.shrinkage_reference.unwrap(), mcmc_tuning.shrinkage_slice_step_size.unwrap(), hyperparameters.shrinkage_gamma_shape.unwrap(), hyperparameters.shrinkage_gamma_rate.unwrap(), &state.clustering, rng);
+                dahl_randompartition::mcmc::update_vector_shrinkage(1, partition_distribution, hyperparameters.shrinkage_reference.unwrap(), mcmc_tuning.shrinkage_slice_step_size.unwrap(), hyperparameters.shrinkage_shape.unwrap(), hyperparameters.shrinkage_rate.unwrap(), &state.clustering, rng);
                 shrinkage_to_r(&partition_distribution.shrinkage, shrinkage);
             }
         }};
