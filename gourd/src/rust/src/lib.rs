@@ -188,7 +188,7 @@ fn all(all: Rval) -> Rval {
 fn fit_all(all_ptr: Rval, shrinkage: Rval, n_updates: Rval, do_baseline_partition: Rval) -> Rval {
     let mut all: All = all_ptr.external_pointer_decode();
     let n_items = all.0[0].data.n_items();
-    let fixed = McmcTuning::new(false, false, false, false, 2, Some(1.0)).unwrap();
+    let fixed = McmcTuning::new(false, false, false, false, Some(2), Some(1.0)).unwrap();
     let shrinkage = Shrinkage::constant(shrinkage.as_f64(), n_items).unwrap();
     let n_updates = n_updates.as_usize();
     let do_baseline_partition = do_baseline_partition.as_bool();
@@ -329,7 +329,7 @@ fn fit(
             let partition_distribution = partition_distribution.external_pointer_decode_as_mut_ref::<$tipe>();
             for _ in 0..n_updates {
                 state.mcmc_iteration(&mcmc_tuning, data, hyperparameters, partition_distribution, rng, rng2);
-                monitor.monitor(1, |n_updates| { dahl_randompartition::mcmc::update_permutation(n_updates, partition_distribution, mcmc_tuning.n_items_per_permutation_update, &state.clustering, rng) });
+                monitor.monitor(1, |n_updates| { dahl_randompartition::mcmc::update_permutation(n_updates, partition_distribution, mcmc_tuning.n_items_per_permutation_update.unwrap(), &state.clustering, rng) });
                 permutation_to_r(&partition_distribution.permutation, permutation);
             }
         }};
@@ -337,7 +337,7 @@ fn fit(
             let partition_distribution = partition_distribution.external_pointer_decode_as_mut_ref::<$tipe>();
             for _ in 0..n_updates {
                 state.mcmc_iteration(&mcmc_tuning, data, hyperparameters, partition_distribution, rng, rng2);
-                monitor.monitor(1, |n_updates| { dahl_randompartition::mcmc::update_permutation(n_updates, partition_distribution, mcmc_tuning.n_items_per_permutation_update, &state.clustering, rng) });
+                monitor.monitor(1, |n_updates| { dahl_randompartition::mcmc::update_permutation(n_updates, partition_distribution, mcmc_tuning.n_items_per_permutation_update.unwrap(), &state.clustering, rng) });
                 permutation_to_r(&partition_distribution.permutation, permutation);
                 dahl_randompartition::mcmc::update_scalar_shrinkage(1, partition_distribution, mcmc_tuning.shrinkage_slice_step_size.unwrap(), hyperparameters.shrinkage_shape.unwrap(), hyperparameters.shrinkage_rate.unwrap(), &state.clustering, rng);
                 rate_to_r(partition_distribution.rate, shrinkage);
@@ -347,7 +347,7 @@ fn fit(
             let partition_distribution = partition_distribution.external_pointer_decode_as_mut_ref::<$tipe>();
             for _ in 0..n_updates {
                 state.mcmc_iteration(&mcmc_tuning, data, hyperparameters, partition_distribution, rng, rng2);
-                monitor.monitor(1, |n_updates| { dahl_randompartition::mcmc::update_permutation(n_updates, partition_distribution, mcmc_tuning.n_items_per_permutation_update, &state.clustering, rng) });
+                monitor.monitor(1, |n_updates| { dahl_randompartition::mcmc::update_permutation(n_updates, partition_distribution, mcmc_tuning.n_items_per_permutation_update.unwrap(), &state.clustering, rng) });
                 permutation_to_r(&partition_distribution.permutation, permutation);
                 dahl_randompartition::mcmc::update_vector_shrinkage(1, partition_distribution, hyperparameters.shrinkage_reference.unwrap(), mcmc_tuning.shrinkage_slice_step_size.unwrap(), hyperparameters.shrinkage_shape.unwrap(), hyperparameters.shrinkage_rate.unwrap(), &state.clustering, rng);
                 shrinkage_to_r(&partition_distribution.shrinkage, shrinkage);

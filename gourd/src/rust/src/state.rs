@@ -394,7 +394,7 @@ pub struct McmcTuning {
     pub update_global_coefficients: bool,
     pub update_clustering: bool,
     pub update_clustered_coefficients: bool,
-    pub n_items_per_permutation_update: u32,
+    pub n_items_per_permutation_update: Option<u32>,
     pub shrinkage_slice_step_size: Option<f64>,
 }
 
@@ -404,7 +404,7 @@ impl McmcTuning {
         update_global_coefficients: bool,
         update_clustering: bool,
         update_clustered_coefficients: bool,
-        n_items_per_permutation_update: u32,
+        n_items_per_permutation_update: Option<u32>,
         shrinkage_slice_step_size: Option<f64>,
     ) -> Result<Self, &'static str> {
         if let Some(s) = shrinkage_slice_step_size {
@@ -427,7 +427,7 @@ impl McmcTuning {
             x.get_list_element(1).as_bool(),
             x.get_list_element(2).as_bool(),
             x.get_list_element(3).as_bool(),
-            x.get_list_element(4).as_i32().try_into().unwrap(),
+            Some(x.get_list_element(4).as_i32().try_into().unwrap()),
             Some(x.get_list_element(5).as_f64()),
         )
         .unwrap()
