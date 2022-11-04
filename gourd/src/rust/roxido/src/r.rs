@@ -588,6 +588,10 @@ impl Rval {
         }
         let len = self.len();
         if i >= len {
+            println!(
+                "Custom backtrace: {}",
+                std::backtrace::Backtrace::force_capture()
+            );
             panic!("Index {} is out of bounds for list of length {}", i, len);
         }
         Self(unsafe { VECTOR_ELT(self.0, i.try_into().unwrap()) })
@@ -831,7 +835,6 @@ impl Rval {
     pub fn slice_raw(self) -> Result<&'static [u8], &'static str> {
         Self::slice(self, RAWSXP, |x| unsafe { RAW(x) })
     }
-
 
     fn slice_mut<T>(
         rval: Self,

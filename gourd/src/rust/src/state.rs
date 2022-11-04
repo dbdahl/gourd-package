@@ -16,7 +16,6 @@ pub struct State {
     pub global_coefficients: DVector<f64>,
     pub clustering: Clustering,
     pub clustered_coefficients: Vec<DVector<f64>>,
-    pub permutation: Permutation,
 }
 
 impl State {
@@ -25,7 +24,6 @@ impl State {
         global_coefficients: DVector<f64>,
         clustering: Clustering,
         clustered_coefficients: Vec<DVector<f64>>,
-        permutation: Permutation,
     ) -> Option<Self> {
         if precision_response <= 0.0 {
             return None;
@@ -39,15 +37,11 @@ impl State {
                 return None;
             }
         }
-        if permutation.n_items() != clustering.n_items() {
-            return None;
-        }
         Some(Self {
             precision_response,
             global_coefficients,
             clustering,
             clustered_coefficients,
-            permutation,
         })
     }
 
@@ -67,23 +61,17 @@ impl State {
             let (_, slice) = element.coerce_double(pc).unwrap();
             clustered_coefficients.push(DVector::from_column_slice(slice));
         }
-        let permutation = {
-            let perm = state.get_list_element(4).coerce_integer(pc).unwrap().1;
-            let perm: Vec<_> = perm.iter().map(|&x| (x as usize) - 1).collect();
-            Permutation::from_vector(perm).unwrap()
-        };
         Self::new(
             precision_response,
             global_coefficients,
             clustering,
             clustered_coefficients,
-            permutation,
         )
         .unwrap()
     }
 
     pub fn to_r(&self, pc: &mut Pc) -> Rval {
-        let result = Rval::new_list(5, pc);
+        let result = Rval::new_list(4, pc);
         result.set_list_element(0, Rval::new(self.precision_response, pc));
         result.set_list_element(1, Rval::new(self.global_coefficients.as_slice(), pc));
         let x: Vec<_> = self
@@ -98,13 +86,6 @@ impl State {
             rval.set_list_element(i, Rval::new(coef.as_slice(), pc));
         }
         result.set_list_element(3, rval);
-        let x: Vec<_> = self
-            .permutation
-            .as_slice()
-            .iter()
-            .map(|&label| i32::try_from(label + 1).unwrap())
-            .collect();
-        result.set_list_element(4, Rval::new(&x[..], pc));
         result
     }
 
@@ -414,6 +395,7 @@ pub struct McmcTuning {
     pub update_clustering: bool,
     pub update_clustered_coefficients: bool,
     pub n_items_per_permutation_update: u32,
+    pub shrinkage_slice_step_size: Option<f64>,
 }
 
 impl McmcTuning {
@@ -423,14 +405,21 @@ impl McmcTuning {
         update_clustering: bool,
         update_clustered_coefficients: bool,
         n_items_per_permutation_update: u32,
-    ) -> Self {
-        Self {
+        shrinkage_slice_step_size: Option<f64>,
+    ) -> Result<Self, &'static str> {
+        if let Some(s) = shrinkage_slice_step_size {
+            if s.is_nan() || s.is_infinite() || s <= 0.0 {
+                return Err("shrinkage_slice_step_size must be a finite strictly positive number.");
+            }
+        }
+        Ok(Self {
             update_precision_response,
             update_global_coefficients,
             update_clustering,
             update_clustered_coefficients,
             n_items_per_permutation_update,
-        }
+            shrinkage_slice_step_size,
+        })
     }
     pub fn from_r(x: Rval, _pc: &mut Pc) -> Self {
         Self::new(
@@ -439,6 +428,8 @@ impl McmcTuning {
             x.get_list_element(2).as_bool(),
             x.get_list_element(3).as_bool(),
             x.get_list_element(4).as_i32().try_into().unwrap(),
+            Some(x.get_list_element(5).as_f64()),
         )
+        .unwrap()
     }
 }

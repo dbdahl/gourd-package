@@ -46,12 +46,14 @@ fn rngs_new() -> Rval {
 
 #[roxido]
 fn state_r2rust(state: Rval) -> Rval {
-    Rval::external_pointer_encode(State::from_r(state, pc), rval!("state"))
+    let state = State::from_r(state, pc);
+    Rval::external_pointer_encode(state, rval!("state"))
 }
 
 #[roxido]
 fn state_rust2r_as_reference(state: Rval) -> Rval {
-    Rval::external_pointer_decode_as_ref::<State>(state).to_r(pc)
+    let state = Rval::external_pointer_decode_as_ref::<State>(state);
+    state.to_r(pc)
 }
 
 #[roxido]
@@ -116,6 +118,26 @@ fn rust_free(x: Rval) -> Rval {
     Rval::nil()
 }
 
+fn permutation_to_r(permutation: &Permutation, rval: Rval) {
+    for (x, y) in permutation
+        .as_slice()
+        .iter()
+        .zip(rval.slice_mut_integer().unwrap())
+    {
+        *y = i32::try_from(*x).unwrap() + 1;
+    }
+}
+
+fn rate_to_r(rate: f64, rval: Rval) {
+    rval.slice_mut_double().unwrap()[0] = rate;
+}
+
+fn shrinkage_to_r(shrinkage: &Shrinkage, rval: Rval) {
+    rval.slice_mut_double()
+        .unwrap()
+        .copy_from_slice(shrinkage.as_slice());
+}
+
 struct Group {
     data: Data,
     state: State,
@@ -166,7 +188,7 @@ fn all(all: Rval) -> Rval {
 fn fit_all(all_ptr: Rval, shrinkage: Rval, n_updates: Rval, do_baseline_partition: Rval) -> Rval {
     let mut all: All = all_ptr.external_pointer_decode();
     let n_items = all.0[0].data.n_items();
-    let fixed = McmcTuning::new(false, false, false, false, 2);
+    let fixed = McmcTuning::new(false, false, false, false, 2, Some(1.0)).unwrap();
     let shrinkage = Shrinkage::constant(shrinkage.as_f64(), n_items).unwrap();
     let n_updates = n_updates.as_usize();
     let do_baseline_partition = do_baseline_partition.as_bool();
@@ -267,9 +289,11 @@ fn fit(
     partition_distribution: Rval,
     mcmc_tuning: Rval,
     _missing_items: Rval,
+    permutation: Rval,
+    shrinkage: Rval,
     rngs: Rval,
 ) -> Rval {
-    let n_updates = n_updates.as_usize();
+    let n_updates: u32 = n_updates.as_i32().try_into().unwrap();
     let data = Rval::external_pointer_decode_as_mut_ref::<Data>(data);
     let state_tag = state.external_pointer_tag();
     let mut state = Rval::external_pointer_decode::<State>(state);
@@ -293,64 +317,61 @@ fn fit(
     let rng2 = rngs
         .get_list_element(1)
         .external_pointer_decode_as_mut_ref::<Pcg64Mcg>();
-    macro_rules! mcmc_update {
-        ($tipe:ty, false) => {{
-            let partition_distribution =
-                partition_distribution.external_pointer_decode_as_mut_ref::<$tipe>();
+    #[rustfmt::skip]
+    macro_rules! mcmc_update { // (_, HAS_PERMUTATION, HAS_SCALAR_SHRINKAGE, HAS_VECTOR_SHRINKAGE)
+        ($tipe:ty, false, false, false) => {{
+            let partition_distribution = partition_distribution.external_pointer_decode_as_mut_ref::<$tipe>();
             for _ in 0..n_updates {
-                state.mcmc_iteration(
-                    &mcmc_tuning,
-                    data,
-                    hyperparameters,
-                    partition_distribution,
-                    rng,
-                    rng2,
-                );
+                state.mcmc_iteration(&mcmc_tuning, data, hyperparameters, partition_distribution, rng, rng2);
             }
         }};
-        ($tipe:ty, true) => {{
-            let partition_distribution =
-                partition_distribution.external_pointer_decode_as_mut_ref::<$tipe>();
+        ($tipe:ty, true, false, false) => {{
+            let partition_distribution = partition_distribution.external_pointer_decode_as_mut_ref::<$tipe>();
             for _ in 0..n_updates {
-                state.mcmc_iteration(
-                    &mcmc_tuning,
-                    data,
-                    hyperparameters,
-                    partition_distribution,
-                    rng,
-                    rng2,
-                );
-                monitor.monitor(1, |n_updates| {
-                    dahl_randompartition::mcmc::update_permutation(
-                        n_updates,
-                        partition_distribution,
-                        mcmc_tuning.n_items_per_permutation_update,
-                        &state.clustering,
-                        rng,
-                    )
-                });
-                state.permutation = partition_distribution.permutation.clone();
+                state.mcmc_iteration(&mcmc_tuning, data, hyperparameters, partition_distribution, rng, rng2);
+                monitor.monitor(1, |n_updates| { dahl_randompartition::mcmc::update_permutation(n_updates, partition_distribution, mcmc_tuning.n_items_per_permutation_update, &state.clustering, rng) });
+                permutation_to_r(&partition_distribution.permutation, permutation);
+            }
+        }};
+        ($tipe:ty, true, true, false) => {{
+            let partition_distribution = partition_distribution.external_pointer_decode_as_mut_ref::<$tipe>();
+            for _ in 0..n_updates {
+                state.mcmc_iteration(&mcmc_tuning, data, hyperparameters, partition_distribution, rng, rng2);
+                monitor.monitor(1, |n_updates| { dahl_randompartition::mcmc::update_permutation(n_updates, partition_distribution, mcmc_tuning.n_items_per_permutation_update, &state.clustering, rng) });
+                permutation_to_r(&partition_distribution.permutation, permutation);
+                dahl_randompartition::mcmc::update_scalar_shrinkage(1, partition_distribution, mcmc_tuning.shrinkage_slice_step_size.unwrap(), hyperparameters.shrinkage_gamma_shape.unwrap(), hyperparameters.shrinkage_gamma_rate.unwrap(), &state.clustering, rng);
+                rate_to_r(partition_distribution.rate, shrinkage);
+            }
+        }};
+        ($tipe:ty, true, false, true) => {{
+            let partition_distribution = partition_distribution.external_pointer_decode_as_mut_ref::<$tipe>();
+            for _ in 0..n_updates {
+                state.mcmc_iteration(&mcmc_tuning, data, hyperparameters, partition_distribution, rng, rng2);
+                monitor.monitor(1, |n_updates| { dahl_randompartition::mcmc::update_permutation(n_updates, partition_distribution, mcmc_tuning.n_items_per_permutation_update, &state.clustering, rng) });
+                permutation_to_r(&partition_distribution.permutation, permutation);
+                dahl_randompartition::mcmc::update_vector_shrinkage(1, partition_distribution, hyperparameters.shrinkage_reference.unwrap(), mcmc_tuning.shrinkage_slice_step_size.unwrap(), hyperparameters.shrinkage_gamma_shape.unwrap(), hyperparameters.shrinkage_gamma_rate.unwrap(), &state.clustering, rng);
+                shrinkage_to_r(&partition_distribution.shrinkage, shrinkage);
             }
         }};
     }
     let prior_name = partition_distribution.external_pointer_tag().as_str();
     match prior_name {
-        "fixed" => mcmc_update!(FixedPartitionParameters, false),
-        "up" => mcmc_update!(UpParameters, false),
-        "jlp" => mcmc_update!(JlpParameters, true),
-        "crp" => mcmc_update!(CrpParameters, false),
-        "epa" => mcmc_update!(EpaParameters, true),
-        "lsp" => mcmc_update!(LspParameters, true),
-        "cpp-up" => mcmc_update!(CppParameters<UpParameters>, false),
-        "cpp-jlp" => mcmc_update!(CppParameters<JlpParameters>, false),
-        "cpp-crp" => mcmc_update!(CppParameters<CrpParameters>, false),
-        "frp" => mcmc_update!(FrpParameters, true),
-        "oldsp-up" => mcmc_update!(OldSpParameters<UpParameters>, true),
-        "oldsp-jlp" => mcmc_update!(OldSpParameters<JlpParameters>, true),
-        "oldsp-crp" => mcmc_update!(OldSpParameters<CrpParameters>, true),
-        "sp-up" => mcmc_update!(SpParameters<UpParameters>, true),
-        "sp-jlp" => mcmc_update!(SpParameters<JlpParameters>, true),
-        "sp-crp" => mcmc_update!(SpParameters<CrpParameters>, true),
+        "fixed" => mcmc_update!(FixedPartitionParameters, false, false, false),
+        "up" => mcmc_update!(UpParameters, false, false, false),
+        "jlp" => mcmc_update!(JlpParameters, true, false, false),
+        "crp" => mcmc_update!(CrpParameters, false, false, false),
+        "epa" => mcmc_update!(EpaParameters, true, false, false),
+        "lsp" => mcmc_update!(LspParameters, true, true, false),
+        "cpp-up" => mcmc_update!(CppParameters<UpParameters>, false, false, false),
+        "cpp-jlp" => mcmc_update!(CppParameters<JlpParameters>, false, false, false),
+        "cpp-crp" => mcmc_update!(CppParameters<CrpParameters>, false, false, false),
+        "frp" => mcmc_update!(FrpParameters, true, false, true),
+        "oldsp-up" => mcmc_update!(OldSpParameters<UpParameters>, true, false, true),
+        "oldsp-jlp" => mcmc_update!(OldSpParameters<JlpParameters>, true, false, true),
+        "oldsp-crp" => mcmc_update!(OldSpParameters<CrpParameters>, true, false, true),
+        "sp-up" => mcmc_update!(SpParameters<UpParameters>, true, false, true),
+        "sp-jlp" => mcmc_update!(SpParameters<JlpParameters>, true, false, true),
+        "sp-crp" => mcmc_update!(SpParameters<CrpParameters>, true, false, true),
         _ => panic!("Unsupported distribution: {}", prior_name),
     }
     state = state.canonicalize();
@@ -473,13 +494,8 @@ fn new_LspParameters(baseline_partition: Rval, rate: Rval, mass: Rval, permutati
     let rate = rate.into();
     let mass = mass.into();
     let permutation = mk_permutation(permutation, pc);
-    let p = LspParameters::new_with_rate(
-        baseline_partition,
-        Rate::new(rate),
-        Mass::new(mass),
-        permutation,
-    )
-    .unwrap();
+    let p = LspParameters::new_with_rate(baseline_partition, rate, Mass::new(mass), permutation)
+        .unwrap();
     new_distr_r_ptr("lsp", p, pc)
 }
 
@@ -503,14 +519,8 @@ fn new_CppParameters(
             let baseline_distribution = unsafe { p.as_ref().clone() };
             new_distr_r_ptr(
                 $label,
-                CppParameters::new(
-                    baseline_partition,
-                    Rate::new(rate),
-                    baseline_distribution,
-                    use_vi,
-                    a,
-                )
-                .unwrap(),
+                CppParameters::new(baseline_partition, rate, baseline_distribution, use_vi, a)
+                    .unwrap(),
                 pc,
             )
         }};
