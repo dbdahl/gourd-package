@@ -408,8 +408,8 @@ impl McmcTuning {
         shrinkage_slice_step_size: Option<f64>,
     ) -> Result<Self, &'static str> {
         if let Some(s) = shrinkage_slice_step_size {
-            if s.is_nan() || s.is_infinite() || s <= 0.0 {
-                return Err("shrinkage_slice_step_size must be a finite strictly positive number.");
+            if s.is_nan() || s.is_infinite() || s < 0.0 {
+                return Err("shrinkage_slice_step_size must be a finite nonpositive number.");
             }
         }
         Ok(Self {
