@@ -346,11 +346,14 @@ impl State {
                 }
             };
             let parameter = &clustered_coefficients[label];
+            let rows_vec = data.membership_generator().get(item);
+            let rows = &rows_vec[..];
             negative_half_precision
-                * (data.response()[item]
-                    - (data.global_covariates().row(item) * global_coefficients).index((0, 0))
-                    - (data.clustered_covariates().row(item) * parameter).index((0, 0)))
-                .powi(2)
+                * (data.response().select_rows(rows)
+                    - (data.global_covariates().select_rows(rows) * global_coefficients)
+                    - (data.clustered_covariates().select_rows(rows) * parameter))
+                    .map(|x| x.powi(2))
+                    .sum()
         };
         update_neal_algorithm8(
             1,
@@ -376,12 +379,14 @@ impl State {
             if indices.is_empty() {
                 continue;
             }
-            let w = data.clustered_covariates().select_rows(&indices);
+            let rows_vec = data.membership_generator().generate(&indices[..]);
+            let rows = &rows_vec[..];
+            let w = data.clustered_covariates().select_rows(rows);
             let wt = w.transpose();
             let precision = hyperparameters.clustered_coefficients_precision()
                 + precision_response * wt.clone() * &w;
-            let partial_residuals = data.response().select_rows(&indices)
-                - data.global_covariates().select_rows(&indices) * global_coefficients;
+            let partial_residuals = data.response().select_rows(rows)
+                - data.global_covariates().select_rows(rows) * global_coefficients;
             let mean = hyperparameters.clustered_coefficients_precision_times_mean()
                 + precision_response * wt * partial_residuals;
             *clustered_coefficient = sample_multivariate_normal_v2(mean, precision, rng).unwrap()

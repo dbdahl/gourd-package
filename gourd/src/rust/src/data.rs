@@ -1,3 +1,4 @@
+use crate::membership::MembershipGenerator;
 use crate::state::State;
 use nalgebra::{DMatrix, DVector};
 use rand::Rng;
@@ -12,6 +13,7 @@ pub struct Data {
     global_covariates_transpose: DMatrix<f64>,
     global_covariates_transpose_times_self: DMatrix<f64>,
     clustered_covariates: DMatrix<f64>,
+    membership_generator: MembershipGenerator,
     missing: Vec<(usize, f64)>,
 }
 
@@ -20,9 +22,14 @@ impl Data {
         response: DVector<f64>,
         global_covariates: DMatrix<f64>,
         clustered_covariates: DMatrix<f64>,
+        membership_sizes: &[usize],
     ) -> Option<Self> {
         let n_items = response.nrows();
         if global_covariates.nrows() != n_items || clustered_covariates.nrows() != n_items {
+            return None;
+        }
+        let membership_generator = MembershipGenerator::new(membership_sizes);
+        if membership_generator.n_items() != n_items {
             return None;
         }
         let global_covariates_transpose = global_covariates.transpose();
@@ -34,6 +41,7 @@ impl Data {
             global_covariates_transpose,
             global_covariates_transpose_times_self,
             clustered_covariates,
+            membership_generator,
             missing: Vec::new(),
         })
     }
@@ -52,7 +60,18 @@ impl Data {
         let n_clustered_covariates = clustered_covariates_rval.ncol();
         let clustered_covariates =
             DMatrix::from_column_slice(n_items, n_clustered_covariates, clustered_covariates_slice);
-        Data::new(response, global_covariates, clustered_covariates).unwrap()
+        let (_, membership_sizes_slice) = data.get_list_element(3).coerce_integer(pc).unwrap();
+        let membership_sizes: Vec<_> = membership_sizes_slice
+            .iter()
+            .map(|x| usize::try_from(*x).unwrap())
+            .collect();
+        Data::new(
+            response,
+            global_covariates,
+            clustered_covariates,
+            &membership_sizes[..],
+        )
+        .unwrap()
     }
 
     pub fn impute<T: Rng>(&mut self, state: &State, rng: &mut T) {
@@ -88,6 +107,10 @@ impl Data {
 
     pub fn clustered_covariates(&self) -> &DMatrix<f64> {
         &self.clustered_covariates
+    }
+
+    pub fn membership_generator(&self) -> &MembershipGenerator {
+        &self.membership_generator
     }
 
     pub fn declare_missing(&mut self, items: Vec<usize>) {

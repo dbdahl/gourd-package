@@ -1,5 +1,6 @@
 mod data;
 mod hyperparameters;
+mod membership;
 mod monitor;
 mod mvnorm;
 mod registration;
