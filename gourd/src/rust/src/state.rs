@@ -326,10 +326,10 @@ impl State {
             data.n_observations(),
             data.clustered_covariates()
                 .row_iter()
-                .zip(clustering.allocation())
-                .map(|(w, &label)| {
+                .zip(clustering.allocation().iter().enumerate())
+                .map(|(w, (item, &label))| {
                     std::iter::repeat((w * &clustered_coefficients[label])[(0, 0)])
-                        .take(data.membership_generator().size_of(label))
+                        .take(data.membership_generator().size_of(item))
                 })
                 .flatten(),
         )
