@@ -15,7 +15,7 @@ impl RowsIteratorGenerator {
         }
         Self { cum_sizes }
     }
-    pub fn iter<'a>(&'a self, indices: Iter<'a, usize>) -> RowsIterator {
+    pub fn iter<'a>(&'a self, indices: Iter<'a, usize>) -> RowsIterator<'a> {
         RowsIterator::new(indices, &self.cum_sizes[..])
     }
 }
