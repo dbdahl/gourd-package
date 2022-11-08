@@ -1,19 +1,26 @@
 #' @export
 fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition(n_items, 1), nIterations=1000, burnin=500, thin=10, mcmcTuning=list(TRUE, TRUE, TRUE, TRUE, length(data$response)/2, 1.0), missingItems=integer(0), save=list(samples=TRUE, logLikelihoodContributions=c("none", "all", "missing")[1]), progress=TRUE) {
   # Verify data
-  if ( ! is.list(data) || length(data) != 3 || any(names(data) != c("response", "global_covariates", "clustered_covariates")) ) {
-    stop("'data' must be a named list of elements: 1. 'response', 2. 'global_covariates', 3. 'clustered_covariates'")
+  if ( ! is.list(data) || length(data) != 4 || any(names(data) != c("response", "global_covariates", "clustered_covariates", "item_sizes")) ) {
+    stop("'data' must be a named list of elements: 1. 'response', 2. 'global_covariates', 3. 'clustered_covariates', 4. 'item_sizes'")
   }
   data$global_covariates <- as.matrix(data$global_covariates)
   data$clustered_covariates <- as.matrix(data$clustered_covariates)
-  if ( ! is.numeric(data$response) || ! is.numeric(data$global_covariates) || ! is.numeric(data$clustered_covariates) ) {
+  if ( ! is.numeric(data$response) || ! is.numeric(data$global_covariates) || ! is.numeric(data$clustered_covariates) || ! is.numeric(data$item_sizes) ) {
     stop("Elements of 'data' must be numeric values.")
   }
   if ( ! is.matrix(data$global_covariates) || ! is.matrix(data$clustered_covariates) ) {
     stop("'data$global_covariates' and 'data$clustered_covariates' must be matrices.")
   }
-  n_items <- length(data$response)
-  if ( ( nrow(data$global_covariates) != n_items ) || ( nrow(data$clustered_covariates) != n_items ) ) {
+  if ( any(data$item_sizes < 1L) ) {
+    stop("All 'item_sizes' must be at least 1.")
+  }
+  n_items <- length(data$item_sizes)
+  n_observations <- length(data$response)
+  if ( sum(data$item_sizes) != n_observations ) {
+    stop("Elements of 'data' indicate an inconsistent number of items.")
+  }
+  if ( ( nrow(data$global_covariates) != n_observations ) || ( nrow(data$clustered_covariates) != n_observations ) ) {
     stop("Elements of 'data' indicate an inconsistent number of observations.")
   }
   if ( ( length(missingItems) > 0 ) && ( ! is.numeric(missingItems) || min(missingItems) < 1 || max(missingItems) > n_items ) ) {

@@ -14,7 +14,7 @@ pub struct Data {
     global_covariates_transpose_times_self: DMatrix<f64>,
     clustered_covariates: DMatrix<f64>,
     membership_generator: MembershipGenerator,
-    missing: Vec<(usize, f64)>,
+    missing: Vec<(usize, DVector<f64>)>,
 }
 
 impl Data {
@@ -22,14 +22,16 @@ impl Data {
         response: DVector<f64>,
         global_covariates: DMatrix<f64>,
         clustered_covariates: DMatrix<f64>,
-        membership_sizes: &[usize],
+        item_sizes: &[usize],
     ) -> Option<Self> {
-        let n_items = response.nrows();
-        if global_covariates.nrows() != n_items || clustered_covariates.nrows() != n_items {
+        let n_observations = response.nrows();
+        if global_covariates.nrows() != n_observations
+            || clustered_covariates.nrows() != n_observations
+        {
             return None;
         }
-        let membership_generator = MembershipGenerator::new(membership_sizes);
-        if membership_generator.n_items() != n_items {
+        let membership_generator = MembershipGenerator::new(item_sizes);
+        if membership_generator.n_observations() != n_observations {
             return None;
         }
         let global_covariates_transpose = global_covariates.transpose();
@@ -60,8 +62,8 @@ impl Data {
         let n_clustered_covariates = clustered_covariates_rval.ncol();
         let clustered_covariates =
             DMatrix::from_column_slice(n_items, n_clustered_covariates, clustered_covariates_slice);
-        let (_, membership_sizes_slice) = data.get_list_element(3).coerce_integer(pc).unwrap();
-        let membership_sizes: Vec<_> = membership_sizes_slice
+        let (_, item_sizes_slice) = data.get_list_element(3).coerce_integer(pc).unwrap();
+        let item_sizes: Vec<_> = item_sizes_slice
             .iter()
             .map(|x| usize::try_from(*x).unwrap())
             .collect();
@@ -69,7 +71,7 @@ impl Data {
             response,
             global_covariates,
             clustered_covariates,
-            &membership_sizes[..],
+            &item_sizes[..],
         )
         .unwrap()
     }
@@ -114,17 +116,27 @@ impl Data {
     }
 
     pub fn declare_missing(&mut self, items: Vec<usize>) {
-        for &(index, value) in &self.missing {
-            self.response[index] = value
+        for (item, value) in &self.missing {
+            let rows = self.membership_generator().get(*item);
+            for (&row, &value) in rows.iter().zip(value.iter()) {
+                self.response[row] = value;
+            }
         }
         self.missing = items
             .iter()
             .enumerate()
-            .map(|(index, &item)| (index, self.response[item]))
+            .map(|(index, &item)| {
+                let owner = self.membership_generator.get(item);
+                (index, self.response.select_rows(&owner[..]))
+            })
             .collect();
     }
 
     pub fn n_items(&self) -> usize {
+        self.membership_generator().n_items()
+    }
+
+    pub fn n_observations(&self) -> usize {
         self.global_covariates.nrows()
     }
 
@@ -136,7 +148,7 @@ impl Data {
         self.clustered_covariates.ncols()
     }
 
-    pub fn missing(&self) -> &[(usize, f64)] {
+    pub fn missing(&self) -> &[(usize, DVector<f64>)] {
         &self.missing
     }
 }
