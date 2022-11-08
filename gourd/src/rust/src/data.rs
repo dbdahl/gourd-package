@@ -22,7 +22,7 @@ impl Data {
         response: DVector<f64>,
         global_covariates: DMatrix<f64>,
         clustered_covariates: DMatrix<f64>,
-        item_sizes: &[usize],
+        item_sizes: Vec<usize>,
     ) -> Option<Self> {
         let n_observations = response.nrows();
         if global_covariates.nrows() != n_observations
@@ -71,7 +71,7 @@ impl Data {
             response,
             global_covariates,
             clustered_covariates,
-            &item_sizes[..],
+            item_sizes,
         )
         .unwrap()
     }
@@ -117,7 +117,7 @@ impl Data {
 
     pub fn declare_missing(&mut self, items: Vec<usize>) {
         for (item, value) in &self.missing {
-            let rows = self.membership_generator().get(*item);
+            let rows = self.membership_generator().indices_of(*item);
             for (&row, &value) in rows.iter().zip(value.iter()) {
                 self.response[row] = value;
             }
@@ -126,7 +126,7 @@ impl Data {
             .iter()
             .enumerate()
             .map(|(index, &item)| {
-                let owner = self.membership_generator.get(item);
+                let owner = self.membership_generator.indices_of(item);
                 (index, self.response.select_rows(&owner[..]))
             })
             .collect();

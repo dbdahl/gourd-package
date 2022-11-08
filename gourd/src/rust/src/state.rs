@@ -154,7 +154,7 @@ impl State {
         let mut result = Vec::with_capacity(data.n_observations());
         for item in 0..data.n_items() {
             let label = self.clustering.allocation()[item];
-            let owner = data.membership_generator().get(item);
+            let owner = data.membership_generator().indices_of(item);
             let response = data.response().select_rows(&owner[..]);
             let value = (owner.len() as f64) * log_normalizing_constant
                 + negative_half_precision
@@ -191,7 +191,7 @@ impl State {
         let mut len = 0;
         for &item in items {
             let label = self.clustering.allocation()[item];
-            let owner = data.membership_generator().get(item);
+            let owner = data.membership_generator().indices_of(item);
             let response = data.response().select_rows(&owner[..]);
             sum += self.log_likelihood_kernel(data, item, &response, label);
             len += owner.len();
@@ -204,7 +204,7 @@ impl State {
             Self::mk_constants(self.precision_response);
         let mut sum = 0.0;
         let owner: Vec<_> = (0..data.n_observations())
-            .map(|index| data.membership_generator().get(index))
+            .map(|index| data.membership_generator().indices_of(index))
             .collect();
         for ((item, &label), response) in self.clustering.allocation().iter().enumerate().zip(
             owner
@@ -327,7 +327,11 @@ impl State {
             data.clustered_covariates()
                 .row_iter()
                 .zip(clustering.allocation())
-                .map(|(w, &label)| (w * &clustered_coefficients[label])[(0, 0)]),
+                .map(|(w, &label)| {
+                    std::iter::repeat((w * &clustered_coefficients[label])[(0, 0)])
+                        .take(data.membership_generator().size_of(label))
+                })
+                .flatten(),
         )
     }
 
@@ -358,7 +362,7 @@ impl State {
                 }
             };
             let parameter = &clustered_coefficients[label];
-            let rows_vec = data.membership_generator().get(item);
+            let rows_vec = data.membership_generator().indices_of(item);
             let rows = &rows_vec[..];
             negative_half_precision
                 * (data.response().select_rows(rows)

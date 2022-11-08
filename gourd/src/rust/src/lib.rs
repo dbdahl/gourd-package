@@ -312,6 +312,9 @@ fn fit(
     {
         panic!("Inconsistent number of clustered covariates.")
     }
+    if data.n_items() != state.clustering.n_items() {
+        panic!("Inconsistent number of items.")
+    }
     let rng = rngs
         .get_list_element(0)
         .external_pointer_decode_as_mut_ref::<Pcg64Mcg>();
