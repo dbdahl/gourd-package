@@ -83,10 +83,14 @@ impl Data {
             for &(item, _) in &self.missing {
                 let label = state.clustering().allocation()[item];
                 let parameter = &state.clustered_coefficients()[label];
-                let mean = (self.global_covariates().row(item) * state.global_coefficients())
-                    .index((0, 0))
-                    + (self.clustered_covariates().row(item) * parameter).index((0, 0));
-                self.response[item] = mean + normal.sample(rng)
+                let rows_vec = self.membership_generator().indices_of_item(item);
+                let rows = &rows_vec[..];
+                let mean = (self.global_covariates().select_rows(rows)
+                    * state.global_coefficients())
+                    + (self.clustered_covariates().select_rows(rows) * parameter);
+                for (&row, &m) in rows.iter().zip(mean.iter()) {
+                    self.response[row] = m + normal.sample(rng);
+                }
             }
         }
     }
@@ -117,17 +121,16 @@ impl Data {
 
     pub fn declare_missing(&mut self, items: Vec<usize>) {
         for (item, value) in &self.missing {
-            let rows = self.membership_generator().indices_of(*item);
+            let rows = self.membership_generator().indices_of_item(*item);
             for (&row, &value) in rows.iter().zip(value.iter()) {
                 self.response[row] = value;
             }
         }
         self.missing = items
             .iter()
-            .enumerate()
-            .map(|(index, &item)| {
-                let owner = self.membership_generator.indices_of(item);
-                (index, self.response.select_rows(&owner[..]))
+            .map(|&item| {
+                let rows = self.membership_generator.indices_of_item(item);
+                (item, self.response.select_rows(&rows[..]))
             })
             .collect();
     }

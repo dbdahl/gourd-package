@@ -154,7 +154,7 @@ impl State {
         let mut result = Vec::with_capacity(data.n_observations());
         for item in 0..data.n_items() {
             let label = self.clustering.allocation()[item];
-            let owner = data.membership_generator().indices_of(item);
+            let owner = data.membership_generator().indices_of_item(item);
             let response = data.response().select_rows(&owner[..]);
             let value = (owner.len() as f64) * log_normalizing_constant
                 + negative_half_precision
@@ -191,7 +191,7 @@ impl State {
         let mut len = 0;
         for &item in items {
             let label = self.clustering.allocation()[item];
-            let owner = data.membership_generator().indices_of(item);
+            let owner = data.membership_generator().indices_of_item(item);
             let response = data.response().select_rows(&owner[..]);
             sum += self.log_likelihood_kernel(data, item, &response, label);
             len += owner.len();
@@ -204,7 +204,7 @@ impl State {
             Self::mk_constants(self.precision_response);
         let mut sum = 0.0;
         let owner: Vec<_> = (0..data.n_observations())
-            .map(|index| data.membership_generator().indices_of(index))
+            .map(|index| data.membership_generator().indices_of_item(index))
             .collect();
         for ((item, &label), response) in self.clustering.allocation().iter().enumerate().zip(
             owner
@@ -329,7 +329,7 @@ impl State {
                 .zip(clustering.allocation().iter().enumerate())
                 .map(|(w, (item, &label))| {
                     std::iter::repeat((w * &clustered_coefficients[label])[(0, 0)])
-                        .take(data.membership_generator().size_of(item))
+                        .take(data.membership_generator().size_of_item(item))
                 })
                 .flatten(),
         )
@@ -362,7 +362,7 @@ impl State {
                 }
             };
             let parameter = &clustered_coefficients[label];
-            let rows_vec = data.membership_generator().indices_of(item);
+            let rows_vec = data.membership_generator().indices_of_item(item);
             let rows = &rows_vec[..];
             negative_half_precision
                 * (data.response().select_rows(rows)
@@ -391,11 +391,11 @@ impl State {
         rng: &mut T,
     ) {
         for (label, clustered_coefficient) in clustered_coefficients.iter_mut().enumerate() {
-            let indices = clustering.items_of(label);
-            if indices.is_empty() {
+            let items = clustering.items_of(label);
+            if items.is_empty() {
                 continue;
             }
-            let rows_vec = data.membership_generator().generate(&indices[..]);
+            let rows_vec = data.membership_generator().indices_of_items(&items[..]);
             let rows = &rows_vec[..];
             let w = data.clustered_covariates().select_rows(rows);
             let wt = w.transpose();
