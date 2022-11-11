@@ -5,7 +5,7 @@ use dahl_randompartition::clust::Clustering;
 use dahl_randompartition::distr::FullConditional;
 use dahl_randompartition::mcmc::update_neal_algorithm8;
 use dahl_randompartition::perm::Permutation;
-use nalgebra::DVector;
+use nalgebra::{DMatrix, DVector};
 use rand::Rng;
 use rand_distr::{Distribution, Gamma};
 use roxido::*;
@@ -149,6 +149,7 @@ impl State {
     }
 
     pub fn log_likelihood_contributions(&self, data: &Data) -> Vec<f64> {
+        panic!();
         let (log_normalizing_constant, negative_half_precision) =
             Self::mk_constants(self.precision_response);
         let mut result = Vec::with_capacity(data.n_observations());
@@ -166,6 +167,7 @@ impl State {
     }
 
     pub fn log_likelihood_contributions_of_missing(&self, data: &Data) -> Vec<f64> {
+        panic!();
         let mut result = Vec::with_capacity(data.missing().len());
         if result.capacity() > 0 {
             let (log_normalizing_constant, negative_half_precision) =
@@ -200,6 +202,7 @@ impl State {
     }
 
     pub fn log_likelihood(&self, data: &Data) -> f64 {
+        panic!();
         let (log_normalizing_constant, negative_half_precision) =
             Self::mk_constants(self.precision_response);
         let mut sum = 0.0;
@@ -347,36 +350,49 @@ impl State {
         rng: &mut T,
         rng2: &mut T,
     ) {
-        let negative_half_precision = -0.5 * precision_response;
-        let mut log_likelihood_contribution_fn = |item: usize, label: usize, is_new: bool| {
-            if is_new {
-                let parameter = sample_multivariate_normal_v3(
-                    hyperparameters.clustered_coefficients_mean(),
-                    hyperparameters.clustered_coefficients_precision_l_inv_transpose(),
-                    rng2,
-                );
-                if label >= clustered_coefficients.len() {
-                    clustered_coefficients.resize(label + 1, parameter);
-                } else {
-                    clustered_coefficients[label] = parameter;
-                }
-            };
-            let parameter = &clustered_coefficients[label];
-            let rows_vec = data.membership_generator().indices_of_item(item);
-            let rows = &rows_vec[..];
-            negative_half_precision
-                * (data.response().select_rows(rows)
-                    - (data.global_covariates().select_rows(rows) * global_coefficients)
-                    - (data.clustered_covariates().select_rows(rows) * parameter))
-                    .map(|x| x.powi(2))
-                    .sum()
+        struct CommonItemCache {
+            difference: DVector<f64>,
+            clustered_covariates: DMatrix<f64>,
+        }
+        let cacher = |item: usize| {
+            let rows = data.membership_generator().indices_of_item(item);
+            let response = data.response().select_rows(&rows[..]);
+            let difference =
+                response - (data.global_covariates().select_rows(&rows[..]) * global_coefficients);
+            let clustered_covariates = data.clustered_covariates().select_rows(&rows[..]);
+            CommonItemCache {
+                difference,
+                clustered_covariates,
+            }
         };
+        let negative_half_precision = -0.5 * precision_response;
+        let mut log_likelihood_contribution_fn =
+            |_item: usize, cache: &CommonItemCache, label: usize, is_new: bool| {
+                if is_new {
+                    let parameter = sample_multivariate_normal_v3(
+                        hyperparameters.clustered_coefficients_mean(),
+                        hyperparameters.clustered_coefficients_precision_l_inv_transpose(),
+                        rng2,
+                    );
+                    if label >= clustered_coefficients.len() {
+                        clustered_coefficients.resize(label + 1, parameter);
+                    } else {
+                        clustered_coefficients[label] = parameter;
+                    }
+                };
+                let parameter = &clustered_coefficients[label];
+                negative_half_precision
+                    * (&cache.difference - (&cache.clustered_covariates * parameter))
+                        .map(|x| x.powi(2))
+                        .sum()
+            };
         update_neal_algorithm8(
             1,
             clustering,
             permutation,
             partition_distribution,
             &mut log_likelihood_contribution_fn,
+            cacher,
             rng,
         )
     }
