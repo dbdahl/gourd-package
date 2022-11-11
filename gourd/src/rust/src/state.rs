@@ -187,6 +187,7 @@ impl State {
         data: &Data,
         items: T,
     ) -> f64 {
+        panic!();
         let (log_normalizing_constant, negative_half_precision) =
             Self::mk_constants(self.precision_response);
         let mut sum = 0.0;

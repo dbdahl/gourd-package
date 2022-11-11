@@ -122,8 +122,8 @@ impl Data {
     pub fn declare_missing(&mut self, items: Vec<usize>) {
         for (item, value) in &self.missing {
             let rows = self.membership_generator().indices_of_item(*item);
-            for (&row, &value) in rows.iter().zip(value.iter()) {
-                self.response[row] = value;
+            for (&row, &v) in rows.iter().zip(value.iter()) {
+                self.response[row] = v;
             }
         }
         self.missing = items
