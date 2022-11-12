@@ -326,17 +326,19 @@ impl State {
         clustered_coefficients: &[DVector<f64>],
         data: &Data,
     ) -> DVector<f64> {
-        DVector::from_iterator(
-            data.n_observations(),
-            data.clustered_covariates()
-                .row_iter()
-                .zip(clustering.allocation().iter().enumerate())
-                .map(|(w, (item, &label))| {
-                    std::iter::repeat((w * &clustered_coefficients[label])[(0, 0)])
-                        .take(data.membership_generator().size_of_item(item))
-                })
-                .flatten(),
-        )
+        let mut result = DVector::from_element(data.n_observations(), 0.0);
+        for item in 0..data.n_items() {
+            let rows_vec = data.membership_generator().indices_of_item(item);
+            let rows = &rows_vec[..];
+            let label = &clustering.allocation()[item];
+            for (&row, &value) in rows.iter().zip(
+                (data.clustered_covariates().select_rows(rows) * &clustered_coefficients[*label])
+                    .iter(),
+            ) {
+                result[row] = value;
+            }
+        }
+        result
     }
 
     fn update_clustering<S: FullConditional, T: Rng>(
