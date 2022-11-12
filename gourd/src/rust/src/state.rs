@@ -208,7 +208,7 @@ impl State {
             Self::mk_constants(self.precision_response);
         let mut sum = 0.0;
         let owner: Vec<_> = (0..data.n_observations())
-            .map(|index| data.membership_generator().indices_of_item(index))
+            .map(|index| data.membership_generator().indices_of_item(index)) // Is this okay?  Should it be n_items?
             .collect();
         for ((item, &label), response) in self.clustering.allocation().iter().enumerate().zip(
             owner
@@ -295,7 +295,7 @@ impl State {
         let shape = hyperparameters.precision_response_shape() + 0.5 * data.n_observations() as f64;
         let residuals = data.response()
             - data.global_covariates() * global_coefficients
-            - Self::dot_products(clustering, clustered_coefficients, data);
+            - Self::clustered_covariates_times_parameters(clustering, clustered_coefficients, data);
         let sum_of_squared_residuals: f64 = residuals.fold(0.0, |acc, x| acc + x * x);
         let rate = hyperparameters.precision_response_rate() + 0.5 * sum_of_squared_residuals;
         let scale = 1.0 / rate;
@@ -313,15 +313,15 @@ impl State {
     ) {
         let precision = hyperparameters.global_coefficients_precision()
             + precision_response * data.global_covariates_transpose_times_self();
-        let partial_residuals =
-            data.response() - Self::dot_products(clustering, clustered_coefficients, data);
+        let partial_residuals = data.response()
+            - Self::clustered_covariates_times_parameters(clustering, clustered_coefficients, data);
         let precision_times_mean = hyperparameters.global_coefficients_precision_times_mean()
             + precision_response * data.global_covariates_transpose() * partial_residuals;
         *global_coefficients =
             sample_multivariate_normal_v2(precision_times_mean, precision, rng).unwrap();
     }
 
-    fn dot_products(
+    fn clustered_covariates_times_parameters(
         clustering: &Clustering,
         clustered_coefficients: &[DVector<f64>],
         data: &Data,
