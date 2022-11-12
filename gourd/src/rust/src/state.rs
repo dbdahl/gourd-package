@@ -154,9 +154,9 @@ impl State {
         let mut result = Vec::with_capacity(data.n_observations());
         for item in 0..data.n_items() {
             let label = self.clustering.allocation()[item];
-            let rows_vec = data.membership_generator().indices_of_item(item);
-            let response = data.response().select_rows(&rows_vec[..]);
-            let value = (rows_vec.len() as f64) * log_normalizing_constant
+            let rows = data.membership_generator().indices_of_item(item);
+            let response = data.response().select_rows(rows);
+            let value = (rows.len() as f64) * log_normalizing_constant
                 + negative_half_precision
                     * self.log_likelihood_kernel(data, item, &response, label);
             debug_assert_eq!(value, self.log_likelihood_of(data, [item].iter()));
@@ -191,10 +191,10 @@ impl State {
         let mut len = 0;
         for &item in items {
             let label = self.clustering.allocation()[item];
-            let rows_vec = data.membership_generator().indices_of_item(item);
-            let response = data.response().select_rows(&rows_vec[..]);
+            let rows = data.membership_generator().indices_of_item(item);
+            let response = data.response().select_rows(rows);
             sum += self.log_likelihood_kernel(data, item, &response, label);
-            len += rows_vec.len();
+            len += rows.len();
         }
         (len as f64) * log_normalizing_constant + negative_half_precision * sum
     }
@@ -209,7 +209,7 @@ impl State {
         for ((item, &label), response) in self.clustering.allocation().iter().enumerate().zip(
             rows_vec
                 .iter()
-                .map(|indices| data.response().select_rows(indices)),
+                .map(|indices| data.response().select_rows(*indices)),
         ) {
             sum += self.log_likelihood_kernel(data, item, &response, label);
         }
@@ -410,13 +410,12 @@ impl State {
             if items.is_empty() {
                 continue;
             }
-            let rows_vec = data.membership_generator().indices_of_items(&items[..]);
-            let rows = &rows_vec[..];
-            let w = data.clustered_covariates().select_rows(rows);
+            let rows = data.membership_generator().indices_of_items(items.iter());
+            let w = data.clustered_covariates().select_rows(rows.clone());
             let wt = w.transpose();
             let precision = hyperparameters.clustered_coefficients_precision()
                 + precision_response * wt.clone() * &w;
-            let partial_residuals = data.response().select_rows(rows)
+            let partial_residuals = data.response().select_rows(rows.clone())
                 - data.global_covariates().select_rows(rows) * global_coefficients;
             let mean = hyperparameters.clustered_coefficients_precision_times_mean()
                 + precision_response * wt * partial_residuals;

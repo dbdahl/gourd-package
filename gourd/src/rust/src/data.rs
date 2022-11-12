@@ -83,8 +83,7 @@ impl Data {
             for &(item, _) in &self.missing {
                 let label = state.clustering().allocation()[item];
                 let parameter = &state.clustered_coefficients()[label];
-                let rows_vec = self.membership_generator().indices_of_item(item);
-                let rows = &rows_vec[..];
+                let rows = self.membership_generator.indices_of_item(item);
                 let mean = (self.global_covariates().select_rows(rows)
                     * state.global_coefficients())
                     + (self.clustered_covariates().select_rows(rows) * parameter);
@@ -121,7 +120,7 @@ impl Data {
 
     pub fn declare_missing(&mut self, items: Vec<usize>) {
         for (item, value) in &self.missing {
-            let rows = self.membership_generator().indices_of_item(*item);
+            let rows = self.membership_generator.indices_of_item(*item);
             for (&row, &v) in rows.iter().zip(value.iter()) {
                 self.response[row] = v;
             }
