@@ -149,15 +149,14 @@ impl State {
     }
 
     pub fn log_likelihood_contributions(&self, data: &Data) -> Vec<f64> {
-        panic!();
         let (log_normalizing_constant, negative_half_precision) =
             Self::mk_constants(self.precision_response);
         let mut result = Vec::with_capacity(data.n_observations());
         for item in 0..data.n_items() {
             let label = self.clustering.allocation()[item];
-            let owner = data.membership_generator().indices_of_item(item);
-            let response = data.response().select_rows(&owner[..]);
-            let value = (owner.len() as f64) * log_normalizing_constant
+            let rows_vec = data.membership_generator().indices_of_item(item);
+            let response = data.response().select_rows(&rows_vec[..]);
+            let value = (rows_vec.len() as f64) * log_normalizing_constant
                 + negative_half_precision
                     * self.log_likelihood_kernel(data, item, &response, label);
             debug_assert_eq!(value, self.log_likelihood_of(data, [item].iter()));
@@ -167,7 +166,6 @@ impl State {
     }
 
     pub fn log_likelihood_contributions_of_missing(&self, data: &Data) -> Vec<f64> {
-        panic!();
         let mut result = Vec::with_capacity(data.missing().len());
         if result.capacity() > 0 {
             let (log_normalizing_constant, negative_half_precision) =
@@ -187,31 +185,29 @@ impl State {
         data: &Data,
         items: T,
     ) -> f64 {
-        panic!();
         let (log_normalizing_constant, negative_half_precision) =
             Self::mk_constants(self.precision_response);
         let mut sum = 0.0;
         let mut len = 0;
         for &item in items {
             let label = self.clustering.allocation()[item];
-            let owner = data.membership_generator().indices_of_item(item);
-            let response = data.response().select_rows(&owner[..]);
+            let rows_vec = data.membership_generator().indices_of_item(item);
+            let response = data.response().select_rows(&rows_vec[..]);
             sum += self.log_likelihood_kernel(data, item, &response, label);
-            len += owner.len();
+            len += rows_vec.len();
         }
         (len as f64) * log_normalizing_constant + negative_half_precision * sum
     }
 
     pub fn log_likelihood(&self, data: &Data) -> f64 {
-        panic!();
         let (log_normalizing_constant, negative_half_precision) =
             Self::mk_constants(self.precision_response);
         let mut sum = 0.0;
-        let owner: Vec<_> = (0..data.n_observations())
+        let rows_vec: Vec<_> = (0..data.n_observations())
             .map(|index| data.membership_generator().indices_of_item(index)) // Is this okay?  Should it be n_items?
             .collect();
         for ((item, &label), response) in self.clustering.allocation().iter().enumerate().zip(
-            owner
+            rows_vec
                 .iter()
                 .map(|indices| data.response().select_rows(indices)),
         ) {

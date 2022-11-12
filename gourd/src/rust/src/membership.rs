@@ -24,6 +24,7 @@ impl MembershipGenerator {
         *self.cum_sizes.last().unwrap()
     }
 
+    #[allow(dead_code)]
     pub fn size_of_item(&self, item: usize) -> usize {
         self.sizes[item]
     }
