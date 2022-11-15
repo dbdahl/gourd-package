@@ -76,6 +76,22 @@ impl Data {
         .unwrap()
     }
 
+    pub fn declare_missing(&mut self, items: Vec<usize>) {
+        for (item, value) in &self.missing {
+            let rows = self.membership_generator.indices_of_item(*item);
+            for (&row, &v) in rows.iter().zip(value.iter()) {
+                self.response[row] = v;
+            }
+        }
+        self.missing = items
+            .iter()
+            .map(|&item| {
+                let rows = self.membership_generator.indices_of_item(item);
+                (item, self.response.select_rows(&rows[..]))
+            })
+            .collect();
+    }
+
     pub fn impute<T: Rng>(&mut self, state: &State, rng: &mut T) {
         if !self.missing.is_empty() {
             let stdev = 1.0 / state.precision_response().sqrt();
@@ -116,22 +132,6 @@ impl Data {
 
     pub fn membership_generator(&self) -> &MembershipGenerator {
         &self.membership_generator
-    }
-
-    pub fn declare_missing(&mut self, items: Vec<usize>) {
-        for (item, value) in &self.missing {
-            let rows = self.membership_generator.indices_of_item(*item);
-            for (&row, &v) in rows.iter().zip(value.iter()) {
-                self.response[row] = v;
-            }
-        }
-        self.missing = items
-            .iter()
-            .map(|&item| {
-                let rows = self.membership_generator.indices_of_item(item);
-                (item, self.response.select_rows(&rows[..]))
-            })
-            .collect();
     }
 
     pub fn n_items(&self) -> usize {

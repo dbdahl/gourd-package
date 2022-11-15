@@ -136,87 +136,68 @@ impl State {
     fn log_likelihood_kernel(
         &self,
         data: &Data,
-        item: usize,
+        rows: &[usize],
         response: &DVector<f64>,
         label: usize,
     ) -> f64 {
         let parameter = &self.clustered_coefficients[label];
         (response
-            - (data.global_covariates().row(item) * &self.global_coefficients)
-            - (data.clustered_covariates().row(item) * parameter))
+            - (data.global_covariates().select_rows(rows) * &self.global_coefficients)
+            - (data.clustered_covariates().select_rows(rows) * parameter))
             .map(|x| x.powi(2))
             .sum()
     }
 
-    pub fn log_likelihood_contributions(&self, data: &Data) -> Vec<f64> {
-        let (log_normalizing_constant, negative_half_precision) =
-            Self::mk_constants(self.precision_response);
-        let mut result = Vec::with_capacity(data.n_observations());
-        for item in 0..data.n_items() {
-            let label = self.clustering.allocation()[item];
-            let rows = data.membership_generator().indices_of_item(item);
-            let response = data.response().select_rows(rows);
-            let value = (rows.len() as f64) * log_normalizing_constant
-                + negative_half_precision
-                    * self.log_likelihood_kernel(data, item, &response, label);
-            debug_assert_eq!(value, self.log_likelihood_of(data, [item].iter()));
-            result.push(value);
-        }
-        result
-    }
-
-    pub fn log_likelihood_contributions_of_missing(&self, data: &Data) -> Vec<f64> {
-        let mut result = Vec::with_capacity(data.missing().len());
-        if result.capacity() > 0 {
-            let (log_normalizing_constant, negative_half_precision) =
-                Self::mk_constants(self.precision_response);
-            for (item, y) in data.missing() {
-                let label = self.clustering().allocation()[*item];
-                let x = log_normalizing_constant
-                    + negative_half_precision * self.log_likelihood_kernel(data, *item, y, label);
-                result.push(x);
-            }
-        }
-        result
-    }
-
-    pub fn log_likelihood_of<'a, T: Iterator<Item = &'a usize>>(
-        &'a self,
-        data: &Data,
-        items: T,
-    ) -> f64 {
+    pub fn log_likelihood_of<T: IntoIterator<Item = usize>>(&self, data: &Data, items: T) -> f64 {
         let (log_normalizing_constant, negative_half_precision) =
             Self::mk_constants(self.precision_response);
         let mut sum = 0.0;
         let mut len = 0;
-        for &item in items {
+        for item in items {
             let label = self.clustering.allocation()[item];
             let rows = data.membership_generator().indices_of_item(item);
             let response = data.response().select_rows(rows);
-            sum += self.log_likelihood_kernel(data, item, &response, label);
+            sum += self.log_likelihood_kernel(data, rows, &response, label);
             len += rows.len();
         }
         (len as f64) * log_normalizing_constant + negative_half_precision * sum
     }
 
     pub fn log_likelihood(&self, data: &Data) -> f64 {
+        self.log_likelihood_of(data, 0..data.n_items())
+    }
+
+    pub fn log_likelihood_contributions(&self, data: &Data) -> Vec<f64> {
         let (log_normalizing_constant, negative_half_precision) =
             Self::mk_constants(self.precision_response);
-        let mut sum = 0.0;
-        let rows_vec: Vec<_> = (0..data.n_observations())
-            .map(|index| data.membership_generator().indices_of_item(index)) // Is this okay?  Should it be n_items?
-            .collect();
-        for ((item, &label), response) in self.clustering.allocation().iter().enumerate().zip(
-            rows_vec
-                .iter()
-                .map(|indices| data.response().select_rows(*indices)),
-        ) {
-            sum += self.log_likelihood_kernel(data, item, &response, label);
+        let mut result = Vec::with_capacity(data.n_items());
+        for item in 0..data.n_items() {
+            let label = self.clustering.allocation()[item];
+            let rows = data.membership_generator().indices_of_item(item);
+            let response = data.response().select_rows(rows);
+            let value = (rows.len() as f64) * log_normalizing_constant
+                + negative_half_precision
+                    * self.log_likelihood_kernel(data, rows, &response, label);
+            result.push(value);
         }
-        let value = (data.n_observations() as f64) * log_normalizing_constant
-            + negative_half_precision * sum;
-        debug_assert_eq!(value, self.log_likelihood_contributions(data).iter().sum());
-        value
+        result
+    }
+
+    pub fn log_likelihood_contributions_of_missing(&self, data: &Data) -> Vec<f64> {
+        if data.missing().is_empty() {
+            return Vec::new();
+        }
+        let (log_normalizing_constant, negative_half_precision) =
+            Self::mk_constants(self.precision_response);
+        let mut result = Vec::with_capacity(data.missing().len());
+        for (item, response) in data.missing() {
+            let label = self.clustering().allocation()[*item];
+            let rows = data.membership_generator().indices_of_item(*item);
+            let x = (response.len() as f64) * log_normalizing_constant
+                + negative_half_precision * self.log_likelihood_kernel(data, rows, response, label);
+            result.push(x);
+        }
+        result
     }
 
     pub fn mcmc_iteration<S: FullConditional, T: Rng>(

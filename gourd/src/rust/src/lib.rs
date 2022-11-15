@@ -410,7 +410,7 @@ fn log_likelihood_of(state: Rval, data: Rval, items: Rval) -> Rval {
         .iter()
         .map(|x| usize::try_from(*x - 1).unwrap())
         .collect();
-    rval!(state.log_likelihood_of(data, items.iter()))
+    rval!(state.log_likelihood_of(data, items))
 }
 
 #[roxido]
