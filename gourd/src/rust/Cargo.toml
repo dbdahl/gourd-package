@@ -12,7 +12,7 @@ crate-type = ["staticlib"]
 roxido = { path="roxido" }
 # dahl-randompartition = { git="https://github.com/dbdahl/rust-dahl-randompartition.git", rev="671b567" }
 dahl-randompartition = { path="/home/dahl/docs/devel/rust-dahl-randompartition" }
-nalgebra = "0.31.0"
+nalgebra = "0.32.2"
 rand = "0.8.5"
 rand_distr = "0.4.3"
 rand_pcg = "0.3.1"

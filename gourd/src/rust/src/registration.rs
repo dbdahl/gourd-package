@@ -40,7 +40,7 @@ fn rngs_new() -> Rval {
 }
 
 #[roxido]
-fn fit(burnin: Rval, data: Rval, state: Rval, hyperparameters: Rval, monitor: Rval, partitionDistribution: Rval, mcmcTuning: Rval, missingItems: Rval, permutation_bucket: Rval, shrinkage_bucket: Rval, rngs: Rval) -> Rval {
+fn fit(burnin: Rval, data: Rval, state: Rval, hyperparameters: Rval, monitor: Rval, partitionDistribution: Rval, mcmcTuning: Rval, permutation_bucket: Rval, shrinkage_bucket: Rval, rngs: Rval) -> Rval {
     Rval::nil()
 }
 
@@ -180,7 +180,7 @@ extern "C" fn R_init_gourd_rust(info: *mut rbindings::DllInfo) {
     call_routines.push(rbindings::R_CallMethodDef {
         name: _names.last().unwrap().as_ptr(),
         fun: unsafe { std::mem::transmute(crate::fit as *const u8) },
-        numArgs: 11,
+        numArgs: 10,
     });
     _names.push(std::ffi::CString::new(".monitor_reset").unwrap());
     call_routines.push(rbindings::R_CallMethodDef {

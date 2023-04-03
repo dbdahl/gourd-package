@@ -295,7 +295,6 @@ fn fit(
     monitor: Rval,
     partition_distribution: Rval,
     mcmc_tuning: Rval,
-    _missing_items: Rval,
     permutation: Rval,
     shrinkage: Rval,
     rngs: Rval,

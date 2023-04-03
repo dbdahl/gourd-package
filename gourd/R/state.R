@@ -1,34 +1,52 @@
 #' @export
-fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition(n_items, 1), nIterations=1000, burnin=500, thin=10, mcmcTuning=list(TRUE, TRUE, TRUE, TRUE, length(data$response)/2, 1.0), missingItems=integer(0), save=list(samples=TRUE, logLikelihoodContributions=c("none", "all", "missing")[1]), progress=TRUE) {
+fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition(n_items, 1), nIterations=1000, burnin=500, thin=10, mcmcTuning=list(TRUE, TRUE, TRUE, TRUE, length(data$response)/2, 1.0), missingItems=integer(0), validationData=NULL, save=list(samples=TRUE, logLikelihoodContributions=c("none", "all", "missing", "validation")[1]), progress=TRUE) {
   # Verify data
-  if ( ! is.list(data) || length(data) != 4 || any(names(data) != c("response", "global_covariates", "clustered_covariates", "item_sizes")) ) {
-    stop("'data' must be a named list of elements: 1. 'response', 2. 'global_covariates', 3. 'clustered_covariates', 4. 'item_sizes'")
+  verifyData <- function(data) {
+    if ( ! is.list(data) || length(data) != 4 || any(names(data) != c("response", "global_covariates", "clustered_covariates", "item_sizes")) ) {
+      stop("'data' must be a named list of elements: 1. 'response', 2. 'global_covariates', 3. 'clustered_covariates', 4. 'item_sizes'")
+    }
+    data$global_covariates <- as.matrix(data$global_covariates)
+    data$clustered_covariates <- as.matrix(data$clustered_covariates)
+    if ( ! is.numeric(data$response) || ! is.numeric(data$global_covariates) || ! is.numeric(data$clustered_covariates) || ! is.numeric(data$item_sizes) ) {
+      stop("Elements of 'data' must be numeric values.")
+    }
+    if ( ! is.matrix(data$global_covariates) || ! is.matrix(data$clustered_covariates) ) {
+      stop("'data$global_covariates' and 'data$clustered_covariates' must be matrices.")
+    }
+    if ( any(data$item_sizes < 1L) ) {
+      stop("All 'item_sizes' must be at least 1.")
+    }
+    n_items <- length(data$item_sizes)
+    n_observations <- length(data$response)
+    if ( sum(data$item_sizes) != n_observations ) {
+      stop("Elements of 'data' indicate an inconsistent number of items.")
+    }
+    if ( ( nrow(data$global_covariates) != n_observations ) || ( nrow(data$clustered_covariates) != n_observations ) ) {
+      stop("Elements of 'data' indicate an inconsistent number of observations.")
+    }
+    if ( ( length(missingItems) > 0 ) && ( ! is.numeric(missingItems) || min(missingItems) < 1 || max(missingItems) > n_items ) ) {
+      stop("Elements of 'missing' are out of range.")
+    }
+    list(obj = .Call(.data_r2rust, data, missingItems), n_items = n_items, n_global_coefficients = ncol(data$global_covariates), n_clustered_coefficients = ncol(data$clustered_covariates))
   }
-  data$global_covariates <- as.matrix(data$global_covariates)
-  data$clustered_covariates <- as.matrix(data$clustered_covariates)
-  if ( ! is.numeric(data$response) || ! is.numeric(data$global_covariates) || ! is.numeric(data$clustered_covariates) || ! is.numeric(data$item_sizes) ) {
-    stop("Elements of 'data' must be numeric values.")
+  dataList <- verifyData(data)
+  if (!is.null(validationData)) {
+    validationDataList <- verifyData(validationData)
+    if (validationDataList$n_items != dataList$n_items) {
+      stop("'validationData' does not have the same number of items as 'data'.")
+    }
+    if (validationDataList$n_global_coefficients != dataList$n_global_coefficients) {
+      stop("'validationData' does not have the same number of global coefficients as 'data'.")
+    }
+    if (validationDataList$n_clustered_coefficients != dataList$n_clustered_coefficients) {
+      stop("'validationData' does not have the same number of clustered coefficients as 'data'.")
+    }
+    validationData <- validationDataList$obj
   }
-  if ( ! is.matrix(data$global_covariates) || ! is.matrix(data$clustered_covariates) ) {
-    stop("'data$global_covariates' and 'data$clustered_covariates' must be matrices.")
-  }
-  if ( any(data$item_sizes < 1L) ) {
-    stop("All 'item_sizes' must be at least 1.")
-  }
-  n_items <- length(data$item_sizes)
-  n_observations <- length(data$response)
-  if ( sum(data$item_sizes) != n_observations ) {
-    stop("Elements of 'data' indicate an inconsistent number of items.")
-  }
-  if ( ( nrow(data$global_covariates) != n_observations ) || ( nrow(data$clustered_covariates) != n_observations ) ) {
-    stop("Elements of 'data' indicate an inconsistent number of observations.")
-  }
-  if ( ( length(missingItems) > 0 ) && ( ! is.numeric(missingItems) || min(missingItems) < 1 || max(missingItems) > n_items ) ) {
-    stop("Elements of 'missing' are out of range.")
-  }
-  n_global_coefficients <- ncol(data$global_covariates)
-  n_clustered_coefficients <- ncol(data$clustered_covariates)
-  data <- .Call(.data_r2rust, data, missingItems)
+  data <- dataList$obj
+  n_items <- dataList$n_items
+  n_global_coefficients <- dataList$n_global_coefficients
+  n_clustered_coefficients <- dataList$n_clustered_coefficients
   # Verify state
   if ( ! is.list(state) || length(state) != 4 || any(names(state) != c("precision_response", "global_coefficients", "clustering", "clustered_coefficients")) ) {
     stop("'state' must be a named list of elements: 1. 'precision_response', 2. 'global_coefficients', 3. 'clustering', 4. 'clustered_coefficients")
@@ -110,7 +128,7 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
   if ( progress ) cat("Burning in...")
   permutation_bucket <- integer(n_items)
   shrinkage_bucket <- numeric(n_items)
-  tmp <- .Call(.fit, burnin, data, state, hyperparameters, monitor, partitionDistribution, mcmcTuning, missingItems, permutation_bucket, shrinkage_bucket, rngs)
+  tmp <- .Call(.fit, burnin, data, state, hyperparameters, monitor, partitionDistribution, mcmcTuning, permutation_bucket, shrinkage_bucket, rngs)
   state <- tmp[[1]]
   monitor <- tmp[[2]]
   .Call(.monitor_reset, monitor);
@@ -127,19 +145,29 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
     )
   }
   if ( save$logLikelihoodContributions != "none" ) {
-    ncol <- if ( save$logLikelihoodContributions == "all" ) n_items else length(missingItems)
+    ncol <- if (save$logLikelihoodContributions %in% c("all", "validation")) {
+      n_items
+    } else if (save$logLikelihoodContributions == "missing") {
+      length(missingItems)
+    } else {
+      stop("Unsupported option.")
+    }
     logLikeContr <- matrix(0.0, nrow=nSamples, ncol=ncol)
   }
   if ( progress ) { pb <- txtProgressBar(0,nSamples,style=3) }
   for ( i in seq_len(nSamples) ) {
-    tmp <- .Call(.fit, thin, data, state, hyperparameters, monitor, partitionDistribution, mcmcTuning, missingItems, permutation_bucket, shrinkage_bucket, rngs)
+    tmp <- .Call(.fit, thin, data, state, hyperparameters, monitor, partitionDistribution, mcmcTuning, permutation_bucket, shrinkage_bucket, rngs)
     state <- tmp[[1]]
     monitor <- tmp[[2]]
     if ( save$logLikelihoodContributions != "none" ) {
       logLikeContr[i,] <- if ( save$logLikelihoodContributions == "all" ) {
         .Call(.log_likelihood_contributions, state, data)
-      } else {
+      } else if (save$logLikelihoodContributions == "validation") {
+        .Call(.log_likelihood_contributions, state, validationData)
+      } else if (save$logLikelihoodContributions == "missing") {
         .Call(.log_likelihood_contributions_of_missing, state, data)
+      } else {
+        stop("Unsupported option.")
       }
     }
     if ( save$samples ) {
@@ -156,6 +184,7 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
   if ( progress ) close(pb)
   rates <- c(permutation_acceptance_rate = .Call(.monitor_rate, monitor))
   .Call(.rust_free, data)
+  if (!is.null(validationData)) .Call(.rust_free, validationData)
   .Call(.rust_free, state)
   .Call(.rust_free, hyperparameters)
   .Call(.rust_free, monitor)
