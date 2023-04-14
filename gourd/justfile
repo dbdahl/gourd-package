@@ -10,7 +10,6 @@ install: build
 
 prebuild:
   Rscript -e 'cargo::prebuild(what="all")'
-  scp -r src/rust/r_cargo_cross_compile {{scp_dest}}
 
 is-clean:
   R-package is-clean

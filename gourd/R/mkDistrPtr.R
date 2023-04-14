@@ -18,6 +18,9 @@ mkDistrPtr <- function(distr, excluded=NULL, included=NULL) {
   } else if ( inherits(distr, "OldShrinkagePartition") ) {
     p <- mkDistrPtr(distr$baselineDistribution, included=supportedBaselineDistributions)
     .Call(.new_OldSpParameters, distr$baselinePartition, distr$shrinkage, distr$.permutation, p, distr$useVI, distr$a, distr$scalingExponent)
+  } else if ( inherits(distr, "Old2ShrinkagePartition") ) {
+    p <- mkDistrPtr(distr$baselineDistribution, included=supportedBaselineDistributions)
+    .Call(.new_Old2SpParameters, distr$baselinePartition, distr$shrinkage, distr$.permutation, p)
   } else if ( inherits(distr, "ShrinkagePartition") ) {
     p <- mkDistrPtr(distr$baselineDistribution, included=supportedBaselineDistributions)
     .Call(.new_SpParameters, distr$baselinePartition, distr$shrinkage, distr$.permutation, p)

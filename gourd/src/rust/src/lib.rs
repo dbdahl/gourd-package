@@ -21,6 +21,7 @@ use dahl_randompartition::frp::FrpParameters;
 use dahl_randompartition::jlp::JlpParameters;
 use dahl_randompartition::lsp::LspParameters;
 use dahl_randompartition::mcmc::update_neal_algorithm_full;
+use dahl_randompartition::old2sp::Old2SpParameters;
 use dahl_randompartition::oldsp::OldSpParameters;
 use dahl_randompartition::perm::Permutation;
 use dahl_randompartition::prelude::Mass;
@@ -388,6 +389,9 @@ fn fit(
         "oldsp-up" => mcmc_update!(OldSpParameters<UpParameters>, true, false, true, false),
         "oldsp-jlp" => mcmc_update!(OldSpParameters<JlpParameters>, true, false, true, false),
         "oldsp-crp" => mcmc_update!(OldSpParameters<CrpParameters>, true, false, true, false),
+        "old2sp-up" => mcmc_update!(Old2SpParameters<UpParameters>, true, false, true, false),
+        "old2sp-jlp" => mcmc_update!(Old2SpParameters<JlpParameters>, true, false, true, false),
+        "old2sp-crp" => mcmc_update!(Old2SpParameters<CrpParameters>, true, false, true, false),
         "sp-up" => mcmc_update!(SpParameters<UpParameters>, true, false, false, true),
         "sp-jlp" => mcmc_update!(SpParameters<JlpParameters>, true, false, false, true),
         "sp-crp" => mcmc_update!(SpParameters<CrpParameters>, true, false, false, true),
@@ -626,6 +630,43 @@ fn new_OldSpParameters(
 }
 
 #[roxido]
+fn new_Old2SpParameters(
+    baseline_partition: Rval,
+    shrinkage: Rval,
+    permutation: Rval,
+    baseline_distribution: Rval,
+) -> Rval {
+    let baseline_partition = mk_clustering(baseline_partition, pc);
+    let shrinkage = mk_shrinkage(shrinkage, pc);
+    let permutation = mk_permutation(permutation, pc);
+    let (baseline_distribution_name, baseline_distribution_ptr) =
+        unwrap_distr_r_ptr(baseline_distribution);
+    macro_rules! distr_macro {
+        ($tipe:ty, $label:literal) => {{
+            let p = NonNull::new(baseline_distribution_ptr as *mut $tipe).unwrap();
+            let baseline_distribution = unsafe { p.as_ref().clone() };
+            new_distr_r_ptr(
+                $label,
+                Old2SpParameters::new(
+                    baseline_partition,
+                    shrinkage,
+                    permutation,
+                    baseline_distribution,
+                )
+                .unwrap(),
+                pc,
+            )
+        }};
+    }
+    match baseline_distribution_name {
+        "up" => distr_macro!(UpParameters, "old2sp-up"),
+        "jlp" => distr_macro!(JlpParameters, "old2sp-jlp"),
+        "crp" => distr_macro!(CrpParameters, "old2sp-crp"),
+        _ => panic!("Unsupported distribution: {}", baseline_distribution_name),
+    }
+}
+
+#[roxido]
 fn new_SpParameters(
     baseline_partition: Rval,
     shrinkage: Rval,
@@ -723,6 +764,9 @@ extern "C" fn free_distr_r_ptr(sexp: rbindings::SEXP) {
             "oldsp-up" => free_r_ptr_helper::<OldSpParameters<UpParameters>>(sexp),
             "oldsp-jlp" => free_r_ptr_helper::<OldSpParameters<JlpParameters>>(sexp),
             "oldsp-crp" => free_r_ptr_helper::<OldSpParameters<CrpParameters>>(sexp),
+            "old2sp-up" => free_r_ptr_helper::<Old2SpParameters<UpParameters>>(sexp),
+            "old2sp-jlp" => free_r_ptr_helper::<Old2SpParameters<JlpParameters>>(sexp),
+            "old2sp-crp" => free_r_ptr_helper::<Old2SpParameters<CrpParameters>>(sexp),
             "sp-up" => free_r_ptr_helper::<SpParameters<UpParameters>>(sexp),
             "sp-jlp" => free_r_ptr_helper::<SpParameters<JlpParameters>>(sexp),
             "sp-crp" => free_r_ptr_helper::<SpParameters<CrpParameters>>(sexp),
