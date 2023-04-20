@@ -130,6 +130,11 @@ fn new_SpParameters(unnamed1: Rval, unnamed2: Rval, unnamed3: Rval, p: Rval) -> 
 }
 
 #[roxido]
+fn new_SpMixtureParameters(unnamed1: Rval, unnamed2: Rval, unnamed3: Rval, p: Rval) -> Rval {
+    Rval::nil()
+}
+
+#[roxido]
 fn new_UpParameters(unnamed1: Rval) -> Rval {
     Rval::nil()
 }
@@ -149,8 +154,8 @@ use roxido::*;
 
 #[no_mangle]
 extern "C" fn R_init_gourd_rust(info: *mut rbindings::DllInfo) {
-    let mut call_routines = Vec::with_capacity(26);
-    let mut _names: Vec<std::ffi::CString> = Vec::with_capacity(26);
+    let mut call_routines = Vec::with_capacity(27);
+    let mut _names: Vec<std::ffi::CString> = Vec::with_capacity(27);
     _names.push(std::ffi::CString::new(".data_r2rust").unwrap());
     call_routines.push(rbindings::R_CallMethodDef {
         name: _names.last().unwrap().as_ptr(),
@@ -287,6 +292,12 @@ extern "C" fn R_init_gourd_rust(info: *mut rbindings::DllInfo) {
     call_routines.push(rbindings::R_CallMethodDef {
         name: _names.last().unwrap().as_ptr(),
         fun: unsafe { std::mem::transmute(crate::new_SpParameters as *const u8) },
+        numArgs: 4,
+    });
+    _names.push(std::ffi::CString::new(".new_SpMixtureParameters").unwrap());
+    call_routines.push(rbindings::R_CallMethodDef {
+        name: _names.last().unwrap().as_ptr(),
+        fun: unsafe { std::mem::transmute(crate::new_SpMixtureParameters as *const u8) },
         numArgs: 4,
     });
     _names.push(std::ffi::CString::new(".new_UpParameters").unwrap());

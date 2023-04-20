@@ -27,6 +27,7 @@ use dahl_randompartition::perm::Permutation;
 use dahl_randompartition::prelude::Mass;
 use dahl_randompartition::shrink::{Shrinkage, ShrinkageProbabilities};
 use dahl_randompartition::sp::SpParameters;
+use dahl_randompartition::sp_mixture::SpMixtureParameters;
 use dahl_randompartition::up::UpParameters;
 use nalgebra::{DMatrix, DVector};
 use rand::Rng;
@@ -197,7 +198,7 @@ fn fit_all(all_ptr: Rval, shrinkage: Rval, n_updates: Rval, do_baseline_partitio
     let mut all: All = all_ptr.external_pointer_decode();
     let n_items = all.0[0].data.n_items();
     let fixed = McmcTuning::new(false, false, false, false, Some(2), Some(1.0)).unwrap();
-    let shrinkage = ShrinkageProbabilities::constant(shrinkage.as_f64(), n_items).unwrap();
+    let shrinkage = Shrinkage::constant(shrinkage.as_f64(), n_items).unwrap();
     let n_updates = n_updates.as_usize();
     let do_baseline_partition = do_baseline_partition.as_bool();
     let (result_rval, result_slice) = if do_baseline_partition {
@@ -392,9 +393,18 @@ fn fit(
         "old2sp-up" => mcmc_update!(Old2SpParameters<UpParameters>, true, false, true, false),
         "old2sp-jlp" => mcmc_update!(Old2SpParameters<JlpParameters>, true, false, true, false),
         "old2sp-crp" => mcmc_update!(Old2SpParameters<CrpParameters>, true, false, true, false),
-        "sp-up" => mcmc_update!(SpParameters<UpParameters>, true, false, false, true),
-        "sp-jlp" => mcmc_update!(SpParameters<JlpParameters>, true, false, false, true),
-        "sp-crp" => mcmc_update!(SpParameters<CrpParameters>, true, false, false, true),
+        "sp-up" => mcmc_update!(SpParameters<UpParameters>, true, false, true, false),
+        "sp-jlp" => mcmc_update!(SpParameters<JlpParameters>, true, false, true, false),
+        "sp-crp" => mcmc_update!(SpParameters<CrpParameters>, true, false, true, false),
+        "sp-mixture-up" => {
+            mcmc_update!(SpMixtureParameters<UpParameters>, true, false, false, true)
+        }
+        "sp-mixture-jlp" => {
+            mcmc_update!(SpMixtureParameters<JlpParameters>, true, false, false, true)
+        }
+        "sp-mixture-crp" => {
+            mcmc_update!(SpMixtureParameters<CrpParameters>, true, false, false, true)
+        }
         _ => panic!("Unsupported distribution: {}", prior_name),
     }
     state = state.canonicalize();
@@ -674,7 +684,7 @@ fn new_SpParameters(
     baseline_distribution: Rval,
 ) -> Rval {
     let baseline_partition = mk_clustering(baseline_partition, pc);
-    let shrinkage = mk_shrinkage_probabilities(shrinkage, pc);
+    let shrinkage = mk_shrinkage(shrinkage, pc);
     let permutation = mk_permutation(permutation, pc);
     let (baseline_distribution_name, baseline_distribution_ptr) =
         unwrap_distr_r_ptr(baseline_distribution);
@@ -699,6 +709,43 @@ fn new_SpParameters(
         "up" => distr_macro!(UpParameters, "sp-up"),
         "jlp" => distr_macro!(JlpParameters, "sp-jlp"),
         "crp" => distr_macro!(CrpParameters, "sp-crp"),
+        _ => panic!("Unsupported distribution: {}", baseline_distribution_name),
+    }
+}
+
+#[roxido]
+fn new_SpMixtureParameters(
+    baseline_partition: Rval,
+    shrinkage: Rval,
+    permutation: Rval,
+    baseline_distribution: Rval,
+) -> Rval {
+    let baseline_partition = mk_clustering(baseline_partition, pc);
+    let shrinkage = mk_shrinkage_probabilities(shrinkage, pc);
+    let permutation = mk_permutation(permutation, pc);
+    let (baseline_distribution_name, baseline_distribution_ptr) =
+        unwrap_distr_r_ptr(baseline_distribution);
+    macro_rules! distr_macro {
+        ($tipe:ty, $label:literal) => {{
+            let p = NonNull::new(baseline_distribution_ptr as *mut $tipe).unwrap();
+            let baseline_distribution = unsafe { p.as_ref().clone() };
+            new_distr_r_ptr(
+                $label,
+                SpMixtureParameters::new(
+                    baseline_partition,
+                    shrinkage,
+                    permutation,
+                    baseline_distribution,
+                )
+                .unwrap(),
+                pc,
+            )
+        }};
+    }
+    match baseline_distribution_name {
+        "up" => distr_macro!(UpParameters, "sp-mixture-up"),
+        "jlp" => distr_macro!(JlpParameters, "sp-mixture-jlp"),
+        "crp" => distr_macro!(CrpParameters, "sp-mixture-crp"),
         _ => panic!("Unsupported distribution: {}", baseline_distribution_name),
     }
 }
@@ -770,6 +817,9 @@ extern "C" fn free_distr_r_ptr(sexp: rbindings::SEXP) {
             "sp-up" => free_r_ptr_helper::<SpParameters<UpParameters>>(sexp),
             "sp-jlp" => free_r_ptr_helper::<SpParameters<JlpParameters>>(sexp),
             "sp-crp" => free_r_ptr_helper::<SpParameters<CrpParameters>>(sexp),
+            "sp-mixture-up" => free_r_ptr_helper::<SpMixtureParameters<UpParameters>>(sexp),
+            "sp-mixture-jlp" => free_r_ptr_helper::<SpMixtureParameters<JlpParameters>>(sexp),
+            "sp-mixture-crp" => free_r_ptr_helper::<SpMixtureParameters<CrpParameters>>(sexp),
             name => panic!("Unsupported distribution: {}", name),
         }
     }
