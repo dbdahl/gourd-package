@@ -244,9 +244,9 @@ fn fit_all(all_ptr: Rval, shrinkage: Rval, n_updates: Rval, do_baseline_partitio
                     &mut rng2,
                 );
             }
-            let mut baseline_partition_tmp = partition_distribution.baseline_partition.clone();
-            let mut log_likelihood_contribution_fn = |proposed_baseline_partition: &Clustering| {
-                partition_distribution.baseline_partition = proposed_baseline_partition.clone();
+            let mut anchor_tmp = partition_distribution.anchor.clone();
+            let mut log_likelihood_contribution_fn = |proposed_anchor: &Clustering| {
+                partition_distribution.anchor = proposed_anchor.clone();
                 let mut sum = 0.0;
                 for group in all.0.iter() {
                     sum += partition_distribution.log_pmf(group.state.clustering());
@@ -255,20 +255,18 @@ fn fit_all(all_ptr: Rval, shrinkage: Rval, n_updates: Rval, do_baseline_partitio
             };
             update_neal_algorithm_full(
                 1,
-                &mut baseline_partition_tmp,
+                &mut anchor_tmp,
                 &permutation,
                 &hyperpartition_prior_distribution,
                 &mut log_likelihood_contribution_fn,
                 &mut rng,
             );
             if do_baseline_partition {
-                partition_distribution.baseline_partition = baseline_partition_tmp.standardize();
-                partition_distribution
-                    .baseline_partition
-                    .relabel_into_slice(
-                        1_i32,
-                        &mut result_slice[(update_index * n_items)..((update_index + 1) * n_items)],
-                    );
+                partition_distribution.anchor = anchor_tmp.standardize();
+                partition_distribution.anchor.relabel_into_slice(
+                    1_i32,
+                    &mut result_slice[(update_index * n_items)..((update_index + 1) * n_items)],
+                );
             } else {
                 for group in all.0.iter_mut() {
                     sum += group
@@ -473,9 +471,9 @@ use std::os::raw::c_void;
 use std::ptr::NonNull;
 
 #[roxido]
-fn new_FixedPartitionParameters(baseline_partition: Rval) -> Rval {
-    let baseline_partition = mk_clustering(baseline_partition, pc);
-    let p = FixedPartitionParameters::new(baseline_partition);
+fn new_FixedPartitionParameters(anchor: Rval) -> Rval {
+    let anchor = mk_clustering(anchor, pc);
+    let p = FixedPartitionParameters::new(anchor);
     new_distr_r_ptr("fixed", p, pc)
 }
 
@@ -522,67 +520,58 @@ fn new_EpaParameters(similarity: Rval, permutation: Rval, mass: Rval, discount: 
 }
 
 #[roxido]
-fn new_LspParameters(baseline_partition: Rval, rate: Rval, mass: Rval, permutation: Rval) -> Rval {
-    let baseline_partition = mk_clustering(baseline_partition, pc);
+fn new_LspParameters(anchor: Rval, rate: Rval, mass: Rval, permutation: Rval) -> Rval {
+    let anchor = mk_clustering(anchor, pc);
     let rate = rate.into();
     let mass = mass.into();
     let permutation = mk_permutation(permutation, pc);
-    let p = LspParameters::new_with_rate(baseline_partition, rate, Mass::new(mass), permutation)
-        .unwrap();
+    let p = LspParameters::new_with_rate(anchor, rate, Mass::new(mass), permutation).unwrap();
     new_distr_r_ptr("lsp", p, pc)
 }
 
 #[roxido]
-fn new_CppParameters(
-    baseline_partition: Rval,
-    rate: Rval,
-    baseline_distribution: Rval,
-    use_vi: Rval,
-    a: Rval,
-) -> Rval {
-    let baseline_partition = mk_clustering(baseline_partition, pc);
+fn new_CppParameters(anchor: Rval, rate: Rval, baseline: Rval, use_vi: Rval, a: Rval) -> Rval {
+    let anchor = mk_clustering(anchor, pc);
     let rate = rate.into();
     let use_vi = use_vi.as_bool();
     let a = a.into();
-    let (baseline_distribution_name, baseline_distribution_ptr) =
-        unwrap_distr_r_ptr(baseline_distribution);
+    let (baseline_name, baseline_ptr) = unwrap_distr_r_ptr(baseline);
     macro_rules! distr_macro {
         ($tipe:ty, $label:literal) => {{
-            let p = NonNull::new(baseline_distribution_ptr as *mut $tipe).unwrap();
-            let baseline_distribution = unsafe { p.as_ref().clone() };
+            let p = NonNull::new(baseline_ptr as *mut $tipe).unwrap();
+            let baseline = unsafe { p.as_ref().clone() };
             new_distr_r_ptr(
                 $label,
-                CppParameters::new(baseline_partition, rate, baseline_distribution, use_vi, a)
-                    .unwrap(),
+                CppParameters::new(anchor, rate, baseline, use_vi, a).unwrap(),
                 pc,
             )
         }};
     }
-    match baseline_distribution_name {
+    match baseline_name {
         "up" => distr_macro!(UpParameters, "cpp-up"),
         "jlp" => distr_macro!(JlpParameters, "cpp-jlp"),
         "crp" => distr_macro!(CrpParameters, "cpp-crp"),
-        _ => panic!("Unsupported distribution: {}", baseline_distribution_name),
+        _ => panic!("Unsupported distribution: {}", baseline_name),
     }
 }
 
 #[roxido]
 fn new_FrpParameters(
-    baseline_partition: Rval,
+    anchor: Rval,
     shrinkage: Rval,
     permutation: Rval,
     mass: Rval,
     discount: Rval,
     power: Rval,
 ) -> Rval {
-    let baseline_partition = mk_clustering(baseline_partition, pc);
+    let anchor = mk_clustering(anchor, pc);
     let shrinkage = mk_shrinkage(shrinkage, pc);
     let permutation = mk_permutation(permutation, pc);
     let mass = mass.into();
     let discount = discount.into();
     let power = power.into();
     let p = FrpParameters::new(
-        baseline_partition,
+        anchor,
         shrinkage,
         permutation,
         Mass::new_with_variable_constraint(mass, discount),
@@ -595,33 +584,32 @@ fn new_FrpParameters(
 
 #[roxido]
 fn new_OldSpParameters(
-    baseline_partition: Rval,
+    anchor: Rval,
     shrinkage: Rval,
     permutation: Rval,
-    baseline_distribution: Rval,
+    baseline: Rval,
     use_vi: Rval,
     a: Rval,
     scaling_exponent: Rval,
 ) -> Rval {
-    let baseline_partition = mk_clustering(baseline_partition, pc);
+    let anchor = mk_clustering(anchor, pc);
     let shrinkage = mk_shrinkage(shrinkage, pc);
     let permutation = mk_permutation(permutation, pc);
     let use_vi = use_vi.as_bool();
     let a = a.into();
     let scaling_exponent = scaling_exponent.into();
-    let (baseline_distribution_name, baseline_distribution_ptr) =
-        unwrap_distr_r_ptr(baseline_distribution);
+    let (baseline_name, baseline_ptr) = unwrap_distr_r_ptr(baseline);
     macro_rules! distr_macro {
         ($tipe:ty, $label:literal) => {{
-            let p = NonNull::new(baseline_distribution_ptr as *mut $tipe).unwrap();
-            let baseline_distribution = unsafe { p.as_ref().clone() };
+            let p = NonNull::new(baseline_ptr as *mut $tipe).unwrap();
+            let baseline = unsafe { p.as_ref().clone() };
             new_distr_r_ptr(
                 $label,
                 OldSpParameters::new(
-                    baseline_partition,
+                    anchor,
                     shrinkage,
                     permutation,
-                    baseline_distribution,
+                    baseline,
                     use_vi,
                     a,
                     scaling_exponent,
@@ -631,122 +619,91 @@ fn new_OldSpParameters(
             )
         }};
     }
-    match baseline_distribution_name {
+    match baseline_name {
         "up" => distr_macro!(UpParameters, "oldsp-up"),
         "jlp" => distr_macro!(JlpParameters, "oldsp-jlp"),
         "crp" => distr_macro!(CrpParameters, "oldsp-crp"),
-        _ => panic!("Unsupported distribution: {}", baseline_distribution_name),
+        _ => panic!("Unsupported distribution: {}", baseline_name),
     }
 }
 
 #[roxido]
-fn new_Old2SpParameters(
-    baseline_partition: Rval,
-    shrinkage: Rval,
-    permutation: Rval,
-    baseline_distribution: Rval,
-) -> Rval {
-    let baseline_partition = mk_clustering(baseline_partition, pc);
+fn new_Old2SpParameters(anchor: Rval, shrinkage: Rval, permutation: Rval, baseline: Rval) -> Rval {
+    let anchor = mk_clustering(anchor, pc);
     let shrinkage = mk_shrinkage(shrinkage, pc);
     let permutation = mk_permutation(permutation, pc);
-    let (baseline_distribution_name, baseline_distribution_ptr) =
-        unwrap_distr_r_ptr(baseline_distribution);
+    let (baseline_name, baseline_ptr) = unwrap_distr_r_ptr(baseline);
     macro_rules! distr_macro {
         ($tipe:ty, $label:literal) => {{
-            let p = NonNull::new(baseline_distribution_ptr as *mut $tipe).unwrap();
-            let baseline_distribution = unsafe { p.as_ref().clone() };
+            let p = NonNull::new(baseline_ptr as *mut $tipe).unwrap();
+            let baseline = unsafe { p.as_ref().clone() };
             new_distr_r_ptr(
                 $label,
-                Old2SpParameters::new(
-                    baseline_partition,
-                    shrinkage,
-                    permutation,
-                    baseline_distribution,
-                )
-                .unwrap(),
+                Old2SpParameters::new(anchor, shrinkage, permutation, baseline).unwrap(),
                 pc,
             )
         }};
     }
-    match baseline_distribution_name {
+    match baseline_name {
         "up" => distr_macro!(UpParameters, "old2sp-up"),
         "jlp" => distr_macro!(JlpParameters, "old2sp-jlp"),
         "crp" => distr_macro!(CrpParameters, "old2sp-crp"),
-        _ => panic!("Unsupported distribution: {}", baseline_distribution_name),
-    }
-}
-
-#[roxido]
-fn new_SpParameters(
-    baseline_partition: Rval,
-    shrinkage: Rval,
-    permutation: Rval,
-    baseline_distribution: Rval,
-) -> Rval {
-    let baseline_partition = mk_clustering(baseline_partition, pc);
-    let shrinkage = mk_shrinkage(shrinkage, pc);
-    let permutation = mk_permutation(permutation, pc);
-    let (baseline_distribution_name, baseline_distribution_ptr) =
-        unwrap_distr_r_ptr(baseline_distribution);
-    macro_rules! distr_macro {
-        ($tipe:ty, $label:literal) => {{
-            let p = NonNull::new(baseline_distribution_ptr as *mut $tipe).unwrap();
-            let baseline_distribution = unsafe { p.as_ref().clone() };
-            new_distr_r_ptr(
-                $label,
-                SpParameters::new(
-                    baseline_partition,
-                    shrinkage,
-                    permutation,
-                    baseline_distribution,
-                )
-                .unwrap(),
-                pc,
-            )
-        }};
-    }
-    match baseline_distribution_name {
-        "up" => distr_macro!(UpParameters, "sp-up"),
-        "jlp" => distr_macro!(JlpParameters, "sp-jlp"),
-        "crp" => distr_macro!(CrpParameters, "sp-crp"),
-        _ => panic!("Unsupported distribution: {}", baseline_distribution_name),
+        _ => panic!("Unsupported distribution: {}", baseline_name),
     }
 }
 
 #[roxido]
 fn new_SpMixtureParameters(
-    baseline_partition: Rval,
+    anchor: Rval,
     shrinkage: Rval,
     permutation: Rval,
-    baseline_distribution: Rval,
+    baseline: Rval,
 ) -> Rval {
-    let baseline_partition = mk_clustering(baseline_partition, pc);
+    let anchor = mk_clustering(anchor, pc);
     let shrinkage = mk_shrinkage_probabilities(shrinkage, pc);
     let permutation = mk_permutation(permutation, pc);
-    let (baseline_distribution_name, baseline_distribution_ptr) =
-        unwrap_distr_r_ptr(baseline_distribution);
+    let (baseline_name, baseline_ptr) = unwrap_distr_r_ptr(baseline);
     macro_rules! distr_macro {
         ($tipe:ty, $label:literal) => {{
-            let p = NonNull::new(baseline_distribution_ptr as *mut $tipe).unwrap();
-            let baseline_distribution = unsafe { p.as_ref().clone() };
+            let p = NonNull::new(baseline_ptr as *mut $tipe).unwrap();
+            let baseline = unsafe { p.as_ref().clone() };
             new_distr_r_ptr(
                 $label,
-                SpMixtureParameters::new(
-                    baseline_partition,
-                    shrinkage,
-                    permutation,
-                    baseline_distribution,
-                )
-                .unwrap(),
+                SpMixtureParameters::new(anchor, shrinkage, permutation, baseline).unwrap(),
                 pc,
             )
         }};
     }
-    match baseline_distribution_name {
+    match baseline_name {
         "up" => distr_macro!(UpParameters, "sp-mixture-up"),
         "jlp" => distr_macro!(JlpParameters, "sp-mixture-jlp"),
         "crp" => distr_macro!(CrpParameters, "sp-mixture-crp"),
-        _ => panic!("Unsupported distribution: {}", baseline_distribution_name),
+        _ => panic!("Unsupported distribution: {}", baseline_name),
+    }
+}
+
+#[roxido]
+fn new_SpParameters(anchor: Rval, shrinkage: Rval, permutation: Rval, baseline: Rval) -> Rval {
+    let anchor = mk_clustering(anchor, pc);
+    let shrinkage = mk_shrinkage(shrinkage, pc);
+    let permutation = mk_permutation(permutation, pc);
+    let (baseline_name, baseline_ptr) = unwrap_distr_r_ptr(baseline);
+    macro_rules! distr_macro {
+        ($tipe:ty, $label:literal) => {{
+            let p = NonNull::new(baseline_ptr as *mut $tipe).unwrap();
+            let baseline = unsafe { p.as_ref().clone() };
+            new_distr_r_ptr(
+                $label,
+                SpParameters::new(anchor, shrinkage, permutation, baseline).unwrap(),
+                pc,
+            )
+        }};
+    }
+    match baseline_name {
+        "up" => distr_macro!(UpParameters, "sp-up"),
+        "jlp" => distr_macro!(JlpParameters, "sp-jlp"),
+        "crp" => distr_macro!(CrpParameters, "sp-crp"),
+        _ => panic!("Unsupported distribution: {}", baseline_name),
     }
 }
 
