@@ -118,7 +118,7 @@ dependencies = [
 [[package]]
 name = "dahl-randompartition"
 version = "0.1.0"
-source = "git+https://github.com/dbdahl/rust-dahl-randompartition.git?rev=0bde52b#0bde52b85b4613354b445564af04f1674c8dfcc9"
+source = "git+https://github.com/dbdahl/rust-dahl-randompartition.git?rev=ceecd2e#ceecd2ef72ff3cdb4c975fe1452c107edb8c8655"
 dependencies = [
  "dahl-bellnumber",
  "dahl-salso",
@@ -182,10 +182,11 @@ checksum = "348108ab3fba42ec82ff6e9564fc4ca0247bdccdc68dd8af9764bbc79c3c8ffb"
 
 [[package]]
 name = "matrixmultiply"
-version = "0.3.3"
+version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb99c395ae250e1bf9133673f03ca9f97b7e71b705436bf8f089453445d1e9fe"
+checksum = "432b44fed6d9ed750739e7b719f0325555e6209d15e5ec3fd9e8a0a5509fdaf8"
 dependencies = [
+ "autocfg",
  "rawpointer",
 ]
 
