@@ -33,7 +33,10 @@ use nalgebra::{DMatrix, DVector};
 use rand::Rng;
 use rand::SeedableRng;
 use rand_pcg::Pcg64Mcg;
+use rayon::prelude::*;
 use roxido::*;
+use slice_sampler::univariate::stepping_out;
+use statrs::distribution::{Continuous, Gamma};
 
 #[roxido]
 fn rngs_new() -> Rval {
@@ -153,7 +156,10 @@ struct Group {
     hyperparameters: Hyperparameters,
 }
 
-struct All(Vec<Group>);
+struct All {
+    units: Vec<Group>,
+    n_items: usize,
+}
 
 #[roxido]
 fn all(all: Rval) -> Rval {
@@ -189,14 +195,175 @@ fn all(all: Rval) -> Rval {
         });
     }
     assert!(!all.is_empty());
-    let all = All(vec);
+    let all = All {
+        units: vec,
+        n_items: n_items.unwrap(),
+    };
     Rval::external_pointer_encode(all, rval!("all"))
+}
+
+struct GlobalMcmcTuning {
+    n_items_per_permutation_update: Option<usize>,
+    shrinkage_slice_step_size: Option<f64>,
+}
+
+impl GlobalMcmcTuning {
+    fn from_r(x: Rval, _pc: &mut Pc) -> Self {
+        let x0 = x.get_list_element(0);
+        let n_items_per_permutation_update = if x0.is_nil() {
+            None
+        } else {
+            Some(x0.as_usize())
+        };
+        let x1 = x.get_list_element(1);
+        let shrinkage_slice_step_size = if x1.is_nil() { None } else { Some(x1.as_f64()) };
+        Self {
+            n_items_per_permutation_update,
+            shrinkage_slice_step_size,
+        }
+    }
+}
+
+struct GlobalHyperparameters {
+    shrinkage_reference: usize,
+    shrinkage_shape: f64,
+    shrinkage_rate: f64,
+}
+
+impl GlobalHyperparameters {
+    fn from_r(x: Rval, _pc: &mut Pc) -> Self {
+        Self {
+            shrinkage_reference: x.get_list_element(0).as_usize(),
+            shrinkage_shape: x.get_list_element(1).as_f64(),
+            shrinkage_rate: x.get_list_element(2).as_f64(),
+        }
+    }
+}
+
+#[roxido]
+fn fit_hierarchial_model(
+    all_ptr: Rval,
+    n_updates: Rval,
+    unit_mcmc_tuning: Rval,
+    global_hyperparameters: Rval,
+    global_mcmc_tuning: Rval,
+) -> Rval {
+    let mut all: All = all_ptr.external_pointer_decode();
+    let n_updates = n_updates.as_usize();
+    let unit_mcmc_tuning = McmcTuning::from_r(unit_mcmc_tuning, pc);
+    let global_hyperparameters = GlobalHyperparameters::from_r(global_hyperparameters, pc);
+    let global_mcmc_tuning = GlobalMcmcTuning::from_r(global_mcmc_tuning, pc);
+    let mut rng = Pcg64Mcg::from_seed(r::random_bytes::<16>());
+    let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
+    rng.fill(&mut seed);
+    let mut rngs: Vec<_> = std::iter::repeat_with(|| {
+        let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
+        rng.fill(&mut seed);
+        let r1 = Pcg64Mcg::from_seed(seed);
+        rng.fill(&mut seed);
+        let r2 = Pcg64Mcg::from_seed(seed);
+        (r1, r2)
+    })
+    .take(all.units.len())
+    .collect();
+    let fastrand = fastrand::Rng::with_seed(rng.gen());
+    let fastrand_option = Some(&fastrand);
+    let anchor = all.units[rng.gen_range(0..all.units.len())]
+        .state
+        .clustering()
+        .clone();
+    let shrinkage = Shrinkage::constant(1.0, all.n_items).unwrap();
+    let permutation = Permutation::natural(all.n_items);
+    let baseline_mass = Mass::new(1.0);
+    let baseline_distribution = CrpParameters::new_with_mass(all.n_items, baseline_mass);
+    let mut partition_distribution =
+        SpParameters::new(anchor, shrinkage, permutation, baseline_distribution).unwrap();
+    let mut permutation_n_acceptances = 0;
+    for _ in 0..n_updates {
+        // Update each unit
+        all.units
+            .par_iter_mut()
+            .zip(rngs.par_iter_mut())
+            .for_each(|(unit, (r1, r2))| {
+                unit.state.mcmc_iteration(
+                    &unit_mcmc_tuning,
+                    &mut unit.data,
+                    &mut unit.hyperparameters,
+                    &partition_distribution,
+                    r1,
+                    r2,
+                )
+            });
+        // Update permutation
+        if global_mcmc_tuning.n_items_per_permutation_update.is_some() {
+            let log_target_current: f64 = all
+                .units
+                .par_iter()
+                .fold_with(0.0, |acc, x| {
+                    acc + partition_distribution.log_pmf(&x.state.clustering)
+                })
+                .sum();
+            partition_distribution.permutation.partial_shuffle(
+                global_mcmc_tuning.n_items_per_permutation_update.unwrap(),
+                &mut rng,
+            );
+            let log_target_proposal: f64 = all
+                .units
+                .par_iter()
+                .fold_with(0.0, |acc, x| {
+                    acc + partition_distribution.log_pmf(&x.state.clustering)
+                })
+                .sum();
+            let log_hastings_ratio = log_target_proposal - log_target_current;
+            if 0.0 <= log_hastings_ratio || rng.gen_range(0.0..1.0_f64).ln() < log_hastings_ratio {
+                permutation_n_acceptances += 1;
+            } else {
+                partition_distribution.permutation.partial_shuffle_undo(
+                    global_mcmc_tuning.n_items_per_permutation_update.unwrap(),
+                );
+            }
+        }
+        // Update shrinkage
+        if global_mcmc_tuning.shrinkage_slice_step_size.is_some() {
+            let shrinkage_prior_distribution = Gamma::new(
+                global_hyperparameters.shrinkage_shape,
+                global_hyperparameters.shrinkage_rate,
+            )
+            .unwrap();
+            let (s_new, _) = stepping_out::univariate_slice_sampler_stepping_out_and_shrinkage(
+                partition_distribution.shrinkage[global_hyperparameters.shrinkage_reference],
+                |s| {
+                    if s < 0.0 {
+                        return std::f64::NEG_INFINITY;
+                    }
+                    let log_prior = shrinkage_prior_distribution.ln_pdf(s);
+                    partition_distribution
+                        .shrinkage
+                        .rescale_by_reference(global_hyperparameters.shrinkage_reference, s);
+                    all.units
+                        .par_iter()
+                        .fold_with(log_prior, |acc, x| {
+                            acc + partition_distribution.log_pmf(&x.state.clustering)
+                        })
+                        .sum()
+                },
+                true,
+                &stepping_out::TuningParameters::new()
+                    .width(global_mcmc_tuning.shrinkage_slice_step_size.unwrap()),
+                fastrand_option,
+            );
+            partition_distribution
+                .shrinkage
+                .rescale_by_reference(global_hyperparameters.shrinkage_reference, s_new);
+        }
+    }
+    all_ptr
 }
 
 #[roxido]
 fn fit_all(all_ptr: Rval, shrinkage: Rval, n_updates: Rval, do_baseline_partition: Rval) -> Rval {
     let mut all: All = all_ptr.external_pointer_decode();
-    let n_items = all.0[0].data.n_items();
+    let n_items = all.n_items;
     let fixed = McmcTuning::new(false, false, false, false, Some(2), Some(1.0)).unwrap();
     let shrinkage = Shrinkage::constant(shrinkage.as_f64(), n_items).unwrap();
     let n_updates = n_updates.as_usize();
@@ -212,7 +379,7 @@ fn fit_all(all_ptr: Rval, shrinkage: Rval, n_updates: Rval, do_baseline_partitio
     let mut rng2 = Pcg64Mcg::from_seed(seed);
     let permutation = Permutation::natural_and_fixed(n_items);
     let hyperpartition_prior_distribution = CrpParameters::new_with_mass(n_items, Mass::new(1.0));
-    let baseline_partition_initial = all.0[rng.gen_range(0..all.0.len())]
+    let anchor_initial = all.units[rng.gen_range(0..all.units.len())]
         .state
         .clustering()
         .clone();
@@ -222,19 +389,19 @@ fn fit_all(all_ptr: Rval, shrinkage: Rval, n_updates: Rval, do_baseline_partitio
         let mut sum = 0.0;
         if !do_baseline_partition {
             println!("Missing: {}", missing_item);
-            for group in all.0.iter_mut() {
+            for group in all.units.iter_mut() {
                 group.data.declare_missing(vec![missing_item]);
             }
         }
         let mut partition_distribution = SpParameters::new(
-            baseline_partition_initial.clone(),
+            anchor_initial.clone(),
             shrinkage.clone(),
             Permutation::natural_and_fixed(n_items),
             CrpParameters::new_with_mass(n_items, Mass::new(1.0)),
         )
         .unwrap();
         for update_index in 0..n_updates {
-            for group in all.0.iter_mut() {
+            for group in all.units.iter_mut() {
                 group.state.mcmc_iteration(
                     &fixed,
                     &mut group.data,
@@ -248,7 +415,7 @@ fn fit_all(all_ptr: Rval, shrinkage: Rval, n_updates: Rval, do_baseline_partitio
             let mut log_likelihood_contribution_fn = |proposed_anchor: &Clustering| {
                 partition_distribution.anchor = proposed_anchor.clone();
                 let mut sum = 0.0;
-                for group in all.0.iter() {
+                for group in all.units.iter() {
                     sum += partition_distribution.log_pmf(group.state.clustering());
                 }
                 sum
@@ -268,7 +435,7 @@ fn fit_all(all_ptr: Rval, shrinkage: Rval, n_updates: Rval, do_baseline_partitio
                     &mut result_slice[(update_index * n_items)..((update_index + 1) * n_items)],
                 );
             } else {
-                for group in all.0.iter_mut() {
+                for group in all.units.iter_mut() {
                     sum += group
                         .state
                         .log_likelihood_contributions_of_missing(&group.data)
