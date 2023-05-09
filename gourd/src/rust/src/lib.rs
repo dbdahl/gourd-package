@@ -20,7 +20,7 @@ use dahl_randompartition::fixed::FixedPartitionParameters;
 use dahl_randompartition::frp::FrpParameters;
 use dahl_randompartition::jlp::JlpParameters;
 use dahl_randompartition::lsp::LspParameters;
-use dahl_randompartition::mcmc::update_neal_algorithm_full;
+use dahl_randompartition::mcmc::{update_neal_algorithm_full, update_partition_gibbs};
 use dahl_randompartition::old2sp::Old2SpParameters;
 use dahl_randompartition::oldsp::OldSpParameters;
 use dahl_randompartition::perm::Permutation;
@@ -203,21 +203,24 @@ fn all(all: Rval) -> Rval {
 }
 
 struct GlobalMcmcTuning {
+    update_anchor: bool,
     n_items_per_permutation_update: Option<usize>,
     shrinkage_slice_step_size: Option<f64>,
 }
 
 impl GlobalMcmcTuning {
     fn from_r(x: Rval, _pc: &mut Pc) -> Self {
-        let x0 = x.get_list_element(0);
-        let n_items_per_permutation_update = if x0.is_nil() {
+        let update_anchor = x.get_list_element(0).as_bool();
+        let x1 = x.get_list_element(1);
+        let n_items_per_permutation_update = if x1.is_nil() {
             None
         } else {
-            Some(x0.as_usize())
+            Some(x1.as_usize())
         };
-        let x1 = x.get_list_element(1);
-        let shrinkage_slice_step_size = if x1.is_nil() { None } else { Some(x1.as_f64()) };
+        let x2 = x.get_list_element(2);
+        let shrinkage_slice_step_size = if x2.is_nil() { None } else { Some(x1.as_f64()) };
         Self {
+            update_anchor,
             n_items_per_permutation_update,
             shrinkage_slice_step_size,
         }
@@ -275,7 +278,10 @@ fn fit_hierarchial_model(
     let shrinkage = Shrinkage::constant(1.0, all.n_items).unwrap();
     let permutation = Permutation::natural(all.n_items);
     let baseline_mass = Mass::new(1.0);
+    let anchor_mass = Mass::new(1.0);
     let baseline_distribution = CrpParameters::new_with_mass(all.n_items, baseline_mass);
+    let anchor_distribution = CrpParameters::new_with_mass(all.n_items, anchor_mass);
+    let anchor_update_permutation = Permutation::natural_and_fixed(all.n_items);
     let mut partition_distribution =
         SpParameters::new(anchor, shrinkage, permutation, baseline_distribution).unwrap();
     let mut permutation_n_acceptances = 0;
@@ -294,26 +300,40 @@ fn fit_hierarchial_model(
                     r2,
                 )
             });
+        // Update anchor
+        let mut pd = partition_distribution.clone();
+        let mut compute_log_likelihood = |anchor: &Clustering| {
+            pd.anchor = anchor.clone();
+            all.units
+                .par_iter()
+                .fold_with(0.0, |acc, x| acc + pd.log_pmf(&x.state.clustering))
+                .sum::<f64>()
+        };
+        if global_mcmc_tuning.update_anchor {
+            update_partition_gibbs(
+                1,
+                &mut partition_distribution.anchor,
+                &anchor_update_permutation,
+                &anchor_distribution,
+                &mut compute_log_likelihood,
+                &mut rng,
+            )
+        }
+        // Helper
+        let compute_log_likelihood = |pd: &SpParameters<CrpParameters>| {
+            all.units
+                .par_iter()
+                .fold_with(0.0, |acc, x| acc + pd.log_pmf(&x.state.clustering))
+                .sum::<f64>()
+        };
         // Update permutation
         if global_mcmc_tuning.n_items_per_permutation_update.is_some() {
-            let log_target_current: f64 = all
-                .units
-                .par_iter()
-                .fold_with(0.0, |acc, x| {
-                    acc + partition_distribution.log_pmf(&x.state.clustering)
-                })
-                .sum();
+            let log_target_current: f64 = compute_log_likelihood(&partition_distribution);
             partition_distribution.permutation.partial_shuffle(
                 global_mcmc_tuning.n_items_per_permutation_update.unwrap(),
                 &mut rng,
             );
-            let log_target_proposal: f64 = all
-                .units
-                .par_iter()
-                .fold_with(0.0, |acc, x| {
-                    acc + partition_distribution.log_pmf(&x.state.clustering)
-                })
-                .sum();
+            let log_target_proposal: f64 = compute_log_likelihood(&partition_distribution);
             let log_hastings_ratio = log_target_proposal - log_target_current;
             if 0.0 <= log_hastings_ratio || rng.gen_range(0.0..1.0_f64).ln() < log_hastings_ratio {
                 permutation_n_acceptances += 1;
@@ -336,16 +356,11 @@ fn fit_hierarchial_model(
                     if s < 0.0 {
                         return std::f64::NEG_INFINITY;
                     }
-                    let log_prior = shrinkage_prior_distribution.ln_pdf(s);
                     partition_distribution
                         .shrinkage
                         .rescale_by_reference(global_hyperparameters.shrinkage_reference, s);
-                    all.units
-                        .par_iter()
-                        .fold_with(log_prior, |acc, x| {
-                            acc + partition_distribution.log_pmf(&x.state.clustering)
-                        })
-                        .sum()
+                    shrinkage_prior_distribution.ln_pdf(s)
+                        + compute_log_likelihood(&partition_distribution)
                 },
                 true,
                 &stepping_out::TuningParameters::new()
