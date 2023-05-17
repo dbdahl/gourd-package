@@ -117,10 +117,7 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
     stop("'hyperparameters$shrinkage_rate' must be a strictly positive scalar.")
   }
   hyperparameters <- .Call(.hyperparameters_r2rust, hyperparameters)
-  # Verify MCMC tuning parameters
-  if ( ! is.list(mcmcTuning) || length(mcmcTuning) != 6 ) {
-    stop("'mcmc_tuning' should be a list of length 6.")
-  }
+  verify_unit_mcmc_tuning(mcmcTuning, "mcmcTuning")
   monitor <- .Call(.monitor_new)
   partitionDistribution <- mkDistrPtr(partitionDistribution)  # DBD: Memory leak!!!!!
   rngs <- .Call(.rngs_new)
@@ -203,4 +200,35 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
 fit_all <- function(all, shrinkage, nIterations, doBaselinePartition) {
   all_ptr <- .Call(.all, all)
   .Call(.fit_all, all_ptr, shrinkage, nIterations, doBaselinePartition)
+}
+
+#' @export
+fit_hierarchical_model <- function(all, n_updates, unit_mcmc_tuning, global_hyperparameters, global_mcmc_tuning, validation_data) {
+  all_ptr <- .Call(.all, all)
+  check_list(unit_mcmc_tuning, "llllid")
+  check_list(global_hyperparameters, "ddidd")
+  check_list(global_mcmc_tuning, "lid")
+  .Call(.fit_hierarchical_model, all_ptr, n_updates, unit_mcmc_tuning, global_hyperparameters, global_mcmc_tuning, validation_data)
+}
+
+check_list <- function(x, arg_types) {
+  name <- deparse(substitute(x))
+  arg_types <- strsplit(arg_types, "")[[1]]
+  if (!is.list(x) || length(x) != length(arg_types)) {
+    stop(sprintf("'%s' should be a list of length %s.", name, length(arg_types)))
+  }
+  for (i in seq_along(arg_types)) {
+    y <- x[[i]]
+    if (length(y) != 1) stop(sprintf("Element %s of '%s' should be a scalar.", i, name))
+    t <- arg_types[[i]]
+    if (t == "l") {
+      if (!is.logical(y)) stop(sprintf("Element %s of '%s' should be a logical.", i, name))
+    } else if (t == "i") {
+      if (!is.numeric(y)) stop(sprintf("Element %s of '%s' should be an integer.", i, name))
+    } else if (t == "d") {
+      if (!is.numeric(y)) stop(sprintf("Element %s of '%s' should be a double.", i, name))
+    } else {
+      stop("Unrecognized type")
+    }
+  }
 }

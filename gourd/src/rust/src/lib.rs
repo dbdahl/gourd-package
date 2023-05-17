@@ -228,6 +228,8 @@ impl GlobalMcmcTuning {
 }
 
 struct GlobalHyperparameters {
+    baseline_mass: f64,
+    anchor_mass: f64,
     shrinkage_reference: usize,
     shrinkage_shape: f64,
     shrinkage_rate: f64,
@@ -236,26 +238,103 @@ struct GlobalHyperparameters {
 impl GlobalHyperparameters {
     fn from_r(x: Rval, _pc: &mut Pc) -> Self {
         Self {
-            shrinkage_reference: x.get_list_element(0).as_usize(),
-            shrinkage_shape: x.get_list_element(1).as_f64(),
-            shrinkage_rate: x.get_list_element(2).as_f64(),
+            baseline_mass: x.get_list_element(0).as_f64(),
+            anchor_mass: x.get_list_element(1).as_f64(),
+            shrinkage_reference: x.get_list_element(2).as_usize() - 1,
+            shrinkage_shape: x.get_list_element(3).as_f64(),
+            shrinkage_rate: x.get_list_element(4).as_f64(),
         }
     }
 }
 
+struct Results<'a> {
+    rval: Rval,
+    counter: usize,
+    n_updates: usize,
+    n_items: usize,
+    anchors: &'a mut [i32],
+    permutations: &'a mut [i32],
+    shrinkages: &'a mut [f64],
+    log_likelihoods: &'a mut [f64],
+}
+
+impl<'a> Results<'a> {
+    pub fn new(n_updates: Rval, n_items: usize, pc: &mut Pc) -> Self {
+        let n_updates = n_updates.as_usize();
+        let (anchors_rval, anchors) = Rval::new_matrix_integer(n_items, n_updates, pc);
+        let (permutations_rval, permutations) = Rval::new_matrix_integer(n_items, n_updates, pc);
+        let (shrinkages_rval, shrinkages) = Rval::new_vector_double(n_updates, pc);
+        let (log_likelihoods_rval, log_likelihoods) = Rval::new_vector_double(n_updates, pc);
+        let rval = Rval::new_list(6, pc); // Extra 2 items for rates after looping.
+        rval.names_gets(Rval::new(
+            [
+                "anchor",
+                "permutation",
+                "shrinkage",
+                "log_likelihood",
+                "permutation_acceptance_rate",
+                "shrinkage_slice_n_evaluations_rate",
+            ],
+            pc,
+        ));
+        rval.set_list_element(0, anchors_rval);
+        rval.set_list_element(1, permutations_rval);
+        rval.set_list_element(2, shrinkages_rval);
+        rval.set_list_element(3, log_likelihoods_rval);
+        Self {
+            rval,
+            counter: 0,
+            n_updates,
+            n_items,
+            anchors,
+            permutations,
+            shrinkages,
+            log_likelihoods,
+        }
+    }
+
+    pub fn push(
+        &mut self,
+        anchor: &Clustering,
+        permutation: &Permutation,
+        shrinkage: f64,
+        log_likelihoods: f64,
+    ) {
+        let range = (self.counter * self.n_items)..((self.counter + 1) * self.n_items);
+        let slice = &mut self.anchors[range.clone()];
+        anchor.relabel_into_slice(1, slice);
+        let slice = &mut self.permutations[range];
+        for (x, y) in slice.iter_mut().zip(permutation.as_slice()) {
+            *x = *y as i32;
+        }
+        self.shrinkages[self.counter] = shrinkage;
+        self.log_likelihoods[self.counter] = log_likelihoods;
+        self.counter += 1;
+    }
+}
+
 #[roxido]
-fn fit_hierarchial_model(
+fn fit_hierarchical_model(
     all_ptr: Rval,
     n_updates: Rval,
     unit_mcmc_tuning: Rval,
     global_hyperparameters: Rval,
     global_mcmc_tuning: Rval,
+    validation_data: Rval,
 ) -> Rval {
     let mut all: All = all_ptr.external_pointer_decode();
-    let n_updates = n_updates.as_usize();
     let unit_mcmc_tuning = McmcTuning::from_r(unit_mcmc_tuning, pc);
     let global_hyperparameters = GlobalHyperparameters::from_r(global_hyperparameters, pc);
     let global_mcmc_tuning = GlobalMcmcTuning::from_r(global_mcmc_tuning, pc);
+    let validation_data = {
+        let n_units = validation_data.len();
+        let mut vd = Vec::with_capacity(n_units);
+        for k in 0..n_units {
+            vd.push(Data::from_r(validation_data.get_list_element(k), pc));
+        }
+        vd
+    };
+    let mut results = Results::new(n_updates, all.n_items, pc);
     let mut rng = Pcg64Mcg::from_seed(r::random_bytes::<16>());
     let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
     rng.fill(&mut seed);
@@ -277,15 +356,16 @@ fn fit_hierarchial_model(
         .clone();
     let shrinkage = Shrinkage::constant(1.0, all.n_items).unwrap();
     let permutation = Permutation::natural(all.n_items);
-    let baseline_mass = Mass::new(1.0);
-    let anchor_mass = Mass::new(1.0);
+    let baseline_mass = Mass::new(global_hyperparameters.baseline_mass);
+    let anchor_mass = Mass::new(global_hyperparameters.anchor_mass);
     let baseline_distribution = CrpParameters::new_with_mass(all.n_items, baseline_mass);
     let anchor_distribution = CrpParameters::new_with_mass(all.n_items, anchor_mass);
     let anchor_update_permutation = Permutation::natural_and_fixed(all.n_items);
     let mut partition_distribution =
         SpParameters::new(anchor, shrinkage, permutation, baseline_distribution).unwrap();
     let mut permutation_n_acceptances = 0;
-    for _ in 0..n_updates {
+    let mut shrinkage_slice_n_evaluations = 0;
+    for _ in 0..results.n_updates {
         // Update each unit
         all.units
             .par_iter_mut()
@@ -350,29 +430,54 @@ fn fit_hierarchial_model(
                 global_hyperparameters.shrinkage_rate,
             )
             .unwrap();
-            let (s_new, _) = stepping_out::univariate_slice_sampler_stepping_out_and_shrinkage(
-                partition_distribution.shrinkage[global_hyperparameters.shrinkage_reference],
-                |s| {
-                    if s < 0.0 {
-                        return std::f64::NEG_INFINITY;
-                    }
-                    partition_distribution
-                        .shrinkage
-                        .rescale_by_reference(global_hyperparameters.shrinkage_reference, s);
-                    shrinkage_prior_distribution.ln_pdf(s)
-                        + compute_log_likelihood(&partition_distribution)
-                },
-                true,
-                &stepping_out::TuningParameters::new()
-                    .width(global_mcmc_tuning.shrinkage_slice_step_size.unwrap()),
-                fastrand_option,
-            );
+            let (s_new, n_evaluations) =
+                stepping_out::univariate_slice_sampler_stepping_out_and_shrinkage(
+                    partition_distribution.shrinkage[global_hyperparameters.shrinkage_reference],
+                    |s| {
+                        if s < 0.0 {
+                            return std::f64::NEG_INFINITY;
+                        }
+                        partition_distribution
+                            .shrinkage
+                            .rescale_by_reference(global_hyperparameters.shrinkage_reference, s);
+                        shrinkage_prior_distribution.ln_pdf(s)
+                            + compute_log_likelihood(&partition_distribution)
+                    },
+                    true,
+                    &stepping_out::TuningParameters::new()
+                        .width(global_mcmc_tuning.shrinkage_slice_step_size.unwrap()),
+                    fastrand_option,
+                );
             partition_distribution
                 .shrinkage
                 .rescale_by_reference(global_hyperparameters.shrinkage_reference, s_new);
+            shrinkage_slice_n_evaluations += n_evaluations;
         }
+        // Report
+        let log_likelihood_of_validation = all
+            .units
+            .iter()
+            .zip(validation_data.iter())
+            .fold(0.0, |acc, (group, data)| {
+                acc + group.state.log_likelihood(data)
+            });
+        results.push(
+            &partition_distribution.anchor,
+            &partition_distribution.permutation,
+            partition_distribution.shrinkage[global_hyperparameters.shrinkage_reference],
+            log_likelihood_of_validation,
+        );
     }
-    all_ptr
+    let n_updates_as_f64 = results.n_updates as f64;
+    results.rval.set_list_element(
+        4,
+        rval!(permutation_n_acceptances as f64 / n_updates_as_f64),
+    );
+    results.rval.set_list_element(
+        5,
+        rval!(shrinkage_slice_n_evaluations as f64 / n_updates_as_f64),
+    );
+    results.rval
 }
 
 #[roxido]
