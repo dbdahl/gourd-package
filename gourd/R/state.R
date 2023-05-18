@@ -117,7 +117,7 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
     stop("'hyperparameters$shrinkage_rate' must be a strictly positive scalar.")
   }
   hyperparameters <- .Call(.hyperparameters_r2rust, hyperparameters)
-  verify_unit_mcmc_tuning(mcmcTuning, "mcmcTuning")
+  check_list(mcmcTuning, "llllid")
   monitor <- .Call(.monitor_new)
   partitionDistribution <- mkDistrPtr(partitionDistribution)  # DBD: Memory leak!!!!!
   rngs <- .Call(.rngs_new)
@@ -203,12 +203,12 @@ fit_all <- function(all, shrinkage, nIterations, doBaselinePartition) {
 }
 
 #' @export
-fit_hierarchical_model <- function(all, n_updates, unit_mcmc_tuning, global_hyperparameters, global_mcmc_tuning, validation_data) {
+fit_hierarchical_model <- function(all, unit_mcmc_tuning, global_hyperparameters, global_mcmc_tuning, validation_data) {
   all_ptr <- .Call(.all, all)
   check_list(unit_mcmc_tuning, "llllid")
   check_list(global_hyperparameters, "ddidd")
-  check_list(global_mcmc_tuning, "lid")
-  .Call(.fit_hierarchical_model, all_ptr, n_updates, unit_mcmc_tuning, global_hyperparameters, global_mcmc_tuning, validation_data)
+  check_list(global_mcmc_tuning, "iiiliid")
+  .Call(.fit_hierarchical_model, all_ptr, unit_mcmc_tuning, global_hyperparameters, global_mcmc_tuning, validation_data)
 }
 
 check_list <- function(x, arg_types) {

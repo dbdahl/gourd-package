@@ -1,6 +1,6 @@
 Package: gourd
 Title: A Short Phrase in Title Case
-Version: 0.1.16
+Version: 0.1.19
 Authors@R: c(person(given = "David", family = "Dahl", role = c("aut", "cre"),
                     email = "dahl@stat.byu.edu", comment = c(ORCID = "0000-0002-8173-1547")))
 Description: One paragraph description of what the package does.

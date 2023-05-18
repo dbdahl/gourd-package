@@ -87,7 +87,7 @@ impl Data {
             .iter()
             .map(|&item| {
                 let rows = self.membership_generator.indices_of_item(item);
-                (item, self.response.select_rows(&rows[..]))
+                (item, self.response.select_rows(rows))
             })
             .collect();
     }

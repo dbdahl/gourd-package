@@ -209,7 +209,7 @@ impl State {
         rng: &mut T,
         rng2: &mut T,
     ) {
-        data.impute(&self, rng);
+        data.impute(self, rng);
         if mcmc_tuning.update_precision_response {
             Self::update_precision_response(
                 &mut self.precision_response,
@@ -305,8 +305,7 @@ impl State {
     ) -> DVector<f64> {
         let mut result = DVector::from_element(data.n_observations(), 0.0);
         for item in 0..data.n_items() {
-            let rows_vec = data.membership_generator().indices_of_item(item);
-            let rows = &rows_vec[..];
+            let rows = data.membership_generator().indices_of_item(item);
             let label = &clustering.allocation()[item];
             for (&row, &value) in rows.iter().zip(
                 (data.clustered_covariates().select_rows(rows) * &clustered_coefficients[*label])
@@ -336,10 +335,10 @@ impl State {
         }
         let cacher = |item: usize| {
             let rows = data.membership_generator().indices_of_item(item);
-            let response = data.response().select_rows(&rows[..]);
+            let response = data.response().select_rows(rows);
             let difference =
-                response - (data.global_covariates().select_rows(&rows[..]) * global_coefficients);
-            let clustered_covariates = data.clustered_covariates().select_rows(&rows[..]);
+                response - (data.global_covariates().select_rows(rows) * global_coefficients);
+            let clustered_covariates = data.clustered_covariates().select_rows(rows);
             CommonItemCache {
                 difference,
                 clustered_covariates,
@@ -378,7 +377,7 @@ impl State {
     }
 
     fn update_clustered_coefficients<T: Rng>(
-        clustered_coefficients: &mut Vec<DVector<f64>>,
+        clustered_coefficients: &mut [DVector<f64>],
         clustering: &Clustering,
         precision_response: f64,
         global_coefficients: &DVector<f64>,
