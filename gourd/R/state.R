@@ -203,12 +203,12 @@ fit_all <- function(all, shrinkage, nIterations, doBaselinePartition) {
 }
 
 #' @export
-fit_hierarchical_model <- function(all, unit_mcmc_tuning, global_hyperparameters, global_mcmc_tuning, validation_data) {
+fit_hierarchical_model <- function(all, unit_mcmc_tuning, global_hyperparameters, global_mcmc_tuning) {
   all_ptr <- .Call(.all, all)
-  check_list(unit_mcmc_tuning, "llllid")
+  check_list(unit_mcmc_tuning, "bbbbid")
   check_list(global_hyperparameters, "ddidd")
-  check_list(global_mcmc_tuning, "iiiliid")
-  .Call(.fit_hierarchical_model, all_ptr, unit_mcmc_tuning, global_hyperparameters, global_mcmc_tuning, validation_data)
+  check_list(global_mcmc_tuning, "iiibiidl")
+  .Call(.fit_hierarchical_model, all_ptr, unit_mcmc_tuning, global_hyperparameters, global_mcmc_tuning)
 }
 
 check_list <- function(x, arg_types) {
@@ -219,14 +219,16 @@ check_list <- function(x, arg_types) {
   }
   for (i in seq_along(arg_types)) {
     y <- x[[i]]
-    if (length(y) != 1) stop(sprintf("Element %s of '%s' should be a scalar.", i, name))
     t <- arg_types[[i]]
-    if (t == "l") {
+    if (length(y) != 1 && t != "l") stop(sprintf("Element %s of '%s' should be a scalar.", i, name))
+    if (t == "b") {
       if (!is.logical(y)) stop(sprintf("Element %s of '%s' should be a logical.", i, name))
     } else if (t == "i") {
       if (!is.numeric(y)) stop(sprintf("Element %s of '%s' should be an integer.", i, name))
     } else if (t == "d") {
       if (!is.numeric(y)) stop(sprintf("Element %s of '%s' should be a double.", i, name))
+    } else if (t == "l") {
+      if (!is.list(y) && !is.null(y)) stop(sprintf("Element %s of '%s' should be a list.", i, name))
     } else {
       stop("Unrecognized type")
     }

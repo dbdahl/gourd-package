@@ -85,7 +85,7 @@ fn fit_all(all_ptr: Rval, shrinkage: Rval, nIterations: Rval, doBaselinePartitio
 }
 
 #[roxido]
-fn fit_hierarchical_model(all_ptr: Rval, unit_mcmc_tuning: Rval, global_hyperparameters: Rval, global_mcmc_tuning: Rval, validation_data: Rval) -> Rval {
+fn fit_hierarchical_model(all_ptr: Rval, unit_mcmc_tuning: Rval, global_hyperparameters: Rval, global_mcmc_tuning: Rval) -> Rval {
     Rval::nil()
 }
 
@@ -249,7 +249,7 @@ extern "C" fn R_init_gourd_rust(info: *mut rbindings::DllInfo) {
     call_routines.push(rbindings::R_CallMethodDef {
         name: _names.last().unwrap().as_ptr(),
         fun: unsafe { std::mem::transmute(crate::fit_hierarchical_model as *const u8) },
-        numArgs: 5,
+        numArgs: 4,
     });
     _names.push(std::ffi::CString::new(".new_FixedPartitionParameters").unwrap());
     call_routines.push(rbindings::R_CallMethodDef {

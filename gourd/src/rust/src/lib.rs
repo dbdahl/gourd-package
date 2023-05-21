@@ -211,10 +211,11 @@ struct GlobalMcmcTuning {
     n_permutation_updates_per_scan: usize,
     n_items_per_permutation_update: Option<usize>,
     shrinkage_slice_step_size: Option<f64>,
+    validation_data: Option<Vec<Data>>,
 }
 
 impl GlobalMcmcTuning {
-    fn from_r(x: Rval, _pc: &mut Pc) -> Self {
+    fn from_r(x: Rval, pc: &mut Pc) -> Self {
         let n_scans_per_loop = x.get_list_element(2).as_usize();
         let n_loops = x.get_list_element(0).as_usize() / n_scans_per_loop;
         let n_loops_burnin = x.get_list_element(1).as_usize() / n_scans_per_loop;
@@ -228,7 +229,18 @@ impl GlobalMcmcTuning {
             Some(x1.as_usize())
         };
         let x2 = x.get_list_element(6);
-        let shrinkage_slice_step_size = if x2.is_nil() { None } else { Some(x1.as_f64()) };
+        let shrinkage_slice_step_size = if x2.is_nil() { None } else { Some(x2.as_f64()) };
+        let x3 = x.get_list_element(7);
+        let validation_data = if x3.is_nil() {
+            None
+        } else {
+            let n_units = x3.len();
+            let mut vd = Vec::with_capacity(n_units);
+            for k in 0..n_units {
+                vd.push(Data::from_r(x3.get_list_element(k), pc));
+            }
+            Some(vd)
+        };
         Self {
             n_loops,
             n_loops_burnin,
@@ -238,6 +250,7 @@ impl GlobalMcmcTuning {
             n_permutation_updates_per_scan,
             n_items_per_permutation_update,
             shrinkage_slice_step_size,
+            validation_data,
         }
     }
 }
@@ -348,20 +361,12 @@ fn fit_hierarchical_model(
     unit_mcmc_tuning: Rval,
     global_hyperparameters: Rval,
     global_mcmc_tuning: Rval,
-    validation_data: Rval,
 ) -> Rval {
     let mut all: All = all_ptr.external_pointer_decode();
     let unit_mcmc_tuning = McmcTuning::from_r(unit_mcmc_tuning, pc);
     let global_hyperparameters = GlobalHyperparameters::from_r(global_hyperparameters, pc);
     let global_mcmc_tuning = GlobalMcmcTuning::from_r(global_mcmc_tuning, pc);
-    let n_units = validation_data.len();
-    let validation_data = {
-        let mut vd = Vec::with_capacity(n_units);
-        for k in 0..n_units {
-            vd.push(Data::from_r(validation_data.get_list_element(k), pc));
-        }
-        vd
-    };
+    let n_units = all.units.len();
     let mut results = Results::new(&global_mcmc_tuning, all.n_items, n_units, pc);
     let mut rng = Pcg64Mcg::from_seed(r::random_bytes::<16>());
     let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
@@ -492,19 +497,31 @@ fn fit_hierarchical_model(
         }
         // Report
         if loop_counter >= global_mcmc_tuning.n_loops_burnin {
-            let log_likelihood_of_validation = all
-                .units
-                .iter()
-                .zip(validation_data.iter())
-                .fold(0.0, |acc, (group, data)| {
-                    acc + group.state.log_likelihood(data)
-                });
+            let log_likelihood = match &global_mcmc_tuning.validation_data {
+                Some(validation_data) => all
+                    .units
+                    .par_iter()
+                    .zip(validation_data.par_iter())
+                    .fold(
+                        || 0.0,
+                        |acc, (group, data)| acc + group.state.log_likelihood(data),
+                    )
+                    .sum(),
+                None => all
+                    .units
+                    .par_iter()
+                    .fold(
+                        || 0.0,
+                        |acc, group| acc + group.state.log_likelihood(&group.data),
+                    )
+                    .sum(),
+            };
             results.push(
                 all.units.iter().map(|x| &x.state.clustering),
                 &partition_distribution.anchor,
                 &partition_distribution.permutation,
                 partition_distribution.shrinkage[global_hyperparameters.shrinkage_reference],
-                log_likelihood_of_validation,
+                log_likelihood,
             );
         }
     }
@@ -576,11 +593,13 @@ fn fit_all(all_ptr: Rval, shrinkage: Rval, n_updates: Rval, do_baseline_partitio
             let mut anchor_tmp = partition_distribution.anchor.clone();
             let mut log_likelihood_contribution_fn = |proposed_anchor: &Clustering| {
                 partition_distribution.anchor = proposed_anchor.clone();
-                let mut sum = 0.0;
-                for group in all.units.iter() {
-                    sum += partition_distribution.log_pmf(group.state.clustering());
-                }
-                sum
+                all.units
+                    .par_iter()
+                    .fold(
+                        || 0.0,
+                        |acc, group| acc + partition_distribution.log_pmf(group.state.clustering()),
+                    )
+                    .sum()
             };
             update_neal_algorithm_full(
                 1,
