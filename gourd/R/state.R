@@ -117,7 +117,7 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
     stop("'hyperparameters$shrinkage_rate' must be a strictly positive scalar.")
   }
   hyperparameters <- .Call(.hyperparameters_r2rust, hyperparameters)
-  check_list(mcmcTuning, "llllid")
+  check_list(mcmcTuning, "bbbbid")
   monitor <- .Call(.monitor_new)
   partitionDistribution <- mkDistrPtr(partitionDistribution)  # DBD: Memory leak!!!!!
   rngs <- .Call(.rngs_new)
