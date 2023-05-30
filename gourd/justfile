@@ -1,21 +1,13 @@
-scp_dest := "dahl:public"  # Change this to match the 'configure' script.
-pkgname := `basename $(pwd)`
-
-build:
-  rm -f {{pkgname}}_*.tar.gz
-  R CMD build .
-
 install: build
-  R CMD INSTALL {{pkgname}}_*.tar.gz
+  R CMD INSTALL *.tar.gz
+
+build: prebuild
+  rm -f *.tar.gz
+  R CMD build .
 
 prebuild:
   Rscript -e 'cargo::prebuild(what="all")'
 
-is-clean:
-  R-package is-clean
-
-publish: is-clean install
-  R-package publish {{pkgname}}_*.tar.gz
-  R-package tag
-  echo "Please increment the version number in the files DESCRIPTION and NEWS."
+reinstall:
+  R CMD INSTALL .
 
