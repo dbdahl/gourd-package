@@ -265,7 +265,7 @@ checksum = "01fcc0b8149b4632adc89ac3b7b31a12fb6099a0317a4eb2ebff574ef7de7218"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -276,7 +276,7 @@ checksum = "d232c68884c0c99810a5a4d333ef7e47689cfd0edc85efc9e54e1e6bf5212766"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -463,17 +463,17 @@ dependencies = [
 
 [[package]]
 name = "roxido"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "roxido_macro",
 ]
 
 [[package]]
 name = "roxido_macro"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "quote",
- "syn",
+ "syn 2.0.18",
 ]
 
 [[package]]
@@ -560,6 +560,17 @@ name = "syn"
 version = "1.0.109"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b64191b275b66ffe2469e8af2c1cfe3bafa67b529ead792a6d0160888b4237"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-ident",
+]
+
+[[package]]
+name = "syn"
+version = "2.0.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32d41677bcbe24c20c52e7c70b0d8db04134c5d1066bf98662e2871ad200ea3e"
 dependencies = [
  "proc-macro2",
  "quote",

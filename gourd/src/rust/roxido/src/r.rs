@@ -588,10 +588,6 @@ impl Rval {
         }
         let len = self.len();
         if i >= len {
-            println!(
-                "Custom backtrace: {}",
-                std::backtrace::Backtrace::force_capture()
-            );
             panic!("Index {} is out of bounds for list of length {}", i, len);
         }
         Self(unsafe { VECTOR_ELT(self.0, i.try_into().unwrap()) })
