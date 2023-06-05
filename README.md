@@ -1,1 +1,1 @@
-# squash-package
+# gourd-package

@@ -37,6 +37,7 @@ use rayon::prelude::*;
 use roxido::*;
 use slice_sampler::univariate::stepping_out;
 use statrs::distribution::{Continuous, Gamma};
+use walltime::TicToc;
 
 #[roxido]
 fn rngs_new() -> Rval {
@@ -300,7 +301,7 @@ impl<'a> Results<'a> {
             Rval::new_matrix_integer(n_items, tuning.n_saves, pc);
         let (shrinkages_rval, shrinkages) = Rval::new_vector_double(tuning.n_saves, pc);
         let (log_likelihoods_rval, log_likelihoods) = Rval::new_vector_double(tuning.n_saves, pc);
-        let rval = Rval::new_list(7, pc); // Extra 2 items for rates after looping.
+        let rval = Rval::new_list(8, pc); // Extra 2 items for rates after looping.
         rval.names_gets(Rval::new(
             [
                 "unit_partitions",
@@ -310,6 +311,7 @@ impl<'a> Results<'a> {
                 "log_likelihood",
                 "permutation_acceptance_rate",
                 "shrinkage_slice_n_evaluations_rate",
+                "wall_times",
             ],
             pc,
         ));
@@ -396,11 +398,24 @@ fn fit_hierarchical_model(
     let anchor_update_permutation = Permutation::natural_and_fixed(all.n_items);
     let mut partition_distribution =
         SpParameters::new(anchor, shrinkage, permutation, baseline_distribution).unwrap();
+    struct Timers {
+        units: TicToc,
+        anchor: TicToc,
+        permutation: TicToc,
+        shrinkage: TicToc,
+    }
+    let mut timers = Timers {
+        units: TicToc::new(),
+        anchor: TicToc::new(),
+        permutation: TicToc::new(),
+        shrinkage: TicToc::new(),
+    };
     let mut permutation_n_acceptances = 0;
     let mut shrinkage_slice_n_evaluations = 0;
     for loop_counter in 0..global_mcmc_tuning.n_loops {
         for _ in 0..global_mcmc_tuning.n_scans_per_loop {
             // Update each unit
+            timers.units.tic();
             all.units
                 .par_iter_mut()
                 .zip(rngs.par_iter_mut())
@@ -414,7 +429,9 @@ fn fit_hierarchical_model(
                         r2,
                     )
                 });
+            timers.units.toc();
             // Update anchor
+            timers.anchor.tic();
             let mut pd = partition_distribution.clone();
             let mut compute_log_likelihood = |anchor: &Clustering| {
                 pd.anchor = anchor.clone();
@@ -433,6 +450,7 @@ fn fit_hierarchical_model(
                     &mut rng,
                 )
             }
+            timers.anchor.toc();
             // Helper
             let compute_log_likelihood = |pd: &SpParameters<CrpParameters>| {
                 all.units
@@ -441,17 +459,19 @@ fn fit_hierarchical_model(
                     .sum::<f64>()
             };
             // Update permutation
+            timers.permutation.tic();
             if let Some(k) = global_mcmc_tuning.n_items_per_permutation_update {
+                let mut log_target_current: f64 = compute_log_likelihood(&partition_distribution);
                 for _ in 0..global_mcmc_tuning.n_permutation_updates_per_scan {
-                    let log_target_current: f64 = compute_log_likelihood(&partition_distribution);
                     partition_distribution
                         .permutation
                         .partial_shuffle(k, &mut rng);
-                    let log_target_proposal: f64 = compute_log_likelihood(&partition_distribution);
+                    let log_target_proposal = compute_log_likelihood(&partition_distribution);
                     let log_hastings_ratio = log_target_proposal - log_target_current;
                     if 0.0 <= log_hastings_ratio
                         || rng.gen_range(0.0..1.0_f64).ln() < log_hastings_ratio
                     {
+                        log_target_current = log_target_proposal;
                         if loop_counter >= global_mcmc_tuning.n_loops_burnin {
                             permutation_n_acceptances += 1;
                         }
@@ -460,7 +480,9 @@ fn fit_hierarchical_model(
                     }
                 }
             }
+            timers.permutation.toc();
             // Update shrinkage
+            timers.shrinkage.tic();
             if global_mcmc_tuning.shrinkage_slice_step_size.is_some() {
                 let shrinkage_prior_distribution = Gamma::new(
                     global_hyperparameters.shrinkage_shape,
@@ -494,6 +516,7 @@ fn fit_hierarchical_model(
                     shrinkage_slice_n_evaluations += n_evaluations;
                 }
             }
+            timers.shrinkage.toc();
         }
         // Report
         if loop_counter >= global_mcmc_tuning.n_loops_burnin {
@@ -536,6 +559,15 @@ fn fit_hierarchical_model(
     results
         .rval
         .set_list_element(6, rval!(shrinkage_slice_n_evaluations as f64 / denominator));
+    results.rval.set_list_element(
+        7,
+        rval!([
+            timers.units.as_secs_f64(),
+            timers.anchor.as_secs_f64(),
+            timers.permutation.as_secs_f64(),
+            timers.shrinkage.as_secs_f64(),
+        ]),
+    );
     results.rval
 }
 
