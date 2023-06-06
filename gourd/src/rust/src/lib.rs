@@ -256,7 +256,7 @@ impl GlobalMcmcTuning {
     }
 }
 
-struct GlobalHyperparameters {
+struct GlobalHyperparametersHierarchical {
     baseline_mass: f64,
     anchor_mass: f64,
     shrinkage_reference: usize,
@@ -264,7 +264,7 @@ struct GlobalHyperparameters {
     shrinkage_rate: f64,
 }
 
-impl GlobalHyperparameters {
+impl GlobalHyperparametersHierarchical {
     fn from_r(x: Rval, _pc: &mut Pc) -> Self {
         Self {
             baseline_mass: x.get_list_element(0).as_f64(),
@@ -276,7 +276,7 @@ impl GlobalHyperparameters {
     }
 }
 
-struct Results<'a> {
+struct ResultsHierarchical<'a> {
     rval: Rval,
     counter: usize,
     n_items: usize,
@@ -287,7 +287,7 @@ struct Results<'a> {
     log_likelihoods: &'a mut [f64],
 }
 
-impl<'a> Results<'a> {
+impl<'a> ResultsHierarchical<'a> {
     pub fn new(tuning: &GlobalMcmcTuning, n_items: usize, n_units: usize, pc: &mut Pc) -> Self {
         let unit_partitions_rval = Rval::new_list(n_units, pc);
         let mut unit_partitions = Vec::with_capacity(n_units);
@@ -366,10 +366,11 @@ fn fit_hierarchical_model(
 ) -> Rval {
     let mut all: All = all_ptr.external_pointer_decode();
     let unit_mcmc_tuning = McmcTuning::from_r(unit_mcmc_tuning, pc);
-    let global_hyperparameters = GlobalHyperparameters::from_r(global_hyperparameters, pc);
+    let global_hyperparameters =
+        GlobalHyperparametersHierarchical::from_r(global_hyperparameters, pc);
     let global_mcmc_tuning = GlobalMcmcTuning::from_r(global_mcmc_tuning, pc);
     let n_units = all.units.len();
-    let mut results = Results::new(&global_mcmc_tuning, all.n_items, n_units, pc);
+    let mut results = ResultsHierarchical::new(&global_mcmc_tuning, all.n_items, n_units, pc);
     let mut rng = Pcg64Mcg::from_seed(r::random_bytes::<16>());
     let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
     rng.fill(&mut seed);
