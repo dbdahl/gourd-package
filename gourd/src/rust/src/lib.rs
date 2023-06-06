@@ -14,7 +14,7 @@ use crate::state::{McmcTuning, State};
 use dahl_randompartition::clust::Clustering;
 use dahl_randompartition::cpp::CppParameters;
 use dahl_randompartition::crp::CrpParameters;
-use dahl_randompartition::distr::ProbabilityMassFunction;
+use dahl_randompartition::distr::{ProbabilityMassFunction, ProbabilityMassFunctionPartial};
 use dahl_randompartition::epa::EpaParameters;
 use dahl_randompartition::fixed::FixedPartitionParameters;
 use dahl_randompartition::frp::FrpParameters;
@@ -433,11 +433,13 @@ fn fit_hierarchical_model(
             // Update anchor
             timers.anchor.tic();
             let mut pd = partition_distribution.clone();
-            let mut compute_log_likelihood = |anchor: &Clustering| {
+            let mut compute_log_likelihood = |item: usize, anchor: &Clustering| {
                 pd.anchor = anchor.clone();
                 all.units
                     .par_iter()
-                    .fold_with(0.0, |acc, x| acc + pd.log_pmf(&x.state.clustering))
+                    .fold_with(0.0, |acc, x| {
+                        acc + pd.log_pmf_partial(item, &x.state.clustering)
+                    })
                     .sum::<f64>()
             };
             if global_mcmc_tuning.update_anchor {

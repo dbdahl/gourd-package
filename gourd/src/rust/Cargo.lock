@@ -118,7 +118,7 @@ dependencies = [
 [[package]]
 name = "dahl-randompartition"
 version = "0.1.0"
-source = "git+https://github.com/dbdahl/rust-dahl-randompartition.git?rev=2f774bf#2f774bf304f7b9afc9140d4d6290489309268c9b"
+source = "git+https://github.com/dbdahl/rust-dahl-randompartition.git?rev=8a9ce1c#8a9ce1c4a1f282cec44008c43da2fda49235fba7"
 dependencies = [
  "dahl-bellnumber",
  "dahl-salso",
@@ -159,9 +159,9 @@ dependencies = [
 
 [[package]]
 name = "getrandom"
-version = "0.2.9"
+version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c85e1d9ab2eadba7e5040d4e09cbd6d072b76a557ad64e797c2cb9d4da21d7e4"
+checksum = "be4136b2a15dd319360be1c07d9933517ccf0be8f16bf62a3bee4f0d618df427"
 dependencies = [
  "cfg-if",
  "libc",
@@ -194,9 +194,9 @@ checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
 name = "libc"
-version = "0.2.145"
+version = "0.2.146"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc86cde3ff845662b8f4ef6cb50ea0e20c524eb3d29ae048287e06a1b3fa6a81"
+checksum = "f92be4933c13fd498862a9e02a3055f8a8d9c039ce33db97306fd5a6caa7f29b"
 
 [[package]]
 name = "libm"
@@ -496,9 +496,9 @@ dependencies = [
 
 [[package]]
 name = "safe_arch"
-version = "0.6.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "794821e4ccb0d9f979512f9c1973480123f9bd62a90d74ab0f9426fcf8f4a529"
+checksum = "62a7484307bd40f8f7ccbacccac730108f2cae119a3b11c74485b48aa9ea650f"
 dependencies = [
  "bytemuck",
 ]
@@ -603,9 +603,9 @@ checksum = "9c8d87e72b64a3b4db28d11ce29237c246188f4f51057d65a7eab63b7987e423"
 
 [[package]]
 name = "wide"
-version = "0.7.9"
+version = "0.7.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5cd0496a71f3cc6bc4bf0ed91346426a5099e93d89807e663162dc5a1069ff65"
+checksum = "40018623e2dba2602a9790faba8d33f2ebdebf4b86561b83928db735f8784728"
 dependencies = [
  "bytemuck",
  "safe_arch",
