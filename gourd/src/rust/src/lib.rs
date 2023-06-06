@@ -256,6 +256,323 @@ impl GlobalMcmcTuning {
     }
 }
 
+struct GlobalHyperparametersTemporal {
+    baseline_mass: f64,
+    anchor_mass: f64,
+    shrinkage_reference: usize,
+    shrinkage_shape: f64,
+    shrinkage_rate: f64,
+}
+
+impl GlobalHyperparametersTemporal {
+    fn from_r(x: Rval, _pc: &mut Pc) -> Self {
+        Self {
+            baseline_mass: x.get_list_element(0).as_f64(),
+            anchor_mass: x.get_list_element(1).as_f64(),
+            shrinkage_reference: x.get_list_element(2).as_usize() - 1,
+            shrinkage_shape: x.get_list_element(3).as_f64(),
+            shrinkage_rate: x.get_list_element(4).as_f64(),
+        }
+    }
+}
+
+struct ResultsTemporal<'a> {
+    rval: Rval,
+    counter: usize,
+    n_items: usize,
+    unit_partitions: Vec<&'a mut [i32]>,
+    anchors: &'a mut [i32],
+    permutations: &'a mut [i32],
+    shrinkages: &'a mut [f64],
+    log_likelihoods: &'a mut [f64],
+}
+
+impl<'a> ResultsTemporal<'a> {
+    pub fn new(tuning: &GlobalMcmcTuning, n_items: usize, n_units: usize, pc: &mut Pc) -> Self {
+        let unit_partitions_rval = Rval::new_list(n_units, pc);
+        let mut unit_partitions = Vec::with_capacity(n_units);
+        for t in 0..n_units {
+            let (rval, slice) = Rval::new_matrix_integer(n_items, tuning.n_saves, pc);
+            unit_partitions.push(slice);
+            unit_partitions_rval.set_list_element(t, rval);
+        }
+        let (anchors_rval, anchors) = Rval::new_matrix_integer(n_items, tuning.n_saves, pc);
+        let (permutations_rval, permutations) =
+            Rval::new_matrix_integer(n_items, tuning.n_saves, pc);
+        let (shrinkages_rval, shrinkages) = Rval::new_vector_double(tuning.n_saves, pc);
+        let (log_likelihoods_rval, log_likelihoods) = Rval::new_vector_double(tuning.n_saves, pc);
+        let rval = Rval::new_list(8, pc); // Extra 2 items for rates after looping.
+        rval.names_gets(Rval::new(
+            [
+                "unit_partitions",
+                "anchor",
+                "permutation",
+                "shrinkage",
+                "log_likelihood",
+                "permutation_acceptance_rate",
+                "shrinkage_slice_n_evaluations_rate",
+                "wall_times",
+            ],
+            pc,
+        ));
+        rval.set_list_element(0, unit_partitions_rval);
+        rval.set_list_element(1, anchors_rval);
+        rval.set_list_element(2, permutations_rval);
+        rval.set_list_element(3, shrinkages_rval);
+        rval.set_list_element(4, log_likelihoods_rval);
+        Self {
+            rval,
+            counter: 0,
+            n_items,
+            unit_partitions,
+            anchors,
+            permutations,
+            shrinkages,
+            log_likelihoods,
+        }
+    }
+
+    pub fn push<'b, I: Iterator<Item = &'b Clustering>>(
+        &mut self,
+        unit_partitions: I,
+        anchor: &Clustering,
+        permutation: &Permutation,
+        shrinkage: f64,
+        log_likelihoods: f64,
+    ) {
+        let range = (self.counter * self.n_items)..((self.counter + 1) * self.n_items);
+        for (clustering, full_slice) in unit_partitions.zip(self.unit_partitions.iter_mut()) {
+            let slice = &mut full_slice[range.clone()];
+            clustering.relabel_into_slice(1, slice);
+        }
+        let slice = &mut self.anchors[range.clone()];
+        anchor.relabel_into_slice(1, slice);
+        let slice = &mut self.permutations[range];
+        for (x, y) in slice.iter_mut().zip(permutation.as_slice()) {
+            *x = *y as i32 + 1;
+        }
+        self.shrinkages[self.counter] = shrinkage;
+        self.log_likelihoods[self.counter] = log_likelihoods;
+        self.counter += 1;
+    }
+}
+
+#[roxido]
+fn fit_temporal_model(
+    all_ptr: Rval,
+    unit_mcmc_tuning: Rval,
+    global_hyperparameters: Rval,
+    global_mcmc_tuning: Rval,
+) -> Rval {
+    let mut all: All = all_ptr.external_pointer_decode();
+    let unit_mcmc_tuning = McmcTuning::from_r(unit_mcmc_tuning, pc);
+    let global_hyperparameters = GlobalHyperparametersTemporal::from_r(global_hyperparameters, pc);
+    let global_mcmc_tuning = GlobalMcmcTuning::from_r(global_mcmc_tuning, pc);
+    let n_units = all.units.len();
+    let mut results = ResultsTemporal::new(&global_mcmc_tuning, all.n_items, n_units, pc);
+    let mut rng = Pcg64Mcg::from_seed(r::random_bytes::<16>());
+    let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
+    rng.fill(&mut seed);
+    let mut rngs: Vec<_> = std::iter::repeat_with(|| {
+        let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
+        rng.fill(&mut seed);
+        let r1 = Pcg64Mcg::from_seed(seed);
+        rng.fill(&mut seed);
+        let r2 = Pcg64Mcg::from_seed(seed);
+        (r1, r2)
+    })
+    .take(all.units.len())
+    .collect();
+    let fastrand = fastrand::Rng::with_seed(rng.gen());
+    let fastrand_option = Some(&fastrand);
+    let anchor = all.units[rng.gen_range(0..all.units.len())]
+        .state
+        .clustering()
+        .clone();
+    let shrinkage = Shrinkage::constant(1.0, all.n_items).unwrap();
+    let permutation = Permutation::random(all.n_items, &mut rng);
+    let baseline_mass = Mass::new(global_hyperparameters.baseline_mass);
+    let anchor_mass = Mass::new(global_hyperparameters.anchor_mass);
+    let baseline_distribution = CrpParameters::new_with_mass(all.n_items, baseline_mass);
+    let anchor_distribution = CrpParameters::new_with_mass(all.n_items, anchor_mass);
+    let anchor_update_permutation = Permutation::natural_and_fixed(all.n_items);
+    let mut partition_distribution =
+        SpParameters::new(anchor, shrinkage, permutation, baseline_distribution).unwrap();
+    struct Timers {
+        units: TicToc,
+        anchor: TicToc,
+        permutation: TicToc,
+        shrinkage: TicToc,
+    }
+    let mut timers = Timers {
+        units: TicToc::new(),
+        anchor: TicToc::new(),
+        permutation: TicToc::new(),
+        shrinkage: TicToc::new(),
+    };
+    let mut permutation_n_acceptances = 0;
+    let mut shrinkage_slice_n_evaluations = 0;
+    for loop_counter in 0..global_mcmc_tuning.n_loops {
+        for _ in 0..global_mcmc_tuning.n_scans_per_loop {
+            // Update each unit
+            timers.units.tic();
+            all.units
+                .par_iter_mut()
+                .zip(rngs.par_iter_mut())
+                .for_each(|(unit, (r1, r2))| {
+                    unit.state.mcmc_iteration(
+                        &unit_mcmc_tuning,
+                        &mut unit.data,
+                        &unit.hyperparameters,
+                        &partition_distribution,
+                        r1,
+                        r2,
+                    )
+                });
+            timers.units.toc();
+            // Update anchor
+            timers.anchor.tic();
+            let mut pd = partition_distribution.clone();
+            let mut compute_log_likelihood = |item: usize, anchor: &Clustering| {
+                pd.anchor = anchor.clone();
+                all.units
+                    .par_iter()
+                    .fold_with(0.0, |acc, x| {
+                        acc + pd.log_pmf_partial(item, &x.state.clustering)
+                    })
+                    .sum::<f64>()
+            };
+            if global_mcmc_tuning.update_anchor {
+                update_partition_gibbs(
+                    1,
+                    &mut partition_distribution.anchor,
+                    &anchor_update_permutation,
+                    &anchor_distribution,
+                    &mut compute_log_likelihood,
+                    &mut rng,
+                )
+            }
+            timers.anchor.toc();
+            // Helper
+            let compute_log_likelihood = |pd: &SpParameters<CrpParameters>| {
+                all.units
+                    .par_iter()
+                    .fold_with(0.0, |acc, x| acc + pd.log_pmf(&x.state.clustering))
+                    .sum::<f64>()
+            };
+            // Update permutation
+            timers.permutation.tic();
+            if let Some(k) = global_mcmc_tuning.n_items_per_permutation_update {
+                let mut log_target_current: f64 = compute_log_likelihood(&partition_distribution);
+                for _ in 0..global_mcmc_tuning.n_permutation_updates_per_scan {
+                    partition_distribution
+                        .permutation
+                        .partial_shuffle(k, &mut rng);
+                    let log_target_proposal = compute_log_likelihood(&partition_distribution);
+                    let log_hastings_ratio = log_target_proposal - log_target_current;
+                    if 0.0 <= log_hastings_ratio
+                        || rng.gen_range(0.0..1.0_f64).ln() < log_hastings_ratio
+                    {
+                        log_target_current = log_target_proposal;
+                        if loop_counter >= global_mcmc_tuning.n_loops_burnin {
+                            permutation_n_acceptances += 1;
+                        }
+                    } else {
+                        partition_distribution.permutation.partial_shuffle_undo(k);
+                    }
+                }
+            }
+            timers.permutation.toc();
+            // Update shrinkage
+            timers.shrinkage.tic();
+            if global_mcmc_tuning.shrinkage_slice_step_size.is_some() {
+                let shrinkage_prior_distribution = Gamma::new(
+                    global_hyperparameters.shrinkage_shape,
+                    global_hyperparameters.shrinkage_rate,
+                )
+                .unwrap();
+                let (s_new, n_evaluations) =
+                    stepping_out::univariate_slice_sampler_stepping_out_and_shrinkage(
+                        partition_distribution.shrinkage
+                            [global_hyperparameters.shrinkage_reference],
+                        |s| {
+                            if s < 0.0 {
+                                return std::f64::NEG_INFINITY;
+                            }
+                            partition_distribution.shrinkage.rescale_by_reference(
+                                global_hyperparameters.shrinkage_reference,
+                                s,
+                            );
+                            shrinkage_prior_distribution.ln_pdf(s)
+                                + compute_log_likelihood(&partition_distribution)
+                        },
+                        true,
+                        &stepping_out::TuningParameters::new()
+                            .width(global_mcmc_tuning.shrinkage_slice_step_size.unwrap()),
+                        fastrand_option,
+                    );
+                partition_distribution
+                    .shrinkage
+                    .rescale_by_reference(global_hyperparameters.shrinkage_reference, s_new);
+                if loop_counter >= global_mcmc_tuning.n_loops_burnin {
+                    shrinkage_slice_n_evaluations += n_evaluations;
+                }
+            }
+            timers.shrinkage.toc();
+        }
+        // Report
+        if loop_counter >= global_mcmc_tuning.n_loops_burnin {
+            let log_likelihood = match &global_mcmc_tuning.validation_data {
+                Some(validation_data) => all
+                    .units
+                    .par_iter()
+                    .zip(validation_data.par_iter())
+                    .fold(
+                        || 0.0,
+                        |acc, (group, data)| acc + group.state.log_likelihood(data),
+                    )
+                    .sum(),
+                None => all
+                    .units
+                    .par_iter()
+                    .fold(
+                        || 0.0,
+                        |acc, group| acc + group.state.log_likelihood(&group.data),
+                    )
+                    .sum(),
+            };
+            results.push(
+                all.units.iter().map(|x| &x.state.clustering),
+                &partition_distribution.anchor,
+                &partition_distribution.permutation,
+                partition_distribution.shrinkage[global_hyperparameters.shrinkage_reference],
+                log_likelihood,
+            );
+        }
+    }
+    let denominator = (global_mcmc_tuning.n_saves * global_mcmc_tuning.n_scans_per_loop) as f64;
+    results.rval.set_list_element(
+        5,
+        rval!(
+            permutation_n_acceptances as f64
+                / (global_mcmc_tuning.n_permutation_updates_per_scan as f64 * denominator)
+        ),
+    );
+    results
+        .rval
+        .set_list_element(6, rval!(shrinkage_slice_n_evaluations as f64 / denominator));
+    results.rval.set_list_element(
+        7,
+        rval!([
+            timers.units.as_secs_f64(),
+            timers.anchor.as_secs_f64(),
+            timers.permutation.as_secs_f64(),
+            timers.shrinkage.as_secs_f64(),
+        ]),
+    );
+    results.rval
+}
+
 struct GlobalHyperparametersHierarchical {
     baseline_mass: f64,
     anchor_mass: f64,
