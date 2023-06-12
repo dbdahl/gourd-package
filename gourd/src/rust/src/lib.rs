@@ -373,30 +373,29 @@ fn fit_temporal_model(
     let mut rng = Pcg64Mcg::from_seed(r::random_bytes::<16>());
     let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
     rng.fill(&mut seed);
-    let mut rngs: Vec<_> = std::iter::repeat_with(|| {
-        let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
-        rng.fill(&mut seed);
-        let r1 = Pcg64Mcg::from_seed(seed);
-        rng.fill(&mut seed);
-        let r2 = Pcg64Mcg::from_seed(seed);
-        (r1, r2)
-    })
-    .take(all.units.len())
-    .collect();
+    let mut rng2 = Pcg64Mcg::from_seed(seed);
     let fastrand = fastrand::Rng::with_seed(rng.gen());
     let fastrand_option = Some(&fastrand);
     let anchor = all.units[rng.gen_range(0..all.units.len())]
         .state
         .clustering()
         .clone();
-    let shrinkage = Shrinkage::constant(1.0, all.n_items).unwrap();
+    let mut shrinkage_value = 1.0;
+    let shrinkage = Shrinkage::constant(shrinkage_value, all.n_items).unwrap();
     let permutation = Permutation::random(all.n_items, &mut rng);
     let baseline_mass = Mass::new(global_hyperparameters.baseline_mass);
     let anchor_mass = Mass::new(global_hyperparameters.anchor_mass);
     let baseline_distribution = CrpParameters::new_with_mass(all.n_items, baseline_mass);
     let anchor_distribution = CrpParameters::new_with_mass(all.n_items, anchor_mass);
     let anchor_update_permutation = Permutation::natural_and_fixed(all.n_items);
-    let mut partition_distribution =
+    let mut partition_distribution = SpParameters::new(
+        anchor.clone(),
+        shrinkage.clone(),
+        permutation.clone(),
+        baseline_distribution.clone(),
+    )
+    .unwrap();
+    let mut partition_distribution_of_next =
         SpParameters::new(anchor, shrinkage, permutation, baseline_distribution).unwrap();
     struct Timers {
         units: TicToc,
@@ -416,19 +415,81 @@ fn fit_temporal_model(
         for _ in 0..global_mcmc_tuning.n_scans_per_loop {
             // Update each unit
             timers.units.tic();
-            all.units
-                .par_iter_mut()
-                .zip(rngs.par_iter_mut())
-                .for_each(|(unit, (r1, r2))| {
-                    unit.state.mcmc_iteration(
-                        &unit_mcmc_tuning,
-                        &mut unit.data,
+            for time in 0..all.units.len() {
+                let (left, right) = all.units.split_at_mut(time);
+                if time == 0 {
+                    shrinkage_value = partition_distribution.shrinkage[0];
+                    partition_distribution.shrinkage.set_constant(0.0);
+                } else {
+                    if time == 1 {
+                        partition_distribution
+                            .shrinkage
+                            .set_constant(shrinkage_value);
+                    }
+                    partition_distribution.anchor = left.last().unwrap().state.clustering.clone();
+                    let a = |p: &Clustering| 0.0;
+                };
+                let unit = right.first_mut().unwrap();
+                unit.data.impute(&unit.state, &mut rng);
+                if unit_mcmc_tuning.update_precision_response {
+                    State::update_precision_response(
+                        &mut unit.state.precision_response,
+                        &unit.state.global_coefficients,
+                        &unit.state.clustering,
+                        &unit.state.clustered_coefficients,
+                        &unit.data,
+                        &unit.hyperparameters,
+                        &mut rng,
+                    );
+                }
+                if unit_mcmc_tuning.update_global_coefficients {
+                    State::update_global_coefficients(
+                        &mut unit.state.global_coefficients,
+                        unit.state.precision_response,
+                        &unit.state.clustering,
+                        &unit.state.clustered_coefficients,
+                        &unit.data,
+                        &unit.hyperparameters,
+                        &mut rng,
+                    );
+                }
+                if unit_mcmc_tuning.update_clustering {
+                    let permutation =
+                        Permutation::natural_and_fixed(unit.state.clustering.n_items());
+                    State::update_clustering_temporal(
+                        &mut unit.state.clustering,
+                        &mut unit.state.clustered_coefficients,
+                        unit.state.precision_response,
+                        &unit.state.global_coefficients,
+                        &permutation,
+                        &unit.data,
                         &unit.hyperparameters,
                         &partition_distribution,
-                        r1,
-                        r2,
-                    )
-                });
+                        |p: &Clustering| 0.0,
+                        &mut rng,
+                        &mut rng2,
+                    );
+                }
+                if unit_mcmc_tuning.update_clustered_coefficients {
+                    State::update_clustered_coefficients(
+                        &mut unit.state.clustered_coefficients,
+                        &unit.state.clustering,
+                        unit.state.precision_response,
+                        &unit.state.global_coefficients,
+                        &unit.data,
+                        &unit.hyperparameters,
+                        &mut rng,
+                    );
+                }
+                // unit.state.mcmc_iteration(
+                //     &unit_mcmc_tuning,
+                //     &mut unit.data,
+                //     &unit.hyperparameters,
+                //     &partition_distribution,
+                //     r1,
+                //     r2,
+                // )
+            }
             timers.units.toc();
             // Update anchor
             timers.anchor.tic();

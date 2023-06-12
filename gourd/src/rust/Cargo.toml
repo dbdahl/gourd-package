@@ -11,8 +11,8 @@ crate-type = ["staticlib"]
 [dependencies]
 rayon = "1.7.0"
 roxido = { path="roxido" }
-dahl-randompartition = { git="https://github.com/dbdahl/rust-dahl-randompartition.git", rev="8a9ce1c" }
-# dahl-randompartition = { path="/home/dahl/docs/devel/rust-dahl-randompartition" }
+# dahl-randompartition = { git="https://github.com/dbdahl/rust-dahl-randompartition.git", rev="8a9ce1c" }
+dahl-randompartition = { path="/home/dahl/docs/devel/rust-dahl-randompartition" }
 walltime = { git="https://github.com/dbdahl/rust-dahl-walltime.git", rev="030fad7" }
 slice_sampler = { git="https://github.com/dbdahl/rust_slice_sampler.git", rev="3992376" }
 nalgebra = "0.32.2"

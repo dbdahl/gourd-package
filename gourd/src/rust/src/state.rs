@@ -2,9 +2,12 @@ use crate::data::Data;
 use crate::hyperparameters::Hyperparameters;
 use crate::mvnorm::{sample_multivariate_normal_v2, sample_multivariate_normal_v3};
 use dahl_randompartition::clust::Clustering;
+use dahl_randompartition::crp::CrpParameters;
 use dahl_randompartition::distr::FullConditional;
+use dahl_randompartition::distr::ProbabilityMassFunction;
 use dahl_randompartition::mcmc::update_neal_algorithm8;
 use dahl_randompartition::perm::Permutation;
+use dahl_randompartition::sp::SpParameters;
 use nalgebra::{DMatrix, DVector};
 use rand::Rng;
 use rand_distr::{Distribution, Gamma};
@@ -260,7 +263,7 @@ impl State {
         }
     }
 
-    fn update_precision_response<T: Rng>(
+    pub fn update_precision_response<T: Rng>(
         precision_response: &mut f64,
         global_coefficients: &DVector<f64>,
         clustering: &Clustering,
@@ -279,7 +282,7 @@ impl State {
         *precision_response = Gamma::new(shape, scale).unwrap().sample(rng);
     }
 
-    fn update_global_coefficients<T: Rng>(
+    pub fn update_global_coefficients<T: Rng>(
         global_coefficients: &mut DVector<f64>,
         precision_response: f64,
         clustering: &Clustering,
@@ -376,7 +379,77 @@ impl State {
         )
     }
 
-    fn update_clustered_coefficients<T: Rng>(
+    pub fn update_clustering_temporal<S: FullConditional, T: Rng, U: Fn(&Clustering) -> f64>(
+        clustering: &mut Clustering,
+        clustered_coefficients: &mut Vec<DVector<f64>>,
+        precision_response: f64,
+        global_coefficients: &DVector<f64>,
+        permutation: &Permutation,
+        data: &Data,
+        hyperparameters: &Hyperparameters,
+        partition_distribution: &S,
+        partition_distribution_next: Option<(Clustering, SpParameters<CrpParameters>)>,
+        rng: &mut T,
+        rng2: &mut T,
+    ) {
+        struct CommonItemCache {
+            pd: Option<(Clustering, SpParameters<CrpParameters>)>,
+            difference: DVector<f64>,
+            clustered_covariates: DMatrix<f64>,
+        }
+        let cacher = |item: usize| {
+            let rows = data.membership_generator().indices_of_item(item);
+            let response = data.response().select_rows(rows);
+            let difference =
+                response - (data.global_covariates().select_rows(rows) * global_coefficients);
+            let clustered_covariates = data.clustered_covariates().select_rows(rows);
+            CommonItemCache {
+                pd: partition_distribution_next.clone(),
+                difference,
+                clustered_covariates,
+            }
+        };
+        let negative_half_precision = -0.5 * precision_response;
+        let mut log_likelihood_contribution_fn =
+            |item: usize, cache: &CommonItemCache, label: usize, is_new: bool| {
+                if is_new {
+                    let parameter = sample_multivariate_normal_v3(
+                        hyperparameters.clustered_coefficients_mean(),
+                        hyperparameters.clustered_coefficients_precision_l_inv_transpose(),
+                        rng2,
+                    );
+                    if label >= clustered_coefficients.len() {
+                        clustered_coefficients.resize(label + 1, parameter);
+                    } else {
+                        clustered_coefficients[label] = parameter;
+                    }
+                };
+                let parameter = &clustered_coefficients[label];
+                let likelihood1 = negative_half_precision
+                    * (&cache.difference - (&cache.clustered_covariates * parameter))
+                        .map(|x| x.powi(2))
+                        .sum();
+                let likelihood2 = match cache.pd {
+                    Some((p, pd)) => {
+                        pd.anchor.allocate(item, label);
+                        pd.log_pmf(&p)
+                    }
+                    None => 0.0,
+                };
+                likelihood1 + likelihood2
+            };
+        update_neal_algorithm8(
+            1,
+            clustering,
+            permutation,
+            partition_distribution,
+            &mut log_likelihood_contribution_fn,
+            cacher,
+            rng,
+        )
+    }
+
+    pub fn update_clustered_coefficients<T: Rng>(
         clustered_coefficients: &mut [DVector<f64>],
         clustering: &Clustering,
         precision_response: f64,
