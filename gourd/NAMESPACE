@@ -2,5 +2,6 @@
 
 export(fit)
 export(fit_hierarchical_model)
+export(fit_temporal_model)
 export(rmvnorm)
 useDynLib(gourd, .registration = TRUE)

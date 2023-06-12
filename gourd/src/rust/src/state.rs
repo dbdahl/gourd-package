@@ -379,7 +379,7 @@ impl State {
         )
     }
 
-    pub fn update_clustering_temporal<S: FullConditional, T: Rng, U: Fn(&Clustering) -> f64>(
+    pub fn update_clustering_temporal<T: Rng>(
         clustering: &mut Clustering,
         clustered_coefficients: &mut Vec<DVector<f64>>,
         precision_response: f64,
@@ -387,13 +387,12 @@ impl State {
         permutation: &Permutation,
         data: &Data,
         hyperparameters: &Hyperparameters,
-        partition_distribution: &S,
-        partition_distribution_next: Option<(Clustering, SpParameters<CrpParameters>)>,
+        partition_distribution: &SpParameters<CrpParameters>,
+        partition_next: Option<&Clustering>,
         rng: &mut T,
         rng2: &mut T,
     ) {
         struct CommonItemCache {
-            pd: Option<(Clustering, SpParameters<CrpParameters>)>,
             difference: DVector<f64>,
             clustered_covariates: DMatrix<f64>,
         }
@@ -404,14 +403,13 @@ impl State {
                 response - (data.global_covariates().select_rows(rows) * global_coefficients);
             let clustered_covariates = data.clustered_covariates().select_rows(rows);
             CommonItemCache {
-                pd: partition_distribution_next.clone(),
                 difference,
                 clustered_covariates,
             }
         };
         let negative_half_precision = -0.5 * precision_response;
         let mut log_likelihood_contribution_fn =
-            |item: usize, cache: &CommonItemCache, label: usize, is_new: bool| {
+            |_item: usize, cache: &CommonItemCache, label: usize, is_new: bool| {
                 if is_new {
                     let parameter = sample_multivariate_normal_v3(
                         hyperparameters.clustered_coefficients_mean(),
@@ -425,28 +423,43 @@ impl State {
                     }
                 };
                 let parameter = &clustered_coefficients[label];
-                let likelihood1 = negative_half_precision
+                negative_half_precision
                     * (&cache.difference - (&cache.clustered_covariates * parameter))
                         .map(|x| x.powi(2))
-                        .sum();
-                let likelihood2 = match cache.pd {
-                    Some((p, pd)) => {
-                        pd.anchor.allocate(item, label);
-                        pd.log_pmf(&p)
-                    }
-                    None => 0.0,
-                };
-                likelihood1 + likelihood2
+                        .sum()
             };
-        update_neal_algorithm8(
-            1,
-            clustering,
-            permutation,
-            partition_distribution,
-            &mut log_likelihood_contribution_fn,
-            cacher,
-            rng,
-        )
+        let mut partition_distribution_next = partition_distribution.clone();
+        partition_distribution_next.anchor = clustering.clone();
+        let n_updates = 1;
+        for _ in 0..n_updates {
+            for i in 0..clustering.n_items() {
+                let ii = permutation.get(i);
+                let cache = cacher(ii);
+                let labels_and_log_weights = partition_distribution
+                    .log_full_conditional(ii, clustering)
+                    .into_iter()
+                    .map(|(label, log_prior)| {
+                        (
+                            label,
+                            if let Some(c) = partition_next {
+                                partition_distribution_next.anchor.allocate(ii, label);
+                                partition_distribution_next.log_pmf(&c)
+                            } else {
+                                0.0
+                            } + log_likelihood_contribution_fn(
+                                ii,
+                                &cache,
+                                label,
+                                clustering.size_of(label) == 0,
+                            ) + log_prior,
+                        )
+                    });
+                let pair =
+                    clustering.select(labels_and_log_weights, true, false, 0, Some(rng), false);
+                clustering.allocate(ii, pair.0);
+                partition_distribution_next.anchor.allocate(ii, pair.0);
+            }
+        }
     }
 
     pub fn update_clustered_coefficients<T: Rng>(

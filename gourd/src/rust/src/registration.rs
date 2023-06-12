@@ -90,6 +90,11 @@ fn fit_hierarchical_model(all_ptr: Rval, unit_mcmc_tuning: Rval, global_hyperpar
 }
 
 #[roxido]
+fn fit_temporal_model(all_ptr: Rval, unit_mcmc_tuning: Rval, global_hyperparameters: Rval, global_mcmc_tuning: Rval) -> Rval {
+    Rval::nil()
+}
+
+#[roxido]
 fn new_FixedPartitionParameters(unnamed1: Rval) -> Rval {
     Rval::nil()
 }
@@ -159,8 +164,8 @@ use roxido::*;
 
 #[no_mangle]
 extern "C" fn R_init_gourd_rust(info: *mut rbindings::DllInfo) {
-    let mut call_routines = Vec::with_capacity(28);
-    let mut _names: Vec<std::ffi::CString> = Vec::with_capacity(28);
+    let mut call_routines = Vec::with_capacity(29);
+    let mut _names: Vec<std::ffi::CString> = Vec::with_capacity(29);
     _names.push(std::ffi::CString::new(".data_r2rust").unwrap());
     call_routines.push(rbindings::R_CallMethodDef {
         name: _names.last().unwrap().as_ptr(),
@@ -249,6 +254,12 @@ extern "C" fn R_init_gourd_rust(info: *mut rbindings::DllInfo) {
     call_routines.push(rbindings::R_CallMethodDef {
         name: _names.last().unwrap().as_ptr(),
         fun: unsafe { std::mem::transmute(crate::fit_hierarchical_model as *const u8) },
+        numArgs: 4,
+    });
+    _names.push(std::ffi::CString::new(".fit_temporal_model").unwrap());
+    call_routines.push(rbindings::R_CallMethodDef {
+        name: _names.last().unwrap().as_ptr(),
+        fun: unsafe { std::mem::transmute(crate::fit_temporal_model as *const u8) },
         numArgs: 4,
     });
     _names.push(std::ffi::CString::new(".new_FixedPartitionParameters").unwrap());

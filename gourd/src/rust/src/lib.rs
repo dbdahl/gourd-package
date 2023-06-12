@@ -258,7 +258,6 @@ impl GlobalMcmcTuning {
 
 struct GlobalHyperparametersTemporal {
     baseline_mass: f64,
-    anchor_mass: f64,
     shrinkage_reference: usize,
     shrinkage_shape: f64,
     shrinkage_rate: f64,
@@ -268,10 +267,9 @@ impl GlobalHyperparametersTemporal {
     fn from_r(x: Rval, _pc: &mut Pc) -> Self {
         Self {
             baseline_mass: x.get_list_element(0).as_f64(),
-            anchor_mass: x.get_list_element(1).as_f64(),
-            shrinkage_reference: x.get_list_element(2).as_usize() - 1,
-            shrinkage_shape: x.get_list_element(3).as_f64(),
-            shrinkage_rate: x.get_list_element(4).as_f64(),
+            shrinkage_reference: x.get_list_element(1).as_usize() - 1,
+            shrinkage_shape: x.get_list_element(2).as_f64(),
+            shrinkage_rate: x.get_list_element(3).as_f64(),
         }
     }
 }
@@ -281,7 +279,6 @@ struct ResultsTemporal<'a> {
     counter: usize,
     n_items: usize,
     unit_partitions: Vec<&'a mut [i32]>,
-    anchors: &'a mut [i32],
     permutations: &'a mut [i32],
     shrinkages: &'a mut [f64],
     log_likelihoods: &'a mut [f64],
@@ -296,16 +293,14 @@ impl<'a> ResultsTemporal<'a> {
             unit_partitions.push(slice);
             unit_partitions_rval.set_list_element(t, rval);
         }
-        let (anchors_rval, anchors) = Rval::new_matrix_integer(n_items, tuning.n_saves, pc);
         let (permutations_rval, permutations) =
             Rval::new_matrix_integer(n_items, tuning.n_saves, pc);
         let (shrinkages_rval, shrinkages) = Rval::new_vector_double(tuning.n_saves, pc);
         let (log_likelihoods_rval, log_likelihoods) = Rval::new_vector_double(tuning.n_saves, pc);
-        let rval = Rval::new_list(8, pc); // Extra 2 items for rates after looping.
+        let rval = Rval::new_list(7, pc); // Extra 3 items for rates after looping.
         rval.names_gets(Rval::new(
             [
                 "unit_partitions",
-                "anchor",
                 "permutation",
                 "shrinkage",
                 "log_likelihood",
@@ -316,16 +311,14 @@ impl<'a> ResultsTemporal<'a> {
             pc,
         ));
         rval.set_list_element(0, unit_partitions_rval);
-        rval.set_list_element(1, anchors_rval);
-        rval.set_list_element(2, permutations_rval);
-        rval.set_list_element(3, shrinkages_rval);
-        rval.set_list_element(4, log_likelihoods_rval);
+        rval.set_list_element(1, permutations_rval);
+        rval.set_list_element(2, shrinkages_rval);
+        rval.set_list_element(3, log_likelihoods_rval);
         Self {
             rval,
             counter: 0,
             n_items,
             unit_partitions,
-            anchors,
             permutations,
             shrinkages,
             log_likelihoods,
@@ -335,7 +328,6 @@ impl<'a> ResultsTemporal<'a> {
     pub fn push<'b, I: Iterator<Item = &'b Clustering>>(
         &mut self,
         unit_partitions: I,
-        anchor: &Clustering,
         permutation: &Permutation,
         shrinkage: f64,
         log_likelihoods: f64,
@@ -345,8 +337,6 @@ impl<'a> ResultsTemporal<'a> {
             let slice = &mut full_slice[range.clone()];
             clustering.relabel_into_slice(1, slice);
         }
-        let slice = &mut self.anchors[range.clone()];
-        anchor.relabel_into_slice(1, slice);
         let slice = &mut self.permutations[range];
         for (x, y) in slice.iter_mut().zip(permutation.as_slice()) {
             *x = *y as i32 + 1;
@@ -384,10 +374,7 @@ fn fit_temporal_model(
     let shrinkage = Shrinkage::constant(shrinkage_value, all.n_items).unwrap();
     let permutation = Permutation::random(all.n_items, &mut rng);
     let baseline_mass = Mass::new(global_hyperparameters.baseline_mass);
-    let anchor_mass = Mass::new(global_hyperparameters.anchor_mass);
     let baseline_distribution = CrpParameters::new_with_mass(all.n_items, baseline_mass);
-    let anchor_distribution = CrpParameters::new_with_mass(all.n_items, anchor_mass);
-    let anchor_update_permutation = Permutation::natural_and_fixed(all.n_items);
     let mut partition_distribution = SpParameters::new(
         anchor.clone(),
         shrinkage.clone(),
@@ -395,8 +382,6 @@ fn fit_temporal_model(
         baseline_distribution.clone(),
     )
     .unwrap();
-    let mut partition_distribution_of_next =
-        SpParameters::new(anchor, shrinkage, permutation, baseline_distribution).unwrap();
     struct Timers {
         units: TicToc,
         anchor: TicToc,
@@ -416,7 +401,7 @@ fn fit_temporal_model(
             // Update each unit
             timers.units.tic();
             for time in 0..all.units.len() {
-                let (left, right) = all.units.split_at_mut(time);
+                let (left, not_left) = all.units.split_at_mut(time);
                 if time == 0 {
                     shrinkage_value = partition_distribution.shrinkage[0];
                     partition_distribution.shrinkage.set_constant(0.0);
@@ -427,9 +412,13 @@ fn fit_temporal_model(
                             .set_constant(shrinkage_value);
                     }
                     partition_distribution.anchor = left.last().unwrap().state.clustering.clone();
-                    let a = |p: &Clustering| 0.0;
                 };
-                let unit = right.first_mut().unwrap();
+                let (middle, right) = not_left.split_at_mut(1);
+                let unit = middle.first_mut().unwrap();
+                let clustering_next = match right.get(0) {
+                    Some(x) => Some(&x.state.clustering),
+                    None => None,
+                };
                 unit.data.impute(&unit.state, &mut rng);
                 if unit_mcmc_tuning.update_precision_response {
                     State::update_precision_response(
@@ -465,7 +454,7 @@ fn fit_temporal_model(
                         &unit.data,
                         &unit.hyperparameters,
                         &partition_distribution,
-                        |p: &Clustering| 0.0,
+                        clustering_next,
                         &mut rng,
                         &mut rng2,
                     );
@@ -481,39 +470,8 @@ fn fit_temporal_model(
                         &mut rng,
                     );
                 }
-                // unit.state.mcmc_iteration(
-                //     &unit_mcmc_tuning,
-                //     &mut unit.data,
-                //     &unit.hyperparameters,
-                //     &partition_distribution,
-                //     r1,
-                //     r2,
-                // )
             }
             timers.units.toc();
-            // Update anchor
-            timers.anchor.tic();
-            let mut pd = partition_distribution.clone();
-            let mut compute_log_likelihood = |item: usize, anchor: &Clustering| {
-                pd.anchor = anchor.clone();
-                all.units
-                    .par_iter()
-                    .fold_with(0.0, |acc, x| {
-                        acc + pd.log_pmf_partial(item, &x.state.clustering)
-                    })
-                    .sum::<f64>()
-            };
-            if global_mcmc_tuning.update_anchor {
-                update_partition_gibbs(
-                    1,
-                    &mut partition_distribution.anchor,
-                    &anchor_update_permutation,
-                    &anchor_distribution,
-                    &mut compute_log_likelihood,
-                    &mut rng,
-                )
-            }
-            timers.anchor.toc();
             // Helper
             let compute_log_likelihood = |pd: &SpParameters<CrpParameters>| {
                 all.units
@@ -604,7 +562,6 @@ fn fit_temporal_model(
             };
             results.push(
                 all.units.iter().map(|x| &x.state.clustering),
-                &partition_distribution.anchor,
                 &partition_distribution.permutation,
                 partition_distribution.shrinkage[global_hyperparameters.shrinkage_reference],
                 log_likelihood,
@@ -613,7 +570,7 @@ fn fit_temporal_model(
     }
     let denominator = (global_mcmc_tuning.n_saves * global_mcmc_tuning.n_scans_per_loop) as f64;
     results.rval.set_list_element(
-        5,
+        4,
         rval!(
             permutation_n_acceptances as f64
                 / (global_mcmc_tuning.n_permutation_updates_per_scan as f64 * denominator)
@@ -621,9 +578,9 @@ fn fit_temporal_model(
     );
     results
         .rval
-        .set_list_element(6, rval!(shrinkage_slice_n_evaluations as f64 / denominator));
+        .set_list_element(5, rval!(shrinkage_slice_n_evaluations as f64 / denominator));
     results.rval.set_list_element(
-        7,
+        6,
         rval!([
             timers.units.as_secs_f64(),
             timers.anchor.as_secs_f64(),
@@ -679,7 +636,7 @@ impl<'a> ResultsHierarchical<'a> {
             Rval::new_matrix_integer(n_items, tuning.n_saves, pc);
         let (shrinkages_rval, shrinkages) = Rval::new_vector_double(tuning.n_saves, pc);
         let (log_likelihoods_rval, log_likelihoods) = Rval::new_vector_double(tuning.n_saves, pc);
-        let rval = Rval::new_list(8, pc); // Extra 2 items for rates after looping.
+        let rval = Rval::new_list(8, pc); // Extra 3 items for rates after looping.
         rval.names_gets(Rval::new(
             [
                 "unit_partitions",
