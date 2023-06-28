@@ -49,20 +49,24 @@ impl Data {
     }
 
     pub fn from_r(data: Rval, pc: &mut Pc) -> Self {
-        let (_, response_slice) = data.get_list_element(0).coerce_double(pc).unwrap();
+        let (_, response_slice) = data.get_list_element(0).unwrap().coerce_double(pc).unwrap();
         let n_items = response_slice.len();
         let response = DVector::from_column_slice(response_slice);
         let (global_covariates_rval, global_covariates_slice) =
-            data.get_list_element(1).coerce_double(pc).unwrap();
-        let n_global_covariates = global_covariates_rval.ncol();
+            data.get_list_element(1).unwrap().coerce_double(pc).unwrap();
+        let n_global_covariates = global_covariates_rval.ncol().unwrap();
         let global_covariates =
             DMatrix::from_column_slice(n_items, n_global_covariates, global_covariates_slice);
         let (clustered_covariates_rval, clustered_covariates_slice) =
-            data.get_list_element(2).coerce_double(pc).unwrap();
-        let n_clustered_covariates = clustered_covariates_rval.ncol();
+            data.get_list_element(2).unwrap().coerce_double(pc).unwrap();
+        let n_clustered_covariates = clustered_covariates_rval.ncol().unwrap();
         let clustered_covariates =
             DMatrix::from_column_slice(n_items, n_clustered_covariates, clustered_covariates_slice);
-        let (_, item_sizes_slice) = data.get_list_element(3).coerce_integer(pc).unwrap();
+        let (_, item_sizes_slice) = data
+            .get_list_element(3)
+            .unwrap()
+            .coerce_integer(pc)
+            .unwrap();
         let item_sizes: Vec<_> = item_sizes_slice
             .iter()
             .map(|x| usize::try_from(*x).unwrap())

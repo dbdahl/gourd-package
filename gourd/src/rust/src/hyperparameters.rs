@@ -75,25 +75,28 @@ impl Hyperparameters {
     }
 
     pub fn from_r(hyperparameters: Rval, pc: &mut Pc) -> Self {
-        let precision_response_shape = hyperparameters.get_list_element(0).as_f64();
-        let precision_response_rate = hyperparameters.get_list_element(1).as_f64();
+        let precision_response_shape = hyperparameters.get_list_element(0).unwrap().as_f64();
+        let precision_response_rate = hyperparameters.get_list_element(1).unwrap().as_f64();
         let (_, global_coefficients_mean_slice) = hyperparameters
             .get_list_element(2)
+            .unwrap()
             .coerce_double(pc)
             .unwrap();
         let global_coefficients_mean = DVector::from_column_slice(global_coefficients_mean_slice);
         let (global_coefficients_precision_rval, global_coefficients_precision_slice) =
             hyperparameters
                 .get_list_element(3)
+                .unwrap()
                 .coerce_double(pc)
                 .unwrap();
         let global_coefficients_precision = DMatrix::from_column_slice(
-            global_coefficients_precision_rval.nrow(),
-            global_coefficients_precision_rval.ncol(),
+            global_coefficients_precision_rval.nrow().unwrap(),
+            global_coefficients_precision_rval.ncol().unwrap(),
             global_coefficients_precision_slice,
         );
         let (_, clustered_coefficients_mean_slice) = hyperparameters
             .get_list_element(4)
+            .unwrap()
             .coerce_double(pc)
             .unwrap();
         let clustered_coefficients_mean =
@@ -101,16 +104,17 @@ impl Hyperparameters {
         let (clustered_coefficients_precision_rval, clustered_coefficients_precision_slice) =
             hyperparameters
                 .get_list_element(5)
+                .unwrap()
                 .coerce_double(pc)
                 .unwrap();
         let clustered_coefficients_precision = DMatrix::from_column_slice(
-            clustered_coefficients_precision_rval.nrow(),
-            clustered_coefficients_precision_rval.ncol(),
+            clustered_coefficients_precision_rval.nrow().unwrap(),
+            clustered_coefficients_precision_rval.ncol().unwrap(),
             clustered_coefficients_precision_slice,
         );
-        let shrinkage_reference = hyperparameters.get_list_element(6).as_usize() - 1;
-        let shrinkage_shape = hyperparameters.get_list_element(7).as_f64();
-        let shrinkage_rate = hyperparameters.get_list_element(8).as_f64();
+        let shrinkage_reference = hyperparameters.get_list_element(6).unwrap().as_usize() - 1;
+        let shrinkage_shape = hyperparameters.get_list_element(7).unwrap().as_f64();
+        let shrinkage_rate = hyperparameters.get_list_element(8).unwrap().as_f64();
         fn wrap(x: f64) -> Option<f64> {
             if x.is_nan() || x.is_infinite() || x <= 0.0 {
                 None

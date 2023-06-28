@@ -1,9 +1,12 @@
+mod registration {
+    include!(concat!(env!("OUT_DIR"), "/registration.rs"));
+}
+
 mod data;
 mod hyperparameters;
 mod membership;
 mod monitor;
 mod mvnorm;
-mod registration;
 mod state;
 
 use crate::data::Data;
@@ -41,13 +44,13 @@ use walltime::TicToc;
 
 #[roxido]
 fn rngs_new() -> Rval {
-    let mut rng = Pcg64Mcg::from_seed(r::random_bytes::<16>());
+    let mut rng = Pcg64Mcg::from_seed(R::random_bytes::<16>());
     let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
     rng.fill(&mut seed);
     let rng2 = Pcg64Mcg::from_seed(seed);
     let result = Rval::new_list(2, pc);
-    result.set_list_element(0, Rval::external_pointer_encode(rng, rval!("rng")));
-    result.set_list_element(1, Rval::external_pointer_encode(rng2, rval!("rng")));
+    let _ = result.set_list_element(0, Rval::external_pointer_encode(rng, rval!("rng")));
+    let _ = result.set_list_element(1, Rval::external_pointer_encode(rng2, rval!("rng")));
     result
 }
 
@@ -119,7 +122,7 @@ fn rust_free(x: Rval) -> Rval {
             let _ = x.external_pointer_decode::<Pcg64Mcg>();
         }
         str => {
-            panic!("Unrecognized type ID: {}.", str)
+            stop!("Unrecognized type ID: {}.", str)
         }
     };
     Rval::nil()
@@ -167,11 +170,11 @@ fn all(all: Rval) -> Rval {
     let mut vec = Vec::with_capacity(all.len());
     let mut n_items = None;
     for i in 0..all.len() {
-        let list = all.get_list_element(i);
+        let list = all.get_list_element(i).unwrap();
         let (data, state, hyperparameters) = (
-            list.get_list_element(0),
-            list.get_list_element(1),
-            list.get_list_element(2),
+            list.get_list_element(0).unwrap(),
+            list.get_list_element(1).unwrap(),
+            list.get_list_element(2).unwrap(),
         );
         let data = Data::from_r(data, pc);
         let state = State::from_r(state, pc);
@@ -217,28 +220,28 @@ struct GlobalMcmcTuning {
 
 impl GlobalMcmcTuning {
     fn from_r(x: Rval, pc: &mut Pc) -> Self {
-        let n_scans_per_loop = x.get_list_element(2).as_usize();
-        let n_loops = x.get_list_element(0).as_usize() / n_scans_per_loop;
-        let n_loops_burnin = x.get_list_element(1).as_usize() / n_scans_per_loop;
+        let n_scans_per_loop = x.get_list_element(2).unwrap().as_usize();
+        let n_loops = x.get_list_element(0).unwrap().as_usize() / n_scans_per_loop;
+        let n_loops_burnin = x.get_list_element(1).unwrap().as_usize() / n_scans_per_loop;
         let n_saves = n_loops - n_loops_burnin;
-        let update_anchor = x.get_list_element(3).as_bool();
-        let n_permutation_updates_per_scan = x.get_list_element(4).as_usize();
-        let x1 = x.get_list_element(5);
+        let update_anchor = x.get_list_element(3).unwrap().as_bool();
+        let n_permutation_updates_per_scan = x.get_list_element(4).unwrap().as_usize();
+        let x1 = x.get_list_element(5).unwrap();
         let n_items_per_permutation_update = if x1.is_nil() {
             None
         } else {
             Some(x1.as_usize())
         };
-        let x2 = x.get_list_element(6);
+        let x2 = x.get_list_element(6).unwrap();
         let shrinkage_slice_step_size = if x2.is_nil() { None } else { Some(x2.as_f64()) };
-        let x3 = x.get_list_element(7);
+        let x3 = x.get_list_element(7).unwrap();
         let validation_data = if x3.is_nil() {
             None
         } else {
             let n_units = x3.len();
             let mut vd = Vec::with_capacity(n_units);
             for k in 0..n_units {
-                vd.push(Data::from_r(x3.get_list_element(k), pc));
+                vd.push(Data::from_r(x3.get_list_element(k).unwrap(), pc));
             }
             Some(vd)
         };
@@ -266,10 +269,10 @@ struct GlobalHyperparametersTemporal {
 impl GlobalHyperparametersTemporal {
     fn from_r(x: Rval, _pc: &mut Pc) -> Self {
         Self {
-            baseline_mass: x.get_list_element(0).as_f64(),
-            shrinkage_reference: x.get_list_element(1).as_usize() - 1,
-            shrinkage_shape: x.get_list_element(2).as_f64(),
-            shrinkage_rate: x.get_list_element(3).as_f64(),
+            baseline_mass: x.get_list_element(0).unwrap().as_f64(),
+            shrinkage_reference: x.get_list_element(1).unwrap().as_usize() - 1,
+            shrinkage_shape: x.get_list_element(2).unwrap().as_f64(),
+            shrinkage_rate: x.get_list_element(3).unwrap().as_f64(),
         }
     }
 }
@@ -291,14 +294,14 @@ impl<'a> ResultsTemporal<'a> {
         for t in 0..n_units {
             let (rval, slice) = Rval::new_matrix_integer(n_items, tuning.n_saves, pc);
             unit_partitions.push(slice);
-            unit_partitions_rval.set_list_element(t, rval);
+            let _ = unit_partitions_rval.set_list_element(t, rval);
         }
         let (permutations_rval, permutations) =
             Rval::new_matrix_integer(n_items, tuning.n_saves, pc);
         let (shrinkages_rval, shrinkages) = Rval::new_vector_double(tuning.n_saves, pc);
         let (log_likelihoods_rval, log_likelihoods) = Rval::new_vector_double(tuning.n_saves, pc);
         let rval = Rval::new_list(7, pc); // Extra 3 items for rates after looping.
-        rval.names_gets(Rval::new(
+        let _ = rval.names_gets(Rval::new(
             [
                 "unit_partitions",
                 "permutation",
@@ -310,10 +313,10 @@ impl<'a> ResultsTemporal<'a> {
             ],
             pc,
         ));
-        rval.set_list_element(0, unit_partitions_rval);
-        rval.set_list_element(1, permutations_rval);
-        rval.set_list_element(2, shrinkages_rval);
-        rval.set_list_element(3, log_likelihoods_rval);
+        let _ = rval.set_list_element(0, unit_partitions_rval);
+        let _ = rval.set_list_element(1, permutations_rval);
+        let _ = rval.set_list_element(2, shrinkages_rval);
+        let _ = rval.set_list_element(3, log_likelihoods_rval);
         Self {
             rval,
             counter: 0,
@@ -360,7 +363,7 @@ fn fit_temporal_model(
     let global_mcmc_tuning = GlobalMcmcTuning::from_r(global_mcmc_tuning, pc);
     let n_units = all.units.len();
     let mut results = ResultsTemporal::new(&global_mcmc_tuning, all.n_items, n_units, pc);
-    let mut rng = Pcg64Mcg::from_seed(r::random_bytes::<16>());
+    let mut rng = Pcg64Mcg::from_seed(R::random_bytes::<16>());
     let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
     rng.fill(&mut seed);
     let mut rng2 = Pcg64Mcg::from_seed(seed);
@@ -375,13 +378,8 @@ fn fit_temporal_model(
     let permutation = Permutation::random(all.n_items, &mut rng);
     let baseline_mass = Mass::new(global_hyperparameters.baseline_mass);
     let baseline_distribution = CrpParameters::new_with_mass(all.n_items, baseline_mass);
-    let mut partition_distribution = SpParameters::new(
-        anchor.clone(),
-        shrinkage.clone(),
-        permutation.clone(),
-        baseline_distribution.clone(),
-    )
-    .unwrap();
+    let mut partition_distribution =
+        SpParameters::new(anchor, shrinkage, permutation, baseline_distribution).unwrap();
     struct Timers {
         units: TicToc,
         anchor: TicToc,
@@ -415,10 +413,7 @@ fn fit_temporal_model(
                 };
                 let (middle, right) = not_left.split_at_mut(1);
                 let unit = middle.first_mut().unwrap();
-                let clustering_next = match right.get(0) {
-                    Some(x) => Some(&x.state.clustering),
-                    None => None,
-                };
+                let clustering_next = right.get(0).map(|x| &x.state.clustering);
                 unit.data.impute(&unit.state, &mut rng);
                 if unit_mcmc_tuning.update_precision_response {
                     State::update_precision_response(
@@ -569,17 +564,17 @@ fn fit_temporal_model(
         }
     }
     let denominator = (global_mcmc_tuning.n_saves * global_mcmc_tuning.n_scans_per_loop) as f64;
-    results.rval.set_list_element(
+    let _ = results.rval.set_list_element(
         4,
         rval!(
             permutation_n_acceptances as f64
                 / (global_mcmc_tuning.n_permutation_updates_per_scan as f64 * denominator)
         ),
     );
-    results
+    let _ = results
         .rval
         .set_list_element(5, rval!(shrinkage_slice_n_evaluations as f64 / denominator));
-    results.rval.set_list_element(
+    let _ = results.rval.set_list_element(
         6,
         rval!([
             timers.units.as_secs_f64(),
@@ -602,11 +597,11 @@ struct GlobalHyperparametersHierarchical {
 impl GlobalHyperparametersHierarchical {
     fn from_r(x: Rval, _pc: &mut Pc) -> Self {
         Self {
-            baseline_mass: x.get_list_element(0).as_f64(),
-            anchor_mass: x.get_list_element(1).as_f64(),
-            shrinkage_reference: x.get_list_element(2).as_usize() - 1,
-            shrinkage_shape: x.get_list_element(3).as_f64(),
-            shrinkage_rate: x.get_list_element(4).as_f64(),
+            baseline_mass: x.get_list_element(0).unwrap().as_f64(),
+            anchor_mass: x.get_list_element(1).unwrap().as_f64(),
+            shrinkage_reference: x.get_list_element(2).unwrap().as_usize() - 1,
+            shrinkage_shape: x.get_list_element(3).unwrap().as_f64(),
+            shrinkage_rate: x.get_list_element(4).unwrap().as_f64(),
         }
     }
 }
@@ -629,7 +624,7 @@ impl<'a> ResultsHierarchical<'a> {
         for t in 0..n_units {
             let (rval, slice) = Rval::new_matrix_integer(n_items, tuning.n_saves, pc);
             unit_partitions.push(slice);
-            unit_partitions_rval.set_list_element(t, rval);
+            let _ = unit_partitions_rval.set_list_element(t, rval);
         }
         let (anchors_rval, anchors) = Rval::new_matrix_integer(n_items, tuning.n_saves, pc);
         let (permutations_rval, permutations) =
@@ -637,7 +632,7 @@ impl<'a> ResultsHierarchical<'a> {
         let (shrinkages_rval, shrinkages) = Rval::new_vector_double(tuning.n_saves, pc);
         let (log_likelihoods_rval, log_likelihoods) = Rval::new_vector_double(tuning.n_saves, pc);
         let rval = Rval::new_list(8, pc); // Extra 3 items for rates after looping.
-        rval.names_gets(Rval::new(
+        let _ = rval.names_gets(Rval::new(
             [
                 "unit_partitions",
                 "anchor",
@@ -650,11 +645,11 @@ impl<'a> ResultsHierarchical<'a> {
             ],
             pc,
         ));
-        rval.set_list_element(0, unit_partitions_rval);
-        rval.set_list_element(1, anchors_rval);
-        rval.set_list_element(2, permutations_rval);
-        rval.set_list_element(3, shrinkages_rval);
-        rval.set_list_element(4, log_likelihoods_rval);
+        let _ = rval.set_list_element(0, unit_partitions_rval);
+        let _ = rval.set_list_element(1, anchors_rval);
+        let _ = rval.set_list_element(2, permutations_rval);
+        let _ = rval.set_list_element(3, shrinkages_rval);
+        let _ = rval.set_list_element(4, log_likelihoods_rval);
         Self {
             rval,
             counter: 0,
@@ -706,7 +701,7 @@ fn fit_hierarchical_model(
     let global_mcmc_tuning = GlobalMcmcTuning::from_r(global_mcmc_tuning, pc);
     let n_units = all.units.len();
     let mut results = ResultsHierarchical::new(&global_mcmc_tuning, all.n_items, n_units, pc);
-    let mut rng = Pcg64Mcg::from_seed(r::random_bytes::<16>());
+    let mut rng = Pcg64Mcg::from_seed(R::random_bytes::<16>());
     let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
     rng.fill(&mut seed);
     let mut rngs: Vec<_> = std::iter::repeat_with(|| {
@@ -887,17 +882,17 @@ fn fit_hierarchical_model(
         }
     }
     let denominator = (global_mcmc_tuning.n_saves * global_mcmc_tuning.n_scans_per_loop) as f64;
-    results.rval.set_list_element(
+    let _ = results.rval.set_list_element(
         5,
         rval!(
             permutation_n_acceptances as f64
                 / (global_mcmc_tuning.n_permutation_updates_per_scan as f64 * denominator)
         ),
     );
-    results
+    let _ = results
         .rval
         .set_list_element(6, rval!(shrinkage_slice_n_evaluations as f64 / denominator));
-    results.rval.set_list_element(
+    let _ = results.rval.set_list_element(
         7,
         rval!([
             timers.units.as_secs_f64(),
@@ -922,7 +917,7 @@ fn fit_all(all_ptr: Rval, shrinkage: Rval, n_updates: Rval, do_baseline_partitio
     } else {
         (Rval::nil(), &mut [] as &mut [i32])
     };
-    let mut rng = Pcg64Mcg::from_seed(r::random_bytes::<16>());
+    let mut rng = Pcg64Mcg::from_seed(R::random_bytes::<16>());
     let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
     rng.fill(&mut seed);
     let mut rng2 = Pcg64Mcg::from_seed(seed);
@@ -1028,21 +1023,23 @@ fn fit(
     if data.n_global_covariates() != state.n_global_covariates()
         || hyperparameters.n_global_covariates() != state.n_global_covariates()
     {
-        panic!("Inconsistent number of global covariates.")
+        stop!("Inconsistent number of global covariates.")
     }
     if data.n_clustered_covariates() != state.n_clustered_covariates()
         || hyperparameters.n_clustered_covariates() != state.n_clustered_covariates()
     {
-        panic!("Inconsistent number of clustered covariates.")
+        stop!("Inconsistent number of clustered covariates.")
     }
     if data.n_items() != state.clustering.n_items() {
-        panic!("Inconsistent number of items.")
+        stop!("Inconsistent number of items.")
     }
     let rng = rngs
         .get_list_element(0)
+        .unwrap()
         .external_pointer_decode_as_mut_ref::<Pcg64Mcg>();
     let rng2 = rngs
         .get_list_element(1)
+        .unwrap()
         .external_pointer_decode_as_mut_ref::<Pcg64Mcg>();
     #[rustfmt::skip]
     macro_rules! mcmc_update { // (_, HAS_PERMUTATION, HAS_SCALAR_SHRINKAGE, HAS_VECTOR_SHRINKAGE, HAS_VECTOR_SHRINKAGE_PROBABILITY)
@@ -1121,12 +1118,12 @@ fn fit(
         "sp-mixture-crp" => {
             mcmc_update!(SpMixtureParameters<CrpParameters>, true, false, false, true)
         }
-        _ => panic!("Unsupported distribution: {}", prior_name),
+        _ => stop!("Unsupported distribution: {}", prior_name),
     }
     state = state.canonicalize();
     let result = Rval::new_list(2, pc);
-    result.set_list_element(0, Rval::external_pointer_encode(state, state_tag));
-    result.set_list_element(1, Rval::external_pointer_encode(monitor, monitor_tag));
+    let _ = result.set_list_element(0, Rval::external_pointer_encode(state, state_tag));
+    let _ = result.set_list_element(1, Rval::external_pointer_encode(monitor, monitor_tag));
     result
 }
 
@@ -1174,10 +1171,10 @@ fn sample_multivariate_normal(n_samples: Rval, mean: Rval, precision: Rval) -> R
     let (_, precision) = precision.coerce_double(pc).unwrap();
     let precision = DMatrix::from_iterator(n, n, precision.iter().cloned());
     let (rval, slice) = Rval::new_matrix_double(n, n_samples, pc);
-    let mut rng = Pcg64Mcg::from_seed(r::random_bytes::<16>());
+    let mut rng = Pcg64Mcg::from_seed(R::random_bytes::<16>());
     let x = sample_multivariate_normal_repeatedly(n_samples, mean, precision, &mut rng).unwrap();
     slice.clone_from_slice(x.as_slice());
-    rval.transpose(pc)
+    rval.transpose(pc).unwrap()
 }
 
 // Copied from pumpkin/src/rust/src/lib.rs
@@ -1223,7 +1220,7 @@ fn new_CrpParameters(n_items: Rval, mass: Rval, discount: Rval) -> Rval {
 
 #[roxido]
 fn new_EpaParameters(similarity: Rval, permutation: Rval, mass: Rval, discount: Rval) -> Rval {
-    let ni = similarity.nrow();
+    let ni = similarity.nrow().unwrap();
     let similarity = SquareMatrixBorrower::from_slice(similarity.try_into().unwrap(), ni);
     let permutation = mk_permutation(permutation, pc);
     let mass = mass.into();
@@ -1269,7 +1266,7 @@ fn new_CppParameters(anchor: Rval, rate: Rval, baseline: Rval, use_vi: Rval, a: 
         "up" => distr_macro!(UpParameters, "cpp-up"),
         "jlp" => distr_macro!(JlpParameters, "cpp-jlp"),
         "crp" => distr_macro!(CrpParameters, "cpp-crp"),
-        _ => panic!("Unsupported distribution: {}", baseline_name),
+        _ => stop!("Unsupported distribution: {}", baseline_name),
     }
 }
 
@@ -1341,7 +1338,7 @@ fn new_OldSpParameters(
         "up" => distr_macro!(UpParameters, "oldsp-up"),
         "jlp" => distr_macro!(JlpParameters, "oldsp-jlp"),
         "crp" => distr_macro!(CrpParameters, "oldsp-crp"),
-        _ => panic!("Unsupported distribution: {}", baseline_name),
+        _ => stop!("Unsupported distribution: {}", baseline_name),
     }
 }
 
@@ -1366,7 +1363,7 @@ fn new_Old2SpParameters(anchor: Rval, shrinkage: Rval, permutation: Rval, baseli
         "up" => distr_macro!(UpParameters, "old2sp-up"),
         "jlp" => distr_macro!(JlpParameters, "old2sp-jlp"),
         "crp" => distr_macro!(CrpParameters, "old2sp-crp"),
-        _ => panic!("Unsupported distribution: {}", baseline_name),
+        _ => stop!("Unsupported distribution: {}", baseline_name),
     }
 }
 
@@ -1396,7 +1393,7 @@ fn new_SpMixtureParameters(
         "up" => distr_macro!(UpParameters, "sp-mixture-up"),
         "jlp" => distr_macro!(JlpParameters, "sp-mixture-jlp"),
         "crp" => distr_macro!(CrpParameters, "sp-mixture-crp"),
-        _ => panic!("Unsupported distribution: {}", baseline_name),
+        _ => stop!("Unsupported distribution: {}", baseline_name),
     }
 }
 
@@ -1421,7 +1418,7 @@ fn new_SpParameters(anchor: Rval, shrinkage: Rval, permutation: Rval, baseline: 
         "up" => distr_macro!(UpParameters, "sp-up"),
         "jlp" => distr_macro!(JlpParameters, "sp-jlp"),
         "crp" => distr_macro!(CrpParameters, "sp-crp"),
-        _ => panic!("Unsupported distribution: {}", baseline_name),
+        _ => stop!("Unsupported distribution: {}", baseline_name),
     }
 }
 
@@ -1495,7 +1492,7 @@ extern "C" fn free_distr_r_ptr(sexp: rbindings::SEXP) {
             "sp-mixture-up" => free_r_ptr_helper::<SpMixtureParameters<UpParameters>>(sexp),
             "sp-mixture-jlp" => free_r_ptr_helper::<SpMixtureParameters<JlpParameters>>(sexp),
             "sp-mixture-crp" => free_r_ptr_helper::<SpMixtureParameters<CrpParameters>>(sexp),
-            name => panic!("Unsupported distribution: {}", name),
+            name => stop!("Unsupported distribution: {}", name),
         }
     }
 }

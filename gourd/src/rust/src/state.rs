@@ -49,18 +49,26 @@ impl State {
     }
 
     pub fn from_r(state: Rval, pc: &mut Pc) -> Self {
-        let precision_response = state.get_list_element(0).as_f64();
-        let (_, global_coefficients_slice) = state.get_list_element(1).coerce_double(pc).unwrap();
+        let precision_response = state.get_list_element(0).unwrap().as_f64();
+        let (_, global_coefficients_slice) = state
+            .get_list_element(1)
+            .unwrap()
+            .coerce_double(pc)
+            .unwrap();
         let global_coefficients = DVector::from_column_slice(global_coefficients_slice);
         let clustering = {
-            let (_, clustering_slice) = state.get_list_element(2).coerce_integer(pc).unwrap();
+            let (_, clustering_slice) = state
+                .get_list_element(2)
+                .unwrap()
+                .coerce_integer(pc)
+                .unwrap();
             let clust: Vec<_> = clustering_slice.iter().map(|&x| (x as usize) - 1).collect();
             Clustering::from_vector(clust)
         };
-        let clustered_coefficients_rval = state.get_list_element(3);
+        let clustered_coefficients_rval = state.get_list_element(3).unwrap();
         let mut clustered_coefficients = Vec::with_capacity(clustered_coefficients_rval.len());
         for i in 0..clustered_coefficients.capacity() {
-            let element = clustered_coefficients_rval.get_list_element(i);
+            let element = clustered_coefficients_rval.get_list_element(i).unwrap();
             let (_, slice) = element.coerce_double(pc).unwrap();
             clustered_coefficients.push(DVector::from_column_slice(slice));
         }
@@ -75,20 +83,21 @@ impl State {
 
     pub fn to_r(&self, pc: &mut Pc) -> Rval {
         let result = Rval::new_list(4, pc);
-        result.set_list_element(0, Rval::new(self.precision_response, pc));
-        result.set_list_element(1, Rval::new(self.global_coefficients.as_slice(), pc));
+        let _ = result.set_list_element(0, Rval::new(self.precision_response, pc));
+        let _ = result.set_list_element(1, Rval::new(self.global_coefficients.as_slice(), pc));
         let x: Vec<_> = self
             .clustering
             .allocation()
             .iter()
             .map(|&label| i32::try_from(label + 1).unwrap())
             .collect();
-        result.set_list_element(2, Rval::new(&x[..], pc));
+        let _ = result.set_list_element(2, Rval::new(&x[..], pc));
         let rval = Rval::new_list(self.clustered_coefficients.len(), pc);
         for (i, coef) in self.clustered_coefficients.iter().enumerate() {
-            rval.set_list_element(i, Rval::new(coef.as_slice(), pc));
+            rval.set_list_element(i, Rval::new(coef.as_slice(), pc))
+                .unwrap();
         }
-        result.set_list_element(3, rval);
+        let _ = result.set_list_element(3, rval);
         result
     }
 
@@ -443,7 +452,7 @@ impl State {
                             label,
                             if let Some(c) = partition_next {
                                 partition_distribution_next.anchor.allocate(ii, label);
-                                partition_distribution_next.log_pmf(&c)
+                                partition_distribution_next.log_pmf(c)
                             } else {
                                 0.0
                             } + log_likelihood_contribution_fn(
@@ -524,12 +533,12 @@ impl McmcTuning {
     }
     pub fn from_r(x: Rval, _pc: &mut Pc) -> Self {
         Self::new(
-            x.get_list_element(0).as_bool(),
-            x.get_list_element(1).as_bool(),
-            x.get_list_element(2).as_bool(),
-            x.get_list_element(3).as_bool(),
-            Some(x.get_list_element(4).as_i32().try_into().unwrap()),
-            Some(x.get_list_element(5).as_f64()),
+            x.get_list_element(0).unwrap().as_bool(),
+            x.get_list_element(1).unwrap().as_bool(),
+            x.get_list_element(2).unwrap().as_bool(),
+            x.get_list_element(3).unwrap().as_bool(),
+            Some(x.get_list_element(4).unwrap().as_i32().try_into().unwrap()),
+            Some(x.get_list_element(5).unwrap().as_f64()),
         )
         .unwrap()
     }

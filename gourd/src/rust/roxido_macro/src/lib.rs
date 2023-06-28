@@ -21,6 +21,7 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use std::fs::File;
+use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::Path;
 use syn::ext::IdentExt;
@@ -110,7 +111,7 @@ fn roxido_fn(options: Vec<NestedMeta>, item_fn: syn::ItemFn) -> TokenStream {
         panic!("A function with the 'roxido' attribute must not have a visibility modifier, but found '{}'.", vis_as_string);
     }
     // Check that all arguments are of type Rval.
-    let mut arg_names = Vec::new();
+    let mut arg_names = Vec::with_capacity(args.len());
     for arg in &args {
         match arg {
             syn::FnArg::Typed(pat_type) => {
@@ -140,8 +141,8 @@ fn roxido_fn(options: Vec<NestedMeta>, item_fn: syn::ItemFn) -> TokenStream {
             }
         }
     }
+    let func_name = quote!(#name).to_string();
     if let Some(mut path) = r_function_directory {
-        let func_name = quote!(#name).to_string();
         path.push(&func_name);
         let mut file = File::create(&path)
             .unwrap_or_else(|_| panic!("Could not open file '{:?}' for writing.", &path));
@@ -165,6 +166,16 @@ fn roxido_fn(options: Vec<NestedMeta>, item_fn: syn::ItemFn) -> TokenStream {
             )
         }
         .expect("Could not write to the file.");
+    } else {
+        let filename = "roxido.txt";
+        if let Ok(mut file) = OpenOptions::new().append(true).create(true).open(filename) {
+            let line = format!("{func_name} {}\n", arg_names.len());
+            if let Err(_) = file.write_all(line.as_bytes()) {
+                eprintln!("Couldn't append to file: {filename}");
+            }
+        } else {
+            eprintln!("Couldn't open the file: {filename}");
+        }
     }
     // Write the function itself, wrapping the body in 'catch_unwind' to prevent unwinding into C.
     if longjmp {
@@ -174,7 +185,7 @@ fn roxido_fn(options: Vec<NestedMeta>, item_fn: syn::ItemFn) -> TokenStream {
         TokenStream::from(quote! {
             #[no_mangle]
             extern "C" fn #name(#args) #output {
-                let result: Result<Rval,_> = std::panic::catch_unwind(|| {
+                let result: Result<Rval, _> = std::panic::catch_unwind(|| {
                     let pc = &mut Pc::new();
                     #[allow(unused_macros)]
                     macro_rules! rval {
@@ -184,18 +195,24 @@ fn roxido_fn(options: Vec<NestedMeta>, item_fn: syn::ItemFn) -> TokenStream {
                 });
                 match result {
                     Ok(obj) => obj,
-                    Err(_) => {
-                        let msg = format!("Panic in Rust function '{}' with 'roxido' attribute.", stringify!(#name));
-                        let str = msg.as_str();
-                        let len = str.len();
+                    Err(ref payload) => {
+                        let mut scratch = String::new();
+                        let msg = match payload.downcast_ref::<crate::r::RError>() {
+                            Some(x) => x.0.as_str(),
+                            None => {
+                                scratch = format!("Panic in Rust function '{}' with 'roxido' attribute.", stringify!(#name));
+                                &scratch[..]
+                            }
+                        };
+                        let len = msg.len();
                         let sexp = unsafe {
                             use std::convert::TryInto;
                             crate::rbindings::Rf_mkCharLen(
-                                str.as_ptr() as *const std::os::raw::c_char,
-                                str.len().try_into().unwrap(),
+                                msg.as_ptr() as *const std::os::raw::c_char,
+                                msg.len().try_into().unwrap(),
                             )
                         };
-                        drop(msg);
+                        drop(scratch);
                         drop(result);
                         unsafe {
                             crate::rbindings::Rf_error(b"%.*s\0".as_ptr() as *const std::os::raw::c_char, len, crate::rbindings::R_CHAR(sexp));
