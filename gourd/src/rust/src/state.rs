@@ -48,28 +48,32 @@ impl State {
         })
     }
 
-    pub fn from_r(state: Rval, pc: &mut Pc) -> Self {
-        let precision_response = state.get_list_element(0).unwrap().as_f64();
+    pub fn from_r(state: RObject, pc: &mut Pc) -> Self {
+        let state = state.as_list_or_stop("Expected a list");
+        let precision_response = state.get(0).unwrap().as_f64();
         let (_, global_coefficients_slice) = state
-            .get_list_element(1)
+            .get(1)
             .unwrap()
-            .coerce_double(pc)
-            .unwrap();
+            .as_matrix_or_stop("Expected a matrix.")
+            .coerce_double(pc);
         let global_coefficients = DVector::from_column_slice(global_coefficients_slice);
         let clustering = {
             let (_, clustering_slice) = state
-                .get_list_element(2)
+                .get(2)
                 .unwrap()
-                .coerce_integer(pc)
-                .unwrap();
+                .as_vector_or_stop("Expected a vector.")
+                .coerce_integer(pc);
             let clust: Vec<_> = clustering_slice.iter().map(|&x| (x as usize) - 1).collect();
             Clustering::from_vector(clust)
         };
-        let clustered_coefficients_rval = state.get_list_element(3).unwrap();
+        let clustered_coefficients_rval = state.get(3).unwrap().as_list_or_stop("Expected a list.");
         let mut clustered_coefficients = Vec::with_capacity(clustered_coefficients_rval.len());
         for i in 0..clustered_coefficients.capacity() {
-            let element = clustered_coefficients_rval.get_list_element(i).unwrap();
-            let (_, slice) = element.coerce_double(pc).unwrap();
+            let element = clustered_coefficients_rval
+                .get(i)
+                .unwrap()
+                .as_vector_or_stop("Expected a vector.");
+            let (_, slice) = element.coerce_double(pc);
             clustered_coefficients.push(DVector::from_column_slice(slice));
         }
         Self::new(
@@ -81,24 +85,26 @@ impl State {
         .unwrap()
     }
 
-    pub fn to_r(&self, pc: &mut Pc) -> Rval {
-        let result = Rval::new_list(4, pc);
-        let _ = result.set_list_element(0, Rval::new(self.precision_response, pc));
-        let _ = result.set_list_element(1, Rval::new(self.global_coefficients.as_slice(), pc));
+    pub fn to_r(&self, pc: &mut Pc) -> RObject {
+        let result = RList::new(4, pc);
+        let _ = result.set(0, RVector::allocate(self.precision_response, pc));
+        let _ = result.set(
+            1,
+            RVector::allocate(self.global_coefficients.as_slice(), pc),
+        );
         let x: Vec<_> = self
             .clustering
             .allocation()
             .iter()
             .map(|&label| i32::try_from(label + 1).unwrap())
             .collect();
-        let _ = result.set_list_element(2, Rval::new(&x[..], pc));
-        let rval = Rval::new_list(self.clustered_coefficients.len(), pc);
+        let _ = result.set(2, RVector::allocate(&x[..], pc));
+        let rval = RList::new(self.clustered_coefficients.len(), pc);
         for (i, coef) in self.clustered_coefficients.iter().enumerate() {
-            rval.set_list_element(i, Rval::new(coef.as_slice(), pc))
-                .unwrap();
+            rval.set(i, RVector::allocate(coef.as_slice(), pc)).unwrap();
         }
-        let _ = result.set_list_element(3, rval);
-        result
+        let _ = result.set(3, rval);
+        result.into()
     }
 
     pub fn precision_response(&self) -> f64 {
@@ -531,14 +537,15 @@ impl McmcTuning {
             shrinkage_slice_step_size,
         })
     }
-    pub fn from_r(x: Rval, _pc: &mut Pc) -> Self {
+    pub fn from_r(x: RObject, _pc: &mut Pc) -> Self {
+        let x = x.as_list_or_stop("List expected.");
         Self::new(
-            x.get_list_element(0).unwrap().as_bool(),
-            x.get_list_element(1).unwrap().as_bool(),
-            x.get_list_element(2).unwrap().as_bool(),
-            x.get_list_element(3).unwrap().as_bool(),
-            Some(x.get_list_element(4).unwrap().as_i32().try_into().unwrap()),
-            Some(x.get_list_element(5).unwrap().as_f64()),
+            x.get(0).unwrap().as_bool(),
+            x.get(1).unwrap().as_bool(),
+            x.get(2).unwrap().as_bool(),
+            x.get(3).unwrap().as_bool(),
+            Some(x.get(4).unwrap().as_i32().try_into().unwrap()),
+            Some(x.get(5).unwrap().as_f64()),
         )
         .unwrap()
     }
