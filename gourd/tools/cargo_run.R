@@ -69,7 +69,7 @@ run <- function(..., minimum_version = ".", search_methods = c("cache", "convent
       msg("In DESCRIPTION file, could not find 'SystemRequirements: rustc (>= XXXX)' or 'SystemRequirements: Cargo (>= XXXX)'.")
       return(101)
     }
-    sub("\\D*\\).*", "", sub(".*\\(>=\\D*", "", x))
+    sub("\\D*\\).*", "", sub(".*[(,]\\s*>=\\D*", "", x))
   } else {
     if (minimum_version == ".") "1.31.0" else minimum_version
   }
