@@ -1,6 +1,6 @@
 Package: gourd
 Title: A Short Phrase in Title Case
-Version: 0.1.26
+Version: 0.1.27
 Authors@R: c(person(given = "First", family = "Last", role = c("aut", "cre"), email = "name@gmail.com", comment = c(ORCID = "ORCID-ID")),
     person(given = "David B.", family = "Dahl", email = "dahl@stat.byu.edu", role = "cph", comment = "Rust crates: roxido, roxido_macro."),
     person(given = "Alex", family = "Crichton", email = "alex@alexcrichton.com", role = "cph", comment = "Rust crate: proc-macro2."),
