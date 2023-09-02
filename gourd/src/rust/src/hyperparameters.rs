@@ -75,45 +75,52 @@ impl Hyperparameters {
     }
 
     pub fn from_r(hyperparameters: RObject, pc: &mut Pc) -> Self {
-        let hyperparameters = hyperparameters.as_list_or_stop("Expected a list.");
-        let precision_response_shape = hyperparameters.get(0).unwrap().as_f64();
-        let precision_response_rate = hyperparameters.get(1).unwrap().as_f64();
-        let (_, global_coefficients_mean_slice) = hyperparameters
+        let hyperparameters = hyperparameters.as_list().stop();
+        let precision_response_shape = hyperparameters.get(0).unwrap().as_f64().stop();
+        let precision_response_rate = hyperparameters.get(1).unwrap().as_f64().stop();
+        let global_coefficients_mean = hyperparameters
             .get(2)
             .unwrap()
-            .as_vector_or_stop("Expected a vector.")
-            .coerce_double(pc);
+            .as_vector()
+            .stop()
+            .to_mode_double(pc);
+        let global_coefficients_mean_slice = global_coefficients_mean.slice();
         let global_coefficients_mean = DVector::from_column_slice(global_coefficients_mean_slice);
-        let (global_coefficients_precision_rval, global_coefficients_precision_slice) =
-            hyperparameters
-                .get(3)
-                .unwrap()
-                .as_matrix_or_stop("Not a matrix.")
-                .coerce_double(pc);
+        let global_coefficients_precision_rval = hyperparameters
+            .get(3)
+            .stop()
+            .as_matrix()
+            .stop()
+            .to_mode_double(pc);
+
+        let global_coefficients_precision_slice = global_coefficients_precision_rval.slice();
         let global_coefficients_precision = DMatrix::from_column_slice(
             global_coefficients_precision_rval.nrow(),
             global_coefficients_precision_rval.ncol(),
             global_coefficients_precision_slice,
         );
-        let (_, clustered_coefficients_mean_slice) = hyperparameters
+        let clustered_coefficients_mean_slice = hyperparameters
             .get(4)
-            .unwrap()
-            .as_vector_or_stop("Expected a matrix")
-            .coerce_double(pc);
+            .stop()
+            .as_vector()
+            .stop()
+            .to_mode_double(pc)
+            .slice();
         let clustered_coefficients_mean =
             DVector::from_column_slice(clustered_coefficients_mean_slice);
-        let (clustered_coefficients_precision_rval, clustered_coefficients_precision_slice) =
-            hyperparameters
-                .get(5)
-                .unwrap()
-                .as_matrix_or_stop("Expected a matrix.")
-                .coerce_double(pc);
+        let clustered_coefficients_precision_rval = hyperparameters
+            .get(5)
+            .stop()
+            .as_matrix()
+            .stop()
+            .to_mode_double(pc);
+        let clustered_coefficients_precision_slice = clustered_coefficients_precision_rval.slice();
         let clustered_coefficients_precision = DMatrix::from_column_slice(
             clustered_coefficients_precision_rval.nrow(),
             clustered_coefficients_precision_rval.ncol(),
             clustered_coefficients_precision_slice,
         );
-        let shrinkage_reference = hyperparameters.get(6).unwrap().as_usize() - 1;
+        let shrinkage_reference = hyperparameters.get(6).stop().as_usize().stop() - 1;
         let shrinkage_shape = hyperparameters.get(7).unwrap().as_f64();
         let shrinkage_rate = hyperparameters.get(8).unwrap().as_f64();
         fn wrap(x: f64) -> Option<f64> {
@@ -131,8 +138,8 @@ impl Hyperparameters {
             clustered_coefficients_mean,
             clustered_coefficients_precision,
             Some(shrinkage_reference),
-            wrap(shrinkage_shape),
-            wrap(shrinkage_rate),
+            wrap(shrinkage_shape.stop()),
+            wrap(shrinkage_rate.stop()),
         )
         .unwrap()
     }

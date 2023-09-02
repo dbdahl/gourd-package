@@ -49,35 +49,33 @@ impl Data {
     }
 
     pub fn from_r(data: RObject, pc: &mut Pc) -> Self {
-        let data = data.as_list_or_stop("Expected a list.");
-        let (_, response_slice) = data
+        let data = data.as_list().stop();
+        let response = data
             .get(0)
-            .unwrap()
-            .as_vector_or_stop("Element should be a vector.")
-            .coerce_double(pc);
+            .stop()
+            .as_vector()
+            .stop_str("Element should be a vector.")
+            .to_mode_double(pc);
+        let response_slice = response.slice();
         let n_items = response_slice.len();
         let response = DVector::from_column_slice(response_slice);
-        let (global_covariates_rval, global_covariates_slice) = data
+        let global_covariates_rval = data
             .get(1)
-            .unwrap()
-            .as_matrix_or_stop("Element should be a matrix.")
-            .coerce_double(pc);
+            .stop()
+            .as_matrix()
+            .stop_str("Element should be a matrix.")
+            .to_mode_double(pc);
+        let global_covariates_slice = global_covariates_rval.slice();
         let n_global_covariates = global_covariates_rval.ncol();
         let global_covariates =
             DMatrix::from_column_slice(n_items, n_global_covariates, global_covariates_slice);
-        let (clustered_covariates_rval, clustered_covariates_slice) = data
-            .get(2)
-            .unwrap()
-            .as_matrix_or_stop("Note a matrix")
-            .coerce_double(pc);
+        let clustered_covariates_rval = data.get(2).unwrap().as_matrix().stop().to_mode_double(pc);
+        let clustered_covariates_slice = clustered_covariates_rval.slice();
         let n_clustered_covariates = clustered_covariates_rval.ncol();
         let clustered_covariates =
             DMatrix::from_column_slice(n_items, n_clustered_covariates, clustered_covariates_slice);
-        let (_, item_sizes_slice) = data
-            .get(3)
-            .unwrap()
-            .as_vector_or_stop("Expected a vector.")
-            .coerce_integer(pc);
+        let item_sizes = data.get(3).stop().as_vector().stop().to_mode_integer(pc);
+        let item_sizes_slice = item_sizes.slice();
         let item_sizes: Vec<_> = item_sizes_slice
             .iter()
             .map(|x| usize::try_from(*x).unwrap())

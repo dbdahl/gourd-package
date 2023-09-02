@@ -49,31 +49,36 @@ impl State {
     }
 
     pub fn from_r(state: RObject, pc: &mut Pc) -> Self {
-        let state = state.as_list_or_stop("Expected a list");
-        let precision_response = state.get(0).unwrap().as_f64();
-        let (_, global_coefficients_slice) = state
+        let state = state.as_list().stop();
+        let precision_response = state.get(0).stop().as_f64().stop();
+        let global_coefficients_slice = state
             .get(1)
-            .unwrap()
-            .as_matrix_or_stop("Expected a matrix.")
-            .coerce_double(pc);
+            .stop()
+            .as_matrix()
+            .stop()
+            .to_mode_double(pc)
+            .slice();
         let global_coefficients = DVector::from_column_slice(global_coefficients_slice);
         let clustering = {
-            let (_, clustering_slice) = state
+            let clustering_slice = state
                 .get(2)
-                .unwrap()
-                .as_vector_or_stop("Expected a vector.")
-                .coerce_integer(pc);
+                .stop()
+                .as_vector()
+                .stop()
+                .to_mode_integer(pc)
+                .slice();
             let clust: Vec<_> = clustering_slice.iter().map(|&x| (x as usize) - 1).collect();
             Clustering::from_vector(clust)
         };
-        let clustered_coefficients_rval = state.get(3).unwrap().as_list_or_stop("Expected a list.");
+        let clustered_coefficients_rval = state.get(3).stop().as_list().stop();
         let mut clustered_coefficients = Vec::with_capacity(clustered_coefficients_rval.len());
         for i in 0..clustered_coefficients.capacity() {
             let element = clustered_coefficients_rval
                 .get(i)
                 .unwrap()
-                .as_vector_or_stop("Expected a vector.");
-            let (_, slice) = element.coerce_double(pc);
+                .as_vector()
+                .stop();
+            let slice = element.to_mode_double(pc).slice();
             clustered_coefficients.push(DVector::from_column_slice(slice));
         }
         Self::new(
@@ -86,25 +91,24 @@ impl State {
     }
 
     pub fn to_r(&self, pc: &mut Pc) -> RObject {
-        let result = RList::new(4, pc);
-        let _ = result.set(0, RVector::allocate(self.precision_response, pc));
-        let _ = result.set(
-            1,
-            RVector::allocate(self.global_coefficients.as_slice(), pc),
-        );
+        let result = R::new_list(4, pc);
+        result.set(0, &self.precision_response.to_r(pc)).stop();
+        result
+            .set(1, &self.global_coefficients.as_slice().to_r(pc))
+            .stop();
         let x: Vec<_> = self
             .clustering
             .allocation()
             .iter()
             .map(|&label| i32::try_from(label + 1).unwrap())
             .collect();
-        let _ = result.set(2, RVector::allocate(&x[..], pc));
-        let rval = RList::new(self.clustered_coefficients.len(), pc);
+        result.set(2, &(&x[..]).to_r(pc)).stop();
+        let rval = R::new_list(self.clustered_coefficients.len(), pc);
         for (i, coef) in self.clustered_coefficients.iter().enumerate() {
-            rval.set(i, RVector::allocate(coef.as_slice(), pc)).unwrap();
+            rval.set(i, &coef.as_slice().to_r(pc)).unwrap();
         }
-        let _ = result.set(3, rval);
-        result.into()
+        result.set(3, &rval).stop();
+        result.as_unknown()
     }
 
     pub fn precision_response(&self) -> f64 {
@@ -538,14 +542,14 @@ impl McmcTuning {
         })
     }
     pub fn from_r(x: RObject, _pc: &mut Pc) -> Self {
-        let x = x.as_list_or_stop("List expected.");
+        let x = x.as_list().stop();
         Self::new(
-            x.get(0).unwrap().as_bool(),
-            x.get(1).unwrap().as_bool(),
-            x.get(2).unwrap().as_bool(),
-            x.get(3).unwrap().as_bool(),
-            Some(x.get(4).unwrap().as_i32().try_into().unwrap()),
-            Some(x.get(5).unwrap().as_f64()),
+            x.get(0).stop().as_bool().stop(),
+            x.get(1).stop().as_bool().stop(),
+            x.get(2).stop().as_bool().stop(),
+            x.get(3).stop().as_bool().stop(),
+            Some(x.get(4).stop().as_i32().stop().try_into().unwrap()),
+            Some(x.get(5).stop().as_f64().stop()),
         )
         .unwrap()
     }
