@@ -62,7 +62,11 @@ fn state_r2rust(state: RObject) -> RObject {
 
 #[roxido]
 fn state_rust2r_as_reference(state: RObject) -> RObject {
-    state.as_external_ptr().stop().as_ref::<State>().to_r(pc)
+    state
+        .as_external_ptr()
+        .stop()
+        .decode_as_ref::<State>()
+        .to_r(pc)
 }
 
 #[roxido]
@@ -75,7 +79,7 @@ fn monitor_rate(monitor: RObject) -> RObject {
     monitor
         .as_external_ptr()
         .stop()
-        .as_ref::<Monitor<u32>>()
+        .decode_as_ref::<Monitor<u32>>()
         .rate()
 }
 
@@ -84,7 +88,7 @@ fn monitor_reset(monitor: RObject) -> RObject {
     let monitor = monitor
         .as_external_ptr()
         .stop()
-        .as_mut_ref::<Monitor<u32>>();
+        .decode_as_mut::<Monitor<u32>>();
     monitor.reset();
 }
 
@@ -113,19 +117,19 @@ fn rust_free(x: RObject) -> RObject {
     let x = x.as_external_ptr().stop();
     match x.as_str() {
         Ok("data") => {
-            let _ = x.as_val::<Data>();
+            let _ = x.decode_as_val::<Data>();
         }
         Ok("state") => {
-            let _ = x.as_val::<State>();
+            let _ = x.decode_as_val::<State>();
         }
         Ok("hyperparameters") => {
-            let _ = x.as_val::<Hyperparameters>();
+            let _ = x.decode_as_val::<Hyperparameters>();
         }
         Ok("monitor") => {
-            let _ = x.as_val::<Monitor<u32>>();
+            let _ = x.decode_as_val::<Monitor<u32>>();
         }
         Ok("rng") => {
-            let _ = x.as_val::<Pcg64Mcg>();
+            let _ = x.decode_as_val::<Pcg64Mcg>();
         }
         Ok(str) => {
             stop!("Unrecognized type ID: {}", str)
@@ -375,7 +379,7 @@ fn fit_temporal_model(
     global_hyperparameters: RObject,
     global_mcmc_tuning: RObject,
 ) -> RObject {
-    let mut all: All = all_ptr.as_external_ptr().stop().as_val();
+    let mut all: All = all_ptr.as_external_ptr().stop().decode_as_val();
     let unit_mcmc_tuning = McmcTuning::from_r(unit_mcmc_tuning, pc);
     let global_hyperparameters = GlobalHyperparametersTemporal::from_r(global_hyperparameters, pc);
     let global_mcmc_tuning = GlobalMcmcTuning::from_r(global_mcmc_tuning, pc);
@@ -723,7 +727,7 @@ fn fit_hierarchical_model(
     global_hyperparameters: RObject,
     global_mcmc_tuning: RObject,
 ) -> RObject {
-    let mut all: All = all_ptr.as_external_ptr().stop().as_val();
+    let mut all: All = all_ptr.as_external_ptr().stop().decode_as_val();
     let unit_mcmc_tuning = McmcTuning::from_r(unit_mcmc_tuning, pc);
     let global_hyperparameters =
         GlobalHyperparametersHierarchical::from_r(global_hyperparameters, pc);
@@ -950,7 +954,7 @@ fn fit_all(
     n_updates: RObject,
     do_baseline_partition: RObject,
 ) -> RObject {
-    let mut all: All = all_ptr.as_external_ptr().stop().as_val();
+    let mut all: All = all_ptr.as_external_ptr().stop().decode_as_val();
     let n_items = all.n_items;
     let fixed = McmcTuning::new(false, false, false, false, Some(2), Some(1.0)).unwrap();
     let shrinkage = Shrinkage::constant(shrinkage.as_f64().stop(), n_items).unwrap();
@@ -1058,14 +1062,15 @@ fn fit(
     rngs: RObject,
 ) -> RObject {
     let n_updates: u32 = n_updates.as_i32().stop().try_into().unwrap();
-    let data: &mut Data = data.as_external_ptr().stop().as_mut_ref();
+    let data: &mut Data = data.as_external_ptr().stop().decode_as_mut();
     let state = state.as_external_ptr().stop();
     let state_tag = state.tag();
-    let mut state: State = state.as_external_ptr().stop().as_val();
-    let hyperparameters: &Hyperparameters = hyperparameters.as_external_ptr().stop().as_ref();
+    let mut state: State = state.as_external_ptr().stop().decode_as_val();
+    let hyperparameters: &Hyperparameters =
+        hyperparameters.as_external_ptr().stop().decode_as_ref();
     let monitor = monitor.as_external_ptr().stop();
     let monitor_tag = monitor.tag();
-    let mut monitor = monitor.as_val::<Monitor<u32>>();
+    let mut monitor = monitor.decode_as_val::<Monitor<u32>>();
     let mcmc_tuning = McmcTuning::from_r(mcmc_tuning, pc);
     if data.n_global_covariates() != state.n_global_covariates()
         || hyperparameters.n_global_covariates() != state.n_global_covariates()
@@ -1086,20 +1091,20 @@ fn fit(
             .stop()
             .as_external_ptr()
             .stop()
-            .as_mut_ref::<Pcg64Mcg>()
+            .decode_as_mut::<Pcg64Mcg>()
     };
     let rng = getrng(0);
     let rng2 = getrng(1);
     #[rustfmt::skip]
     macro_rules! mcmc_update { // (_, HAS_PERMUTATION, HAS_SCALAR_SHRINKAGE, HAS_VECTOR_SHRINKAGE, HAS_VECTOR_SHRINKAGE_PROBABILITY)
         ($tipe:ty, false, false, false, false) => {{
-            let partition_distribution = partition_distribution.as_external_ptr().stop().as_mut_ref::<$tipe>();
+            let partition_distribution = partition_distribution.as_external_ptr().stop().decode_as_mut::<$tipe>();
             for _ in 0..n_updates {
                 state.mcmc_iteration(&mcmc_tuning, data, hyperparameters, partition_distribution, rng, rng2);
             }
         }};
         ($tipe:ty, true, false, false, false) => {{
-            let partition_distribution = partition_distribution.as_external_ptr().stop().as_mut_ref::<$tipe>();
+            let partition_distribution = partition_distribution.as_external_ptr().stop().decode_as_mut::<$tipe>();
             for _ in 0..n_updates {
                 state.mcmc_iteration(&mcmc_tuning, data, hyperparameters, partition_distribution, rng, rng2);
                 monitor.monitor(1, |n_updates| { dahl_randompartition::mcmc::update_permutation(n_updates, partition_distribution, mcmc_tuning.n_items_per_permutation_update.unwrap(), &state.clustering, rng) });
@@ -1107,7 +1112,7 @@ fn fit(
             }
         }};
         ($tipe:ty, true, true, false, false) => {{
-            let partition_distribution = partition_distribution.as_external_ptr().stop().as_mut_ref::<$tipe>();
+            let partition_distribution = partition_distribution.as_external_ptr().stop().decode_as_mut::<$tipe>();
             for _ in 0..n_updates {
                 state.mcmc_iteration(&mcmc_tuning, data, hyperparameters, partition_distribution, rng, rng2);
                 monitor.monitor(1, |n_updates| { dahl_randompartition::mcmc::update_permutation(n_updates, partition_distribution, mcmc_tuning.n_items_per_permutation_update.unwrap(), &state.clustering, rng) });
@@ -1117,7 +1122,7 @@ fn fit(
             }
         }};
         ($tipe:ty, true, false, true, false) => {{
-            let partition_distribution = partition_distribution.as_external_ptr().stop().as_mut_ref::<$tipe>();
+            let partition_distribution = partition_distribution.as_external_ptr().stop().decode_as_mut::<$tipe>();
             for _ in 0..n_updates {
                 state.mcmc_iteration(&mcmc_tuning, data, hyperparameters, partition_distribution, rng, rng2);
                 monitor.monitor(1, |n_updates| { dahl_randompartition::mcmc::update_permutation(n_updates, partition_distribution, mcmc_tuning.n_items_per_permutation_update.unwrap(), &state.clustering, rng) });
@@ -1127,7 +1132,7 @@ fn fit(
             }
         }};
         ($tipe:ty, true, false, false, true) => {{
-            let partition_distribution = partition_distribution.as_external_ptr().stop().as_mut_ref::<$tipe>();
+            let partition_distribution = partition_distribution.as_external_ptr().stop().decode_as_mut::<$tipe>();
             for _ in 0..n_updates {
                 state.mcmc_iteration(&mcmc_tuning, data, hyperparameters, partition_distribution, rng, rng2);
                 monitor.monitor(1, |n_updates| { dahl_randompartition::mcmc::update_permutation(n_updates, partition_distribution, mcmc_tuning.n_items_per_permutation_update.unwrap(), &state.clustering, rng) });
@@ -1179,15 +1184,15 @@ fn fit(
 
 #[roxido]
 fn log_likelihood_contributions(state: RObject, data: RObject) -> RObject {
-    let state: &State = state.as_external_ptr().stop().as_ref();
-    let data = data.as_external_ptr().stop().as_ref();
+    let state: &State = state.as_external_ptr().stop().decode_as_ref();
+    let data = data.as_external_ptr().stop().decode_as_ref();
     state.log_likelihood_contributions(data).iter().to_r(pc)
 }
 
 #[roxido]
 fn log_likelihood_contributions_of_missing(state: RObject, data: RObject) -> RObject {
-    let state: &State = state.as_external_ptr().stop().as_ref();
-    let data = data.as_external_ptr().stop().as_ref();
+    let state: &State = state.as_external_ptr().stop().decode_as_ref();
+    let data = data.as_external_ptr().stop().decode_as_ref();
     state
         .log_likelihood_contributions_of_missing(data)
         .iter()
@@ -1196,8 +1201,8 @@ fn log_likelihood_contributions_of_missing(state: RObject, data: RObject) -> ROb
 
 #[roxido]
 fn log_likelihood_of(state: RObject, data: RObject, items: RObject) -> RObject {
-    let state: &State = state.as_external_ptr().stop().as_ref();
-    let data = data.as_external_ptr().stop().as_ref();
+    let state: &State = state.as_external_ptr().stop().decode_as_ref();
+    let data = data.as_external_ptr().stop().decode_as_ref();
     let items = items.as_vector().stop().to_mode_integer(pc).slice();
     let items: Vec<_> = items
         .iter()
@@ -1208,8 +1213,8 @@ fn log_likelihood_of(state: RObject, data: RObject, items: RObject) -> RObject {
 
 #[roxido]
 fn log_likelihood(state: RObject, data: RObject) -> RObject {
-    let state: &State = state.as_external_ptr().stop().as_ref();
-    let data = data.as_external_ptr().stop().as_ref();
+    let state: &State = state.as_external_ptr().stop().decode_as_ref();
+    let data = data.as_external_ptr().stop().decode_as_ref();
     state.log_likelihood(data)
 }
 
