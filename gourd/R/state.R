@@ -119,7 +119,7 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
   hyperparameters <- .Call(.hyperparameters_r2rust, hyperparameters)
   check_list(mcmcTuning, "bbbbid")
   monitor <- .Call(.monitor_new)
-  partitionDistribution <- mkDistrPtr(partitionDistribution)  # DBD: Memory leak!!!!!
+  partitionDistribution <- pumpkin::mkDistrPtr(partitionDistribution)  # DBD: Memory leak!!!!!
   rngs <- .Call(.rngs_new)
   # Run MCMC
   if ( progress ) cat("Burning in...")
