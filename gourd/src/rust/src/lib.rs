@@ -49,19 +49,23 @@ fn rngs_new() -> RObject {
     rng.fill(&mut seed);
     let rng2 = Pcg64Mcg::from_seed(seed);
     let result = R::new_list(2, pc);
-    result.set(0, &R::encode(rng, &"rng".to_r(pc))).stop();
-    result.set(1, &R::encode(rng2, &"rng".to_r(pc))).stop();
+    result
+        .set(0, &R::encode(rng, &"rng".to_r(pc), true, pc))
+        .stop();
+    result
+        .set(1, &R::encode(rng2, &"rng".to_r(pc), true, pc))
+        .stop();
     result
 }
 
 #[roxido]
 fn state_r2rust(state: RObject) -> RObject {
     let state = State::from_r(state, pc);
-    R::encode(state, &"state".to_r(pc))
+    R::encode(state, &"state".to_r(pc), true, pc)
 }
 
 #[roxido]
-fn state_rust2r_as_reference(state: RObject) -> RObject {
+fn state_rust2r(state: RObject) -> RObject {
     state
         .as_external_ptr()
         .stop()
@@ -71,7 +75,7 @@ fn state_rust2r_as_reference(state: RObject) -> RObject {
 
 #[roxido]
 fn monitor_new() -> RObject {
-    R::encode(Monitor::<u32>::new(), &"monitor".to_r(pc))
+    R::encode(Monitor::<u32>::new(), &"monitor".to_r(pc), true, pc)
 }
 
 #[roxido]
@@ -97,6 +101,8 @@ fn hyperparameters_r2rust(hyperparameters: RObject) -> RObject {
     R::encode(
         Hyperparameters::from_r(hyperparameters, pc),
         &"hyperparameters".to_r(pc),
+        true,
+        pc,
     )
 }
 
@@ -109,35 +115,7 @@ fn data_r2rust(data: RObject, missing_items: RObject) -> RObject {
         .map(|x| usize::try_from(*x - 1).unwrap())
         .collect();
     data.declare_missing(missing_items);
-    R::encode(data, &"data".to_r(pc))
-}
-
-#[roxido]
-fn rust_free(x: RObject) -> RObject {
-    let x = x.as_external_ptr().stop();
-    match x.tag().as_str() {
-        Ok("data") => {
-            let _ = x.decode_as_val::<Data>();
-        }
-        Ok("state") => {
-            let _ = x.decode_as_val::<State>();
-        }
-        Ok("hyperparameters") => {
-            let _ = x.decode_as_val::<Hyperparameters>();
-        }
-        Ok("monitor") => {
-            let _ = x.decode_as_val::<Monitor<u32>>();
-        }
-        Ok("rng") => {
-            let _ = x.decode_as_val::<Pcg64Mcg>();
-        }
-        Ok(str) => {
-            stop!("Unrecognized type ID: {}", str)
-        }
-        Err(_) => {
-            stop!("Error extracting string")
-        }
-    };
+    R::encode(data, &"data".to_r(pc), true, pc)
 }
 
 fn permutation_to_r(permutation: &Permutation, rval: &RObject) {
@@ -219,7 +197,7 @@ fn all(all: RObject) -> RObject {
         units: vec,
         n_items: n_items.unwrap(),
     };
-    R::encode(all, &"all".to_r(pc))
+    R::encode(all, &"all".to_r(pc), true, pc)
 }
 
 struct GlobalMcmcTuning {
@@ -379,7 +357,7 @@ fn fit_temporal_model(
     global_hyperparameters: RObject,
     global_mcmc_tuning: RObject,
 ) -> RObject {
-    let mut all: All = all_ptr.as_external_ptr().stop().decode_as_val();
+    let all: &mut All = all_ptr.as_external_ptr().stop().decode_as_mut();
     let unit_mcmc_tuning = McmcTuning::from_r(unit_mcmc_tuning, pc);
     let global_hyperparameters = GlobalHyperparametersTemporal::from_r(global_hyperparameters, pc);
     let global_mcmc_tuning = GlobalMcmcTuning::from_r(global_mcmc_tuning, pc);
@@ -727,7 +705,7 @@ fn fit_hierarchical_model(
     global_hyperparameters: RObject,
     global_mcmc_tuning: RObject,
 ) -> RObject {
-    let mut all: All = all_ptr.as_external_ptr().stop().decode_as_val();
+    let all: &mut All = all_ptr.as_external_ptr().stop().decode_as_mut();
     let unit_mcmc_tuning = McmcTuning::from_r(unit_mcmc_tuning, pc);
     let global_hyperparameters =
         GlobalHyperparametersHierarchical::from_r(global_hyperparameters, pc);
@@ -954,7 +932,7 @@ fn fit_all(
     n_updates: RObject,
     do_baseline_partition: RObject,
 ) -> RObject {
-    let mut all: All = all_ptr.as_external_ptr().stop().decode_as_val();
+    let all: &mut All = all_ptr.as_external_ptr().stop().decode_as_mut();
     let n_items = all.n_items;
     let fixed = McmcTuning::new(false, false, false, false, Some(2), Some(1.0)).unwrap();
     let shrinkage = Shrinkage::constant(shrinkage.as_f64().stop(), n_items).unwrap();
@@ -1063,14 +1041,13 @@ fn fit(
 ) -> RObject {
     let n_updates: u32 = n_updates.as_i32().stop().try_into().unwrap();
     let data: &mut Data = data.as_external_ptr().stop().decode_as_mut();
-    let state = state.as_external_ptr().stop();
-    let state_tag = state.tag();
-    let mut state: State = state.as_external_ptr().stop().decode_as_val();
+    let state: &mut State = state.as_external_ptr().stop().decode_as_mut();
     let hyperparameters: &Hyperparameters =
         hyperparameters.as_external_ptr().stop().decode_as_ref();
-    let monitor = monitor.as_external_ptr().stop();
-    let monitor_tag = monitor.tag();
-    let mut monitor = monitor.decode_as_val::<Monitor<u32>>();
+    let monitor = monitor
+        .as_external_ptr()
+        .stop()
+        .decode_as_mut::<Monitor<u32>>();
     let mcmc_tuning = McmcTuning::from_r(mcmc_tuning, pc);
     if data.n_global_covariates() != state.n_global_covariates()
         || hyperparameters.n_global_covariates() != state.n_global_covariates()
@@ -1175,11 +1152,11 @@ fn fit(
         }
         _ => stop!("Unsupported distribution: {}", prior_name),
     }
-    state = state.canonicalize();
-    let result = R::new_list(2, pc);
-    let _ = result.set(0, &R::encode(state, &state_tag));
-    let _ = result.set(1, &R::encode(monitor, &monitor_tag));
-    result
+    state.canonicalize();
+    //let result = R::new_list(2, pc);
+    //let _ = result.set(0, &R::encode(state, &state_tag));
+    //let _ = result.set(1, &R::encode(monitor, &monitor_tag));
+    //result
 }
 
 #[roxido]

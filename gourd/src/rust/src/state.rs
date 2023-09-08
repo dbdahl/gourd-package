@@ -135,7 +135,7 @@ impl State {
         self.clustered_coefficients[0].len()
     }
 
-    pub fn canonicalize(mut self) -> Self {
+    pub fn canonicalize(&mut self) {
         let (clustering, map) = self.clustering.relabel(0, None, true);
         let map = map.unwrap();
         let mut new_clustered_coefficients = Vec::with_capacity(clustering.n_clusters());
@@ -144,7 +144,6 @@ impl State {
         }
         self.clustering = clustering;
         self.clustered_coefficients = new_clustered_coefficients;
-        self
     }
 
     const NEGATIVE_LN_SQRT_2PI: f64 = -0.91893853320467274178032973640561763986139747363778;

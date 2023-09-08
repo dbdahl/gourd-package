@@ -119,15 +119,13 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
   hyperparameters <- .Call(.hyperparameters_r2rust, hyperparameters)
   check_list(mcmcTuning, "bbbbid")
   monitor <- .Call(.monitor_new)
-  partitionDistribution <- pumpkin::mkDistrPtr(partitionDistribution)  # DBD: Memory leak!!!!!
+  partitionDistribution <- pumpkin::mkDistrPtr(partitionDistribution)
   rngs <- .Call(.rngs_new)
   # Run MCMC
   if ( progress ) cat("Burning in...")
   permutation_bucket <- integer(n_items)
   shrinkage_bucket <- numeric(n_items)
-  tmp <- .Call(.fit, burnin, data, state, hyperparameters, monitor, partitionDistribution, mcmcTuning, permutation_bucket, shrinkage_bucket, rngs)
-  state <- tmp[[1]]
-  monitor <- tmp[[2]]
+  .Call(.fit, burnin, data, state, hyperparameters, monitor, partitionDistribution, mcmcTuning, permutation_bucket, shrinkage_bucket, rngs)
   .Call(.monitor_reset, monitor);
   if ( progress ) cat("\r")
   nSamples <- floor((nIterations-burnin)/thin)
@@ -153,9 +151,7 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
   }
   if ( progress ) { pb <- txtProgressBar(0,nSamples,style=3) }
   for ( i in seq_len(nSamples) ) {
-    tmp <- .Call(.fit, thin, data, state, hyperparameters, monitor, partitionDistribution, mcmcTuning, permutation_bucket, shrinkage_bucket, rngs)
-    state <- tmp[[1]]
-    monitor <- tmp[[2]]
+    .Call(.fit, thin, data, state, hyperparameters, monitor, partitionDistribution, mcmcTuning, permutation_bucket, shrinkage_bucket, rngs)
     if ( save$logLikelihoodContributions != "none" ) {
       logLikeContr[i,] <- if ( save$logLikelihoodContributions == "all" ) {
         .Call(.log_likelihood_contributions, state, data)
@@ -180,13 +176,6 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
   }
   if ( progress ) close(pb)
   rates <- c(permutation_acceptance_rate = .Call(.monitor_rate, monitor))
-  .Call(.rust_free, data)
-  if (!is.null(validationData)) .Call(.rust_free, validationData)
-  .Call(.rust_free, state)
-  .Call(.rust_free, hyperparameters)
-  .Call(.rust_free, monitor)
-  .Call(.rust_free, rngs[[1]])
-  .Call(.rust_free, rngs[[2]])
   result <- list()
   if ( save$samples ) {
     result <- c(result, list(samples=samples, rates=rates))
