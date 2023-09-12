@@ -193,19 +193,19 @@ fit_all <- function(all, shrinkage, nIterations, doBaselinePartition) {
 
 #' @export
 fit_hierarchical_model <- function(all, unit_mcmc_tuning, global_hyperparameters, global_mcmc_tuning) {
-  all_ptr <- .Call(.all, all)
   check_list(unit_mcmc_tuning, "bbbbid")
-  check_list(global_hyperparameters, "ddidd")
+  check_list(global_hyperparameters, "dddidd")
   check_list(global_mcmc_tuning, "iiibiidl")
+  all_ptr <- .Call(.all, all)
   .Call(.fit_hierarchical_model, all_ptr, unit_mcmc_tuning, global_hyperparameters, global_mcmc_tuning)
 }
 
 #' @export
 fit_temporal_model <- function(all, unit_mcmc_tuning, global_hyperparameters, global_mcmc_tuning) {
-  all_ptr <- .Call(.all, all)
   check_list(unit_mcmc_tuning, "bbbbid")
   check_list(global_hyperparameters, "didd")
   check_list(global_mcmc_tuning, "iiibiidl")
+  all_ptr <- .Call(.all, all)
   .Call(.fit_temporal_model, all_ptr, unit_mcmc_tuning, global_hyperparameters, global_mcmc_tuning)
 }
 

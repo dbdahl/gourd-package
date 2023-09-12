@@ -599,6 +599,7 @@ fn fit_temporal_model(
 struct GlobalHyperparametersHierarchical {
     baseline_mass: f64,
     anchor_mass: f64,
+    shrinkage_value: f64,
     shrinkage_reference: usize,
     shrinkage_shape: f64,
     shrinkage_rate: f64,
@@ -610,6 +611,7 @@ impl GlobalHyperparametersHierarchical {
         Self {
             baseline_mass: x.get(0).stop().as_f64().stop(),
             anchor_mass: x.get(1).stop().as_f64().stop(),
+            shrinkage_value: x.get(2).stop().as_f64().stop(),
             shrinkage_reference: x.get(2).stop().as_usize().stop() - 1,
             shrinkage_shape: x.get(3).stop().as_f64().stop(),
             shrinkage_rate: x.get(4).stop().as_f64().stop(),
@@ -731,7 +733,8 @@ fn fit_hierarchical_model(
         .state
         .clustering()
         .clone();
-    let shrinkage = Shrinkage::constant(1.0, all.n_items).unwrap();
+    let shrinkage =
+        Shrinkage::constant(global_hyperparameters.shrinkage_value, all.n_items).unwrap();
     let permutation = Permutation::random(all.n_items, &mut rng);
     let baseline_mass = Mass::new(global_hyperparameters.baseline_mass);
     let anchor_mass = Mass::new(global_hyperparameters.anchor_mass);
