@@ -19,9 +19,9 @@ checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 
 [[package]]
 name = "bytemuck"
-version = "1.13.1"
+version = "1.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "17febce684fd15d89027105661fec94afb475cb995fbc59d2865198446ba2eea"
+checksum = "374d28ec25809ee0e23827c2ab573d729e293f281dfe393500e7ad618baa61c6"
 
 [[package]]
 name = "cfg-if"
@@ -118,6 +118,7 @@ dependencies = [
 [[package]]
 name = "dahl-randompartition"
 version = "0.1.0"
+source = "git+https://github.com/dbdahl/rust-dahl-randompartition.git?rev=996f25c77b8#996f25c77b8c5240e0bc2c3855ae4a5abc1b927d"
 dependencies = [
  "dahl-bellnumber",
  "dahl-salso",
@@ -155,6 +156,12 @@ checksum = "e51093e27b0797c359783294ca4f0a911c270184cb10f85783b118614a1501be"
 dependencies = [
  "instant",
 ]
+
+[[package]]
+name = "fastrand"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6999dc1837253364c2ebb0704ba97994bd874e8f195d665c50b7548f6ea92764"
 
 [[package]]
 name = "getrandom"
@@ -469,7 +476,7 @@ name = "roxido_macro"
 version = "0.6.0"
 dependencies = [
  "quote",
- "syn 2.0.31",
+ "syn 2.0.32",
 ]
 
 [[package]]
@@ -477,7 +484,7 @@ name = "rust"
 version = "0.1.0"
 dependencies = [
  "dahl-randompartition",
- "fastrand",
+ "fastrand 2.0.0",
  "nalgebra 0.32.3",
  "num-traits",
  "rand",
@@ -536,7 +543,7 @@ name = "slice_sampler"
 version = "0.1.0"
 source = "git+https://github.com/dbdahl/rust_slice_sampler.git?rev=3992376#3992376d4952f26ef14b719e4984277d96f9787e"
 dependencies = [
- "fastrand",
+ "fastrand 1.9.0",
 ]
 
 [[package]]
@@ -565,9 +572,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.31"
+version = "2.0.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "718fa2415bcb8d8bd775917a1bf12a7931b6dfa890753378538118181e0cb398"
+checksum = "239814284fd6f1a4ffe4ca893952cdd93c224b6a1571c9a9eadd670295c0c9e2"
 dependencies = [
  "proc-macro2",
  "quote",
