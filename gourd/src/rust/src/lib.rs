@@ -368,7 +368,7 @@ fn fit_temporal_model(
     rng.fill(&mut seed);
     let mut rng2 = Pcg64Mcg::from_seed(seed);
     let fastrand = fastrand::Rng::with_seed(rng.gen());
-    let fastrand_option = Some(&fastrand);
+    let fastrand_option = &mut Some(fastrand);
     let anchor = all.units[rng.gen_range(0..all.units.len())]
         .state
         .clustering()
@@ -728,7 +728,7 @@ fn fit_hierarchical_model(
     .take(all.units.len())
     .collect();
     let fastrand = fastrand::Rng::with_seed(rng.gen());
-    let fastrand_option = Some(&fastrand);
+    let fastrand_option = &mut Some(fastrand);
     let anchor = all.units[rng.gen_range(0..all.units.len())]
         .state
         .clustering()

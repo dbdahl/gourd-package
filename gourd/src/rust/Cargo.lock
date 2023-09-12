@@ -150,15 +150,6 @@ checksum = "a26ae43d7bcc3b814de94796a5e736d4029efb0ee900c12e2d54c993ad1a1e07"
 
 [[package]]
 name = "fastrand"
-version = "1.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e51093e27b0797c359783294ca4f0a911c270184cb10f85783b118614a1501be"
-dependencies = [
- "instant",
-]
-
-[[package]]
-name = "fastrand"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6999dc1837253364c2ebb0704ba97994bd874e8f195d665c50b7548f6ea92764"
@@ -179,15 +170,6 @@ name = "hermit-abi"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "443144c8cdadd93ebf52ddb4056d257f5b52c04d3c804e657d19eb73fc33668b"
-
-[[package]]
-name = "instant"
-version = "0.1.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a5bbe824c507c5da5956355e86a746d82e0e1464f65d862cc5e71da70e94b2c"
-dependencies = [
- "cfg-if",
-]
 
 [[package]]
 name = "lazy_static"
@@ -484,7 +466,7 @@ name = "rust"
 version = "0.1.0"
 dependencies = [
  "dahl-randompartition",
- "fastrand 2.0.0",
+ "fastrand",
  "nalgebra 0.32.3",
  "num-traits",
  "rand",
@@ -541,9 +523,9 @@ dependencies = [
 [[package]]
 name = "slice_sampler"
 version = "0.1.0"
-source = "git+https://github.com/dbdahl/rust_slice_sampler.git?rev=3992376#3992376d4952f26ef14b719e4984277d96f9787e"
+source = "git+https://github.com/dbdahl/rust_slice_sampler.git?rev=5385e75#5385e758f0fd4404a43dea827c5fd0ee802114f6"
 dependencies = [
- "fastrand 1.9.0",
+ "fastrand",
 ]
 
 [[package]]
