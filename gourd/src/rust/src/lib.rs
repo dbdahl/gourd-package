@@ -222,19 +222,19 @@ impl GlobalMcmcTuning {
         let update_anchor = x.get(3).unwrap().as_bool().stop();
         let n_permutation_updates_per_scan = x.get(4).unwrap().as_usize().stop();
         let x1 = x.get(5).unwrap();
-        let n_items_per_permutation_update = if x1.is_null() {
+        let n_items_per_permutation_update = if x1.is_null() || x1.is_na() || x1.is_nan() {
             None
         } else {
             Some(x1.as_usize().stop())
         };
         let x2 = x.get(6).unwrap();
-        let shrinkage_slice_step_size = if x2.is_null() {
+        let shrinkage_slice_step_size = if x2.is_null() || x2.is_na() || x2.is_nan() {
             None
         } else {
             Some(x2.as_f64().stop())
         };
         let x3 = x.get(7).stop().as_list().stop();
-        let validation_data = if x3.is_null() {
+        let validation_data = if x3.is_null() || x3.is_na() || x3.is_nan() {
             None
         } else {
             let n_units = x3.len();
@@ -612,9 +612,9 @@ impl GlobalHyperparametersHierarchical {
             baseline_mass: x.get(0).stop().as_f64().stop(),
             anchor_mass: x.get(1).stop().as_f64().stop(),
             shrinkage_value: x.get(2).stop().as_f64().stop(),
-            shrinkage_reference: x.get(2).stop().as_usize().stop() - 1,
-            shrinkage_shape: x.get(3).stop().as_f64().stop(),
-            shrinkage_rate: x.get(4).stop().as_f64().stop(),
+            shrinkage_reference: x.get(3).stop().as_usize().stop() - 1,
+            shrinkage_shape: x.get(4).stop().as_f64().stop(),
+            shrinkage_rate: x.get(5).stop().as_f64().stop(),
         }
     }
 }
