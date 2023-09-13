@@ -392,8 +392,8 @@ fn fit_temporal_model(
         permutation: TicToc::new(),
         shrinkage: TicToc::new(),
     };
-    let mut permutation_n_acceptances = 0;
-    let mut shrinkage_slice_n_evaluations = 0;
+    let mut permutation_n_acceptances: u64 = 0;
+    let mut shrinkage_slice_n_evaluations: u64 = 0;
     for loop_counter in 0..global_mcmc_tuning.n_loops {
         for _ in 0..global_mcmc_tuning.n_scans_per_loop {
             // Update each unit
@@ -529,7 +529,7 @@ fn fit_temporal_model(
                     .shrinkage
                     .rescale_by_reference(global_hyperparameters.shrinkage_reference, s_new);
                 if loop_counter >= global_mcmc_tuning.n_loops_burnin {
-                    shrinkage_slice_n_evaluations += n_evaluations;
+                    shrinkage_slice_n_evaluations += u64::from(n_evaluations);
                 }
             }
             timers.shrinkage.toc();
