@@ -164,7 +164,7 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
       }
     }
     if ( save$samples ) {
-      tmp <- .Call(.state_rust2r_as_reference, state)
+      tmp <- .Call(.state_rust2r, state)
       samples$precision_response[i] <- tmp[[1]]
       samples$global_coefficients[i,] <- tmp[[2]]
       samples$clustered_coefficients[[i]] <- tmp[[4]]
