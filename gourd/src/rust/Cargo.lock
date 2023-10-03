@@ -118,7 +118,7 @@ dependencies = [
 [[package]]
 name = "dahl-randompartition"
 version = "0.1.0"
-source = "git+https://github.com/dbdahl/rust-dahl-randompartition.git?rev=261a1a0#261a1a0d5c565f488dcd89a4d54c8741c7a5e7d1"
+source = "git+https://github.com/dbdahl/rust-dahl-randompartition.git?rev=a5818c3#a5818c353c47799bee8908093933f34af2ca9e1b"
 dependencies = [
  "dahl-bellnumber",
  "dahl-salso",
@@ -586,9 +586,9 @@ checksum = "9c8d87e72b64a3b4db28d11ce29237c246188f4f51057d65a7eab63b7987e423"
 
 [[package]]
 name = "wide"
-version = "0.7.11"
+version = "0.7.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa469ffa65ef7e0ba0f164183697b89b854253fd31aeb92358b7b6155177d62f"
+checksum = "ebecebefc38ff1860b4bc47550bbfa63af5746061cf0d29fcd7fa63171602598"
 dependencies = [
  "bytemuck",
  "safe_arch",
