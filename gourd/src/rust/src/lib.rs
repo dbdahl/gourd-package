@@ -15,6 +15,7 @@ use crate::monitor::Monitor;
 use crate::mvnorm::sample_multivariate_normal_repeatedly;
 use crate::state::{McmcTuning, State};
 use dahl_randompartition::clust::Clustering;
+use dahl_randompartition::cost::Cost;
 use dahl_randompartition::cpp::CppParameters;
 use dahl_randompartition::crp::CrpParameters;
 use dahl_randompartition::distr::{ProbabilityMassFunction, ProbabilityMassFunctionPartial};
@@ -259,6 +260,7 @@ impl GlobalMcmcTuning {
 }
 
 struct GlobalHyperparametersTemporal {
+    cost: f64,
     baseline_mass: f64,
     shrinkage_reference: usize,
     shrinkage_shape: f64,
@@ -269,10 +271,11 @@ impl GlobalHyperparametersTemporal {
     fn from_r(x: RObject, _pc: &mut Pc) -> Self {
         let x = x.as_list().stop();
         Self {
-            baseline_mass: x.get(0).stop().as_f64().stop(),
-            shrinkage_reference: x.get(1).stop().as_usize().stop() - 1,
-            shrinkage_shape: x.get(2).stop().as_f64().stop(),
-            shrinkage_rate: x.get(3).stop().as_f64().stop(),
+            cost: x.get(0).stop().as_f64().stop(),
+            baseline_mass: x.get(1).stop().as_f64().stop(),
+            shrinkage_reference: x.get(2).stop().as_usize().stop() - 1,
+            shrinkage_shape: x.get(3).stop().as_f64().stop(),
+            shrinkage_rate: x.get(4).stop().as_f64().stop(),
         }
     }
 }
@@ -376,10 +379,11 @@ fn fit_temporal_model(
     let mut shrinkage_value = 1.0;
     let shrinkage = Shrinkage::constant(shrinkage_value, all.n_items).unwrap();
     let permutation = Permutation::random(all.n_items, &mut rng);
+    let cost = Cost::new(global_hyperparameters.cost).unwrap();
     let baseline_mass = Mass::new(global_hyperparameters.baseline_mass);
     let baseline_distribution = CrpParameters::new_with_mass(all.n_items, baseline_mass);
     let mut partition_distribution =
-        SpParameters::new(anchor, shrinkage, permutation, baseline_distribution).unwrap();
+        SpParameters::new(anchor, shrinkage, permutation, cost, baseline_distribution).unwrap();
     struct Timers {
         units: TicToc,
         anchor: TicToc,
@@ -597,6 +601,7 @@ fn fit_temporal_model(
 }
 
 struct GlobalHyperparametersHierarchical {
+    cost: f64,
     baseline_mass: f64,
     anchor_mass: f64,
     shrinkage_value: f64,
@@ -609,12 +614,13 @@ impl GlobalHyperparametersHierarchical {
     fn from_r(x: RObject, _pc: &mut Pc) -> Self {
         let x = x.as_list().stop();
         Self {
-            baseline_mass: x.get(0).stop().as_f64().stop(),
-            anchor_mass: x.get(1).stop().as_f64().stop(),
-            shrinkage_value: x.get(2).stop().as_f64().stop(),
-            shrinkage_reference: x.get(3).stop().as_usize().stop() - 1,
-            shrinkage_shape: x.get(4).stop().as_f64().stop(),
-            shrinkage_rate: x.get(5).stop().as_f64().stop(),
+            cost: x.get(0).stop().as_f64().stop(),
+            baseline_mass: x.get(1).stop().as_f64().stop(),
+            anchor_mass: x.get(2).stop().as_f64().stop(),
+            shrinkage_value: x.get(3).stop().as_f64().stop(),
+            shrinkage_reference: x.get(4).stop().as_usize().stop() - 1,
+            shrinkage_shape: x.get(5).stop().as_f64().stop(),
+            shrinkage_rate: x.get(6).stop().as_f64().stop(),
         }
     }
 }
@@ -736,13 +742,14 @@ fn fit_hierarchical_model(
     let shrinkage =
         Shrinkage::constant(global_hyperparameters.shrinkage_value, all.n_items).unwrap();
     let permutation = Permutation::random(all.n_items, &mut rng);
+    let cost = Cost::new(global_hyperparameters.cost).unwrap();
     let baseline_mass = Mass::new(global_hyperparameters.baseline_mass);
     let anchor_mass = Mass::new(global_hyperparameters.anchor_mass);
     let baseline_distribution = CrpParameters::new_with_mass(all.n_items, baseline_mass);
     let anchor_distribution = CrpParameters::new_with_mass(all.n_items, anchor_mass);
     let anchor_update_permutation = Permutation::natural_and_fixed(all.n_items);
     let mut partition_distribution =
-        SpParameters::new(anchor, shrinkage, permutation, baseline_distribution).unwrap();
+        SpParameters::new(anchor, shrinkage, permutation, cost, baseline_distribution).unwrap();
     struct Timers {
         units: TicToc,
         anchor: TicToc,
@@ -971,6 +978,7 @@ fn fit_all(
             anchor_initial.clone(),
             shrinkage.clone(),
             Permutation::natural_and_fixed(n_items),
+            Cost::new(1.0).unwrap(),
             CrpParameters::new_with_mass(n_items, Mass::new(1.0)),
         )
         .unwrap();
