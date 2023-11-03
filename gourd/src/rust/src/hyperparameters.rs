@@ -1,3 +1,4 @@
+use crate::validate_list;
 use dahl_randompartition::prelude::*;
 use nalgebra::{DMatrix, DVector};
 use roxido::*;
@@ -13,9 +14,78 @@ pub struct Hyperparameters {
     clustered_coefficients_precision: DMatrix<f64>,
     clustered_coefficients_precision_times_mean: DVector<f64>,
     clustered_coefficients_precision_l_inv_transpose: DMatrix<f64>,
-    pub shrinkage_reference: Option<usize>,
-    pub shrinkage_shape: Option<Shape>,
-    pub shrinkage_rate: Option<Rate>,
+    pub shrinkage_option: Option<ShrinkageHyperparameters>,
+    pub cost_option: Option<CostHyperparameters>,
+}
+
+#[derive(Debug)]
+pub struct ShrinkageHyperparameters {
+    pub reference: Option<usize>,
+    pub shape: Shape,
+    pub rate: Rate,
+}
+
+impl ShrinkageHyperparameters {
+    pub fn from_r(shrinkage: RObject) -> ShrinkageHyperparameters {
+        let list = validate_list(shrinkage, &["reference", "shape", "rate"], "shrinkage");
+        let reference_rval = list.get(0).stop();
+        let reference = if reference_rval.is_null() {
+            None
+        } else {
+            Some(
+                reference_rval
+                    .as_usize()
+                    .stop_str("Shrinkage reference should be an integer")
+                    - 1,
+            )
+        };
+        let shape = Shape::new(
+            list.get(1)
+                .unwrap()
+                .as_f64()
+                .stop_str("Shrinkage shape should be a numeric value"),
+        )
+        .unwrap_or_else(|| stop!("Shape of shrinkage is not valid"));
+        let rate = Rate::new(
+            list.get(2)
+                .unwrap()
+                .as_f64()
+                .stop_str("Shrinkage rate should be a numeric value"),
+        )
+        .unwrap_or_else(|| stop!("Rate of shrinkage is not valid"));
+        ShrinkageHyperparameters {
+            reference,
+            shape,
+            rate,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct CostHyperparameters {
+    pub shape1: Shape,
+    pub shape2: Shape,
+}
+
+impl CostHyperparameters {
+    pub fn from_r(cost: RObject) -> CostHyperparameters {
+        let list = validate_list(cost, &["shape1", "shape2"], "cost");
+        let shape1 = Shape::new(
+            list.get(0)
+                .unwrap()
+                .as_f64()
+                .stop_str("Shrinkage shape should be a numeric value"),
+        )
+        .unwrap_or_else(|| stop!("Shape of shrinkage is not valid"));
+        let shape2 = Shape::new(
+            list.get(1)
+                .unwrap()
+                .as_f64()
+                .stop_str("Shrinkage shape should be a numeric value"),
+        )
+        .unwrap_or_else(|| stop!("Shape of shrinkage is not valid"));
+        CostHyperparameters { shape1, shape2 }
+    }
 }
 
 impl Hyperparameters {
@@ -27,9 +97,8 @@ impl Hyperparameters {
         global_coefficients_precision: DMatrix<f64>,
         clustered_coefficients_mean: DVector<f64>,
         clustered_coefficients_precision: DMatrix<f64>,
-        shrinkage_reference: Option<usize>,
-        shrinkage_shape: Option<Shape>,
-        shrinkage_rate: Option<Rate>,
+        shrinkage_option: Option<ShrinkageHyperparameters>,
+        cost_option: Option<CostHyperparameters>,
     ) -> Option<Self> {
         if global_coefficients_mean.len() != global_coefficients_mean.nrows() {
             return None;
@@ -64,77 +133,105 @@ impl Hyperparameters {
             clustered_coefficients_precision,
             clustered_coefficients_precision_times_mean,
             clustered_coefficients_precision_l_inv_transpose,
-            shrinkage_reference,
-            shrinkage_shape,
-            shrinkage_rate,
+            shrinkage_option,
+            cost_option,
         })
     }
 
     pub fn from_r(hyperparameters: RObject, pc: &mut Pc) -> Self {
-        let hyperparameters = hyperparameters.as_list().stop();
-        let precision_response_shape = Shape::new(hyperparameters.get(0).unwrap().as_f64().stop())
-            .unwrap_or_else(|| stop!("Invalid shape parameter"));
-        let precision_response_rate = Rate::new(hyperparameters.get(1).unwrap().as_f64().stop())
-            .unwrap_or_else(|| stop!("Invalid rate parameter"));
-        let global_coefficients_mean = hyperparameters
-            .get(2)
-            .unwrap()
-            .as_vector()
-            .stop()
-            .to_mode_double(pc);
-        let global_coefficients_mean_slice = global_coefficients_mean.slice();
-        let global_coefficients_mean = DVector::from_column_slice(global_coefficients_mean_slice);
+        let hyperparameters = validate_list(
+            hyperparameters,
+            &[
+                "precision_response_shape",
+                "precision_response_rate",
+                "global_coefficients_mean",
+                "global_coefficients_precision",
+                "clustered_coefficients_mean",
+                "clustered_coefficients_precision",
+                "shrinkage",
+                "cost",
+            ],
+            "hyperparameters",
+        );
+        let precision_response_shape = Shape::new(
+            hyperparameters
+                .get(0)
+                .unwrap()
+                .as_f64()
+                .stop_str("Invalid rate parameter for precision response"),
+        )
+        .unwrap_or_else(|| stop!("Invalid shape parameter for precision response"));
+        let precision_response_rate = Rate::new(
+            hyperparameters
+                .get(1)
+                .unwrap()
+                .as_f64()
+                .stop_str("Invalid rate parameter for precision response"),
+        )
+        .unwrap_or_else(|| stop!("Invalid rate parameter for precision response"));
+        let global_coefficients_mean = DVector::from_column_slice(
+            hyperparameters
+                .get(2)
+                .unwrap()
+                .as_vector()
+                .stop_str("Invalid global coefficients mean")
+                .to_mode_double(pc)
+                .slice(),
+        );
         let global_coefficients_precision_rval = hyperparameters
             .get(3)
             .stop()
             .as_matrix()
-            .stop()
+            .stop_str("Precision matrix of the global coefficients should be a matrix")
             .to_mode_double(pc);
-
-        let global_coefficients_precision_slice = global_coefficients_precision_rval.slice();
-        let global_coefficients_precision = DMatrix::from_column_slice(
-            global_coefficients_precision_rval.nrow(),
-            global_coefficients_precision_rval.ncol(),
-            global_coefficients_precision_slice,
+        let nrows = global_coefficients_precision_rval.nrow();
+        let ncols = global_coefficients_precision_rval.ncol();
+        if nrows != ncols {
+            stop!("Precision matrix of the global coefficients should be a square matrix");
+        }
+        if global_coefficients_mean.len() != nrows {
+            stop!("The dimensions of the precision matrix of the global coefficients does not match it's mean");
+        }
+        let global_coefficients_precision =
+            DMatrix::from_column_slice(nrows, ncols, global_coefficients_precision_rval.slice());
+        let clustered_coefficients_mean = DVector::from_column_slice(
+            hyperparameters
+                .get(4)
+                .stop()
+                .as_vector()
+                .stop_str("Invalid clustered coefficients mean")
+                .to_mode_double(pc)
+                .slice(),
         );
-        let clustered_coefficients_mean_slice = hyperparameters
-            .get(4)
-            .stop()
-            .as_vector()
-            .stop()
-            .to_mode_double(pc)
-            .slice();
-        let clustered_coefficients_mean =
-            DVector::from_column_slice(clustered_coefficients_mean_slice);
         let clustered_coefficients_precision_rval = hyperparameters
             .get(5)
             .stop()
             .as_matrix()
-            .stop()
+            .stop_str("Precision matrix of the clustered coefficients should be a matrix")
             .to_mode_double(pc);
+        let nrows = clustered_coefficients_precision_rval.nrow();
+        let ncols = clustered_coefficients_precision_rval.ncol();
+        if nrows != ncols {
+            stop!("Precision matrix of the clustered coefficients should be a square matrix");
+        }
+        if clustered_coefficients_mean.len() != nrows {
+            stop!("The dimensions of the precision matrix of the clustered coefficients does not match it's mean");
+        }
         let clustered_coefficients_precision_slice = clustered_coefficients_precision_rval.slice();
-        let clustered_coefficients_precision = DMatrix::from_column_slice(
-            clustered_coefficients_precision_rval.nrow(),
-            clustered_coefficients_precision_rval.ncol(),
-            clustered_coefficients_precision_slice,
-        );
-        let shrinkage_reference = hyperparameters.get(6).stop().as_usize().stop() - 1;
-        let shrinkage_shape = hyperparameters.get(7).unwrap().as_f64().stop();
-        let shrinkage_rate = hyperparameters.get(8).unwrap().as_f64().stop();
-        fn wrap_shape(x: f64) -> Option<Shape> {
-            if x.is_nan() || x.is_infinite() || x <= 0.0 {
-                None
-            } else {
-                Some(Shape::new(x).unwrap())
-            }
-        }
-        fn wrap_rate(x: f64) -> Option<Rate> {
-            if x.is_nan() || x.is_infinite() || x <= 0.0 {
-                None
-            } else {
-                Some(Rate::new(x).unwrap())
-            }
-        }
+        let clustered_coefficients_precision =
+            DMatrix::from_column_slice(nrows, ncols, clustered_coefficients_precision_slice);
+        let shrinkage_rval = hyperparameters.get(6).stop();
+        let shrinkage_option = if shrinkage_rval.is_null() {
+            None
+        } else {
+            Some(ShrinkageHyperparameters::from_r(shrinkage_rval))
+        };
+        let cost_rval = hyperparameters.get(7).stop();
+        let cost_option = if cost_rval.is_null() {
+            None
+        } else {
+            Some(CostHyperparameters::from_r(cost_rval))
+        };
         Self::new(
             precision_response_shape,
             precision_response_rate,
@@ -142,9 +239,8 @@ impl Hyperparameters {
             global_coefficients_precision,
             clustered_coefficients_mean,
             clustered_coefficients_precision,
-            Some(shrinkage_reference),
-            wrap_shape(shrinkage_shape),
-            wrap_rate(shrinkage_rate),
+            shrinkage_option,
+            cost_option,
         )
         .unwrap()
     }

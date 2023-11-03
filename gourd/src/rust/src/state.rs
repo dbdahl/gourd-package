@@ -1,6 +1,7 @@
 use crate::data::Data;
 use crate::hyperparameters::Hyperparameters;
 use crate::mvnorm::{sample_multivariate_normal_v2, sample_multivariate_normal_v3};
+use crate::validate_list;
 use dahl_randompartition::clust::Clustering;
 use dahl_randompartition::crp::CrpParameters;
 use dahl_randompartition::distr::FullConditional;
@@ -518,6 +519,7 @@ pub struct McmcTuning {
     pub update_clustered_coefficients: bool,
     pub n_items_per_permutation_update: Option<u32>,
     pub shrinkage_slice_step_size: Option<f64>,
+    pub cost_slice_step_size: Option<f64>,
 }
 
 impl McmcTuning {
@@ -528,6 +530,7 @@ impl McmcTuning {
         update_clustered_coefficients: bool,
         n_items_per_permutation_update: Option<u32>,
         shrinkage_slice_step_size: Option<f64>,
+        cost_slice_step_size: Option<f64>,
     ) -> Result<Self, &'static str> {
         if let Some(s) = shrinkage_slice_step_size {
             if s.is_nan() || s.is_infinite() || s < 0.0 {
@@ -541,17 +544,65 @@ impl McmcTuning {
             update_clustered_coefficients,
             n_items_per_permutation_update,
             shrinkage_slice_step_size,
+            cost_slice_step_size,
         })
     }
     pub fn from_r(x: RObject, _pc: &mut Pc) -> Self {
-        let x = x.as_list().stop();
+        let list = validate_list(
+            x,
+            &[
+                "update_precision_response",
+                "update_global_coefficients",
+                "update_clustering",
+                "update_clustered_coefficients",
+                "n_items_per_permutation_update",
+                "shrinkage_slice_step_size",
+                "cost_slice_step_size",
+            ],
+            "mcmc_tuning",
+        );
+        let y = list.get(5).stop();
+        let shrinkage_slice_step_size = if y.is_null() || y.is_na() || y.is_nan() {
+            None
+        } else {
+            Some(
+                y.as_f64()
+                    .stop_str("Step size for shrinkage should be numeric"),
+            )
+        };
+        let y = list.get(6).stop();
+        let cost_slice_step_size = if y.is_null() || y.is_na() || y.is_nan() {
+            None
+        } else {
+            Some(y.as_f64().stop_str("Step size for cost should be numeric"))
+        };
         Self::new(
-            x.get(0).stop().as_bool().stop(),
-            x.get(1).stop().as_bool().stop(),
-            x.get(2).stop().as_bool().stop(),
-            x.get(3).stop().as_bool().stop(),
-            Some(x.get(4).stop().as_i32().stop().try_into().unwrap()),
-            Some(x.get(5).stop().as_f64().stop()),
+            list.get(0)
+                .stop()
+                .as_bool()
+                .stop_str("Update precision response should be a logical"),
+            list.get(1)
+                .stop()
+                .as_bool()
+                .stop_str("Update global coefficients should be a logical"),
+            list.get(2)
+                .stop()
+                .as_bool()
+                .stop_str("Update clustering should be a logical"),
+            list.get(3)
+                .stop()
+                .as_bool()
+                .stop_str("Update clustered coefficients should be a logical"),
+            Some(
+                list.get(4)
+                    .stop()
+                    .as_i32()
+                    .stop_str("Number of items per permutation update should be an integer")
+                    .try_into()
+                    .unwrap(),
+            ),
+            shrinkage_slice_step_size,
+            cost_slice_step_size,
         )
         .unwrap()
     }
