@@ -520,8 +520,8 @@ dependencies = [
 
 [[package]]
 name = "slice_sampler"
-version = "0.1.0"
-source = "git+https://github.com/dbdahl/rust_slice_sampler.git?rev=5385e75#5385e758f0fd4404a43dea827c5fd0ee802114f6"
+version = "0.1.1"
+source = "git+https://github.com/dbdahl/rust_slice_sampler.git?rev=bacf2b5#bacf2b5dc9bf21a0694c6480658a84705a071b29"
 dependencies = [
  "fastrand",
 ]

@@ -505,12 +505,13 @@ fn fit_temporal_model(
             timers.permutation.toc();
             // Update shrinkage
             timers.shrinkage.tic();
-            if global_mcmc_tuning.shrinkage_slice_step_size.is_some() {
+            if let Some(w) = global_mcmc_tuning.shrinkage_slice_step_size {
                 let shrinkage_prior_distribution = Gamma::new(
                     global_hyperparameters.shrinkage_shape.get(),
                     global_hyperparameters.shrinkage_rate.get(),
                 )
                 .unwrap();
+                let tuning_parameters = stepping_out::TuningParameters::new().width(w);
                 let (_s_new, n_evaluations) =
                     stepping_out::univariate_slice_sampler_stepping_out_and_shrinkage(
                         partition_distribution.shrinkage
@@ -528,8 +529,7 @@ fn fit_temporal_model(
                             }
                         },
                         true,
-                        &stepping_out::TuningParameters::new()
-                            .width(global_mcmc_tuning.shrinkage_slice_step_size.unwrap()),
+                        &tuning_parameters,
                         fastrand_option,
                     );
                 // // Not necessary... see implementation of slice_sampler function.
@@ -847,12 +847,13 @@ fn fit_hierarchical_model(
             timers.permutation.toc();
             // Update shrinkage
             timers.shrinkage.tic();
-            if global_mcmc_tuning.shrinkage_slice_step_size.is_some() {
+            if let Some(w) = global_mcmc_tuning.shrinkage_slice_step_size {
                 let shrinkage_prior_distribution = Gamma::new(
                     global_hyperparameters.shrinkage_shape.get(),
                     global_hyperparameters.shrinkage_rate.get(),
                 )
                 .unwrap();
+                let tuning_parameters = stepping_out::TuningParameters::new().width(w);
                 let (_s_new, n_evaluations) =
                     stepping_out::univariate_slice_sampler_stepping_out_and_shrinkage(
                         partition_distribution.shrinkage
@@ -870,8 +871,7 @@ fn fit_hierarchical_model(
                             }
                         },
                         true,
-                        &stepping_out::TuningParameters::new()
-                            .width(global_mcmc_tuning.shrinkage_slice_step_size.unwrap()),
+                        &tuning_parameters,
                         fastrand_option,
                     );
                 // // Not necessary... see implementation of slice_sampler function.
