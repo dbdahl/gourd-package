@@ -186,11 +186,6 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
   result
 }
 
-fit_all <- function(all, shrinkage, nIterations, doBaselinePartition) {
-  all_ptr <- .Call(.all, all)
-  .Call(.fit_all, all_ptr, shrinkage, nIterations, doBaselinePartition)
-}
-
 #' @export
 fit_hierarchical_model <- function(all, unit_mcmc_tuning, global_hyperparameters, global_mcmc_tuning) {
   check_list(unit_mcmc_tuning, "bbbbid")

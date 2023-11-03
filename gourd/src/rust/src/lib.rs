@@ -15,23 +15,18 @@ use crate::monitor::Monitor;
 use crate::mvnorm::sample_multivariate_normal_repeatedly;
 use crate::state::{McmcTuning, State};
 use dahl_randompartition::clust::Clustering;
-use dahl_randompartition::cost::Cost;
 use dahl_randompartition::cpp::CppParameters;
 use dahl_randompartition::crp::CrpParameters;
 use dahl_randompartition::distr::{ProbabilityMassFunction, ProbabilityMassFunctionPartial};
 use dahl_randompartition::epa::EpaParameters;
 use dahl_randompartition::fixed::FixedPartitionParameters;
-use dahl_randompartition::frp::FrpParameters;
 use dahl_randompartition::jlp::JlpParameters;
 use dahl_randompartition::lsp::LspParameters;
-use dahl_randompartition::mcmc::{update_neal_algorithm_full, update_partition_gibbs};
-use dahl_randompartition::old2sp::Old2SpParameters;
-use dahl_randompartition::oldsp::OldSpParameters;
+use dahl_randompartition::mcmc::update_partition_gibbs;
 use dahl_randompartition::perm::Permutation;
 use dahl_randompartition::prelude::*;
-use dahl_randompartition::shrink::{Shrinkage, ShrinkageProbabilities};
+use dahl_randompartition::shrink::Shrinkage;
 use dahl_randompartition::sp::SpParameters;
-use dahl_randompartition::sp_mixture::SpMixtureParameters;
 use dahl_randompartition::up::UpParameters;
 use nalgebra::{DMatrix, DVector};
 use rand::Rng;
@@ -129,26 +124,22 @@ fn permutation_to_r(permutation: &Permutation, rval: &RObject) {
     }
 }
 
-fn rate_to_r(rate: f64, rval: &RObject) {
-    rval.as_vector().stop().as_mode_double().stop().slice()[0] = rate;
+fn scalar_shrinkage_to_r(shrinkage: ScalarShrinkage, rval: &RObject) {
+    rval.as_vector().stop().as_mode_double().stop().slice()[0] = shrinkage.get();
 }
 
 fn shrinkage_to_r(shrinkage: &Shrinkage, rval: &RObject) {
-    rval.as_vector()
+    for (x, y) in rval
+        .as_vector()
         .stop()
         .as_mode_double()
         .stop()
         .slice()
-        .copy_from_slice(shrinkage.as_slice());
-}
-
-fn shrinkage_probabilities_to_r(shrinkage_probabilities: &ShrinkageProbabilities, rval: &RObject) {
-    rval.as_vector()
-        .stop()
-        .as_mode_double()
-        .stop()
-        .slice()
-        .copy_from_slice(shrinkage_probabilities.as_slice());
+        .iter_mut()
+        .zip(shrinkage.as_slice())
+    {
+        *x = y.get()
+    }
 }
 
 struct Group {
@@ -260,22 +251,26 @@ impl GlobalMcmcTuning {
 }
 
 struct GlobalHyperparametersTemporal {
-    cost: f64,
-    baseline_mass: f64,
+    cost: Cost,
+    baseline_concentration: Concentration,
     shrinkage_reference: usize,
-    shrinkage_shape: f64,
-    shrinkage_rate: f64,
+    shrinkage_shape: Shape,
+    shrinkage_rate: Rate,
 }
 
 impl GlobalHyperparametersTemporal {
     fn from_r(x: RObject, _pc: &mut Pc) -> Self {
         let x = x.as_list().stop();
         Self {
-            cost: x.get(0).stop().as_f64().stop(),
-            baseline_mass: x.get(1).stop().as_f64().stop(),
+            cost: Cost::new(x.get(0).stop().as_f64().stop())
+                .unwrap_or_else(|| stop!("Invalid cost parameter")),
+            baseline_concentration: Concentration::new(x.get(1).stop().as_f64().stop())
+                .unwrap_or_else(|| stop!("Invalid concentration parameter")),
             shrinkage_reference: x.get(2).stop().as_usize().stop() - 1,
-            shrinkage_shape: x.get(3).stop().as_f64().stop(),
-            shrinkage_rate: x.get(4).stop().as_f64().stop(),
+            shrinkage_shape: Shape::new(x.get(3).stop().as_f64().stop())
+                .unwrap_or_else(|| stop!("Invalid shape parameter")),
+            shrinkage_rate: Rate::new(x.get(4).stop().as_f64().stop())
+                .unwrap_or_else(|| stop!("Invalid rate parameter")),
         }
     }
 }
@@ -376,14 +371,19 @@ fn fit_temporal_model(
         .state
         .clustering()
         .clone();
-    let mut shrinkage_value = 1.0;
-    let shrinkage = Shrinkage::constant(shrinkage_value, all.n_items).unwrap();
+    let mut shrinkage_value = ScalarShrinkage::new(1.0).unwrap();
+    let shrinkage = Shrinkage::constant(shrinkage_value, all.n_items);
     let permutation = Permutation::random(all.n_items, &mut rng);
-    let cost = Cost::new(global_hyperparameters.cost).unwrap();
-    let baseline_mass = Mass::new(global_hyperparameters.baseline_mass);
-    let baseline_distribution = CrpParameters::new_with_mass(all.n_items, baseline_mass);
-    let mut partition_distribution =
-        SpParameters::new(anchor, shrinkage, permutation, cost, baseline_distribution).unwrap();
+    let baseline_distribution =
+        CrpParameters::new(all.n_items, global_hyperparameters.baseline_concentration);
+    let mut partition_distribution = SpParameters::new(
+        anchor,
+        shrinkage,
+        permutation,
+        global_hyperparameters.cost,
+        baseline_distribution,
+    )
+    .unwrap();
     struct Timers {
         units: TicToc,
         anchor: TicToc,
@@ -406,7 +406,9 @@ fn fit_temporal_model(
                 let (left, not_left) = all.units.split_at_mut(time);
                 if time == 0 {
                     shrinkage_value = partition_distribution.shrinkage[0];
-                    partition_distribution.shrinkage.set_constant(0.0);
+                    partition_distribution
+                        .shrinkage
+                        .set_constant(ScalarShrinkage::zero());
                 } else {
                     if time == 1 {
                         partition_distribution
@@ -505,33 +507,36 @@ fn fit_temporal_model(
             timers.shrinkage.tic();
             if global_mcmc_tuning.shrinkage_slice_step_size.is_some() {
                 let shrinkage_prior_distribution = Gamma::new(
-                    global_hyperparameters.shrinkage_shape,
-                    global_hyperparameters.shrinkage_rate,
+                    global_hyperparameters.shrinkage_shape.get(),
+                    global_hyperparameters.shrinkage_rate.get(),
                 )
                 .unwrap();
-                let (s_new, n_evaluations) =
+                let (_s_new, n_evaluations) =
                     stepping_out::univariate_slice_sampler_stepping_out_and_shrinkage(
                         partition_distribution.shrinkage
-                            [global_hyperparameters.shrinkage_reference],
-                        |s| {
-                            if s < 0.0 {
-                                return std::f64::NEG_INFINITY;
+                            [global_hyperparameters.shrinkage_reference]
+                            .get(),
+                        |s| match ScalarShrinkage::new(s) {
+                            None => f64::NEG_INFINITY,
+                            Some(shrinkage) => {
+                                partition_distribution.shrinkage.rescale_by_reference(
+                                    global_hyperparameters.shrinkage_reference,
+                                    shrinkage,
+                                );
+                                shrinkage_prior_distribution.ln_pdf(s)
+                                    + compute_log_likelihood(&partition_distribution)
                             }
-                            partition_distribution.shrinkage.rescale_by_reference(
-                                global_hyperparameters.shrinkage_reference,
-                                s,
-                            );
-                            shrinkage_prior_distribution.ln_pdf(s)
-                                + compute_log_likelihood(&partition_distribution)
                         },
                         true,
                         &stepping_out::TuningParameters::new()
                             .width(global_mcmc_tuning.shrinkage_slice_step_size.unwrap()),
                         fastrand_option,
                     );
-                partition_distribution
-                    .shrinkage
-                    .rescale_by_reference(global_hyperparameters.shrinkage_reference, s_new);
+                // // Not necessary... see implementation of slice_sampler function.
+                // partition_distribution.shrinkage.rescale_by_reference(
+                //     global_hyperparameters.shrinkage_reference,
+                //     ScalarShrinkage::new(_s_new).unwrap(),
+                // );
                 if loop_counter >= global_mcmc_tuning.n_loops_burnin {
                     shrinkage_slice_n_evaluations += u64::from(n_evaluations);
                 }
@@ -562,7 +567,7 @@ fn fit_temporal_model(
             results.push(
                 all.units.iter().map(|x| &x.state.clustering),
                 &partition_distribution.permutation,
-                partition_distribution.shrinkage[global_hyperparameters.shrinkage_reference],
+                partition_distribution.shrinkage[global_hyperparameters.shrinkage_reference].get(),
                 log_likelihood,
             );
         }
@@ -601,26 +606,32 @@ fn fit_temporal_model(
 }
 
 struct GlobalHyperparametersHierarchical {
-    cost: f64,
-    baseline_mass: f64,
-    anchor_mass: f64,
-    shrinkage_value: f64,
+    cost: Cost,
+    baseline_concentration: Concentration,
+    anchor_concentration: Concentration,
+    shrinkage_value: ScalarShrinkage,
     shrinkage_reference: usize,
-    shrinkage_shape: f64,
-    shrinkage_rate: f64,
+    shrinkage_shape: Shape,
+    shrinkage_rate: Rate,
 }
 
 impl GlobalHyperparametersHierarchical {
     fn from_r(x: RObject, _pc: &mut Pc) -> Self {
         let x = x.as_list().stop();
         Self {
-            cost: x.get(0).stop().as_f64().stop(),
-            baseline_mass: x.get(1).stop().as_f64().stop(),
-            anchor_mass: x.get(2).stop().as_f64().stop(),
-            shrinkage_value: x.get(3).stop().as_f64().stop(),
+            cost: Cost::new(x.get(0).stop().as_f64().stop())
+                .unwrap_or_else(|| stop!("Invalid cost parameter")),
+            baseline_concentration: Concentration::new(x.get(1).stop().as_f64().stop())
+                .unwrap_or_else(|| stop!("Invalid concentration parameter")),
+            anchor_concentration: Concentration::new(x.get(2).stop().as_f64().stop())
+                .unwrap_or_else(|| stop!("Invalid concentration parameter")),
+            shrinkage_value: ScalarShrinkage::new(x.get(3).stop().as_f64().stop())
+                .unwrap_or_else(|| stop!("Invalid scalar shrinkage parameter")),
             shrinkage_reference: x.get(4).stop().as_usize().stop() - 1,
-            shrinkage_shape: x.get(5).stop().as_f64().stop(),
-            shrinkage_rate: x.get(6).stop().as_f64().stop(),
+            shrinkage_shape: Shape::new(x.get(5).stop().as_f64().stop())
+                .unwrap_or_else(|| stop!("Invalid shape parameter")),
+            shrinkage_rate: Rate::new(x.get(6).stop().as_f64().stop())
+                .unwrap_or_else(|| stop!("Invalid rate parameter")),
         }
     }
 }
@@ -739,14 +750,13 @@ fn fit_hierarchical_model(
         .state
         .clustering()
         .clone();
-    let shrinkage =
-        Shrinkage::constant(global_hyperparameters.shrinkage_value, all.n_items).unwrap();
+    let shrinkage = Shrinkage::constant(global_hyperparameters.shrinkage_value, all.n_items);
     let permutation = Permutation::random(all.n_items, &mut rng);
-    let cost = Cost::new(global_hyperparameters.cost).unwrap();
-    let baseline_mass = Mass::new(global_hyperparameters.baseline_mass);
-    let anchor_mass = Mass::new(global_hyperparameters.anchor_mass);
-    let baseline_distribution = CrpParameters::new_with_mass(all.n_items, baseline_mass);
-    let anchor_distribution = CrpParameters::new_with_mass(all.n_items, anchor_mass);
+    let cost = global_hyperparameters.cost;
+    let baseline_distribution =
+        CrpParameters::new(all.n_items, global_hyperparameters.baseline_concentration);
+    let anchor_distribution =
+        CrpParameters::new(all.n_items, global_hyperparameters.anchor_concentration);
     let anchor_update_permutation = Permutation::natural_and_fixed(all.n_items);
     let mut partition_distribution =
         SpParameters::new(anchor, shrinkage, permutation, cost, baseline_distribution).unwrap();
@@ -839,33 +849,36 @@ fn fit_hierarchical_model(
             timers.shrinkage.tic();
             if global_mcmc_tuning.shrinkage_slice_step_size.is_some() {
                 let shrinkage_prior_distribution = Gamma::new(
-                    global_hyperparameters.shrinkage_shape,
-                    global_hyperparameters.shrinkage_rate,
+                    global_hyperparameters.shrinkage_shape.get(),
+                    global_hyperparameters.shrinkage_rate.get(),
                 )
                 .unwrap();
-                let (s_new, n_evaluations) =
+                let (_s_new, n_evaluations) =
                     stepping_out::univariate_slice_sampler_stepping_out_and_shrinkage(
                         partition_distribution.shrinkage
-                            [global_hyperparameters.shrinkage_reference],
-                        |s| {
-                            if s < 0.0 {
-                                return std::f64::NEG_INFINITY;
+                            [global_hyperparameters.shrinkage_reference]
+                            .get(),
+                        |s| match ScalarShrinkage::new(s) {
+                            None => f64::NEG_INFINITY,
+                            Some(shrinkage) => {
+                                partition_distribution.shrinkage.rescale_by_reference(
+                                    global_hyperparameters.shrinkage_reference,
+                                    shrinkage,
+                                );
+                                shrinkage_prior_distribution.ln_pdf(s)
+                                    + compute_log_likelihood(&partition_distribution)
                             }
-                            partition_distribution.shrinkage.rescale_by_reference(
-                                global_hyperparameters.shrinkage_reference,
-                                s,
-                            );
-                            shrinkage_prior_distribution.ln_pdf(s)
-                                + compute_log_likelihood(&partition_distribution)
                         },
                         true,
                         &stepping_out::TuningParameters::new()
                             .width(global_mcmc_tuning.shrinkage_slice_step_size.unwrap()),
                         fastrand_option,
                     );
-                partition_distribution
-                    .shrinkage
-                    .rescale_by_reference(global_hyperparameters.shrinkage_reference, s_new);
+                // // Not necessary... see implementation of slice_sampler function.
+                // partition_distribution.shrinkage.rescale_by_reference(
+                //     global_hyperparameters.shrinkage_reference,
+                //     ScalarShrinkage::new(_s_new).unwrap(),
+                // );
                 if loop_counter >= global_mcmc_tuning.n_loops_burnin {
                     shrinkage_slice_n_evaluations += n_evaluations;
                 }
@@ -897,7 +910,7 @@ fn fit_hierarchical_model(
                 all.units.iter().map(|x| &x.state.clustering),
                 &partition_distribution.anchor,
                 &partition_distribution.permutation,
-                partition_distribution.shrinkage[global_hyperparameters.shrinkage_reference],
+                partition_distribution.shrinkage[global_hyperparameters.shrinkage_reference].get(),
                 log_likelihood,
             );
         }
@@ -933,108 +946,6 @@ fn fit_hierarchical_model(
         )
         .stop();
     results.rval
-}
-
-#[roxido]
-fn fit_all(
-    all_ptr: RObject,
-    shrinkage: RObject,
-    n_updates: RObject,
-    do_baseline_partition: RObject,
-) -> RObject {
-    let all: &mut All = all_ptr.as_external_ptr().stop().decode_as_mut();
-    let n_items = all.n_items;
-    let fixed = McmcTuning::new(false, false, false, false, Some(2), Some(1.0)).unwrap();
-    let shrinkage = Shrinkage::constant(shrinkage.as_f64().stop(), n_items).unwrap();
-    let n_updates = n_updates.as_usize().stop();
-    let do_baseline_partition = do_baseline_partition.as_bool().stop();
-    let result_rval = if do_baseline_partition {
-        R::new_matrix_integer(n_items, n_updates, pc)
-    } else {
-        R::new_matrix_integer(0, 0, pc)
-    };
-    let result_slice = result_rval.slice();
-    let mut rng = Pcg64Mcg::from_seed(R::random_bytes::<16>());
-    let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
-    rng.fill(&mut seed);
-    let mut rng2 = Pcg64Mcg::from_seed(seed);
-    let permutation = Permutation::natural_and_fixed(n_items);
-    let hyperpartition_prior_distribution = CrpParameters::new_with_mass(n_items, Mass::new(1.0));
-    let anchor_initial = all.units[rng.gen_range(0..all.units.len())]
-        .state
-        .clustering()
-        .clone();
-    let mut grand_sum = 0.0;
-    let upper = if do_baseline_partition { 1 } else { n_items };
-    for missing_item in 0..upper {
-        let mut sum = 0.0;
-        if !do_baseline_partition {
-            println!("Missing: {}", missing_item);
-            for group in all.units.iter_mut() {
-                group.data.declare_missing(vec![missing_item]);
-            }
-        }
-        let mut partition_distribution = SpParameters::new(
-            anchor_initial.clone(),
-            shrinkage.clone(),
-            Permutation::natural_and_fixed(n_items),
-            Cost::new(1.0).unwrap(),
-            CrpParameters::new_with_mass(n_items, Mass::new(1.0)),
-        )
-        .unwrap();
-        for update_index in 0..n_updates {
-            for group in all.units.iter_mut() {
-                group.state.mcmc_iteration(
-                    &fixed,
-                    &mut group.data,
-                    &group.hyperparameters,
-                    &partition_distribution,
-                    &mut rng,
-                    &mut rng2,
-                );
-            }
-            let mut anchor_tmp = partition_distribution.anchor.clone();
-            let mut log_likelihood_contribution_fn = |proposed_anchor: &Clustering| {
-                partition_distribution.anchor = proposed_anchor.clone();
-                all.units
-                    .par_iter()
-                    .fold(
-                        || 0.0,
-                        |acc, group| acc + partition_distribution.log_pmf(group.state.clustering()),
-                    )
-                    .sum()
-            };
-            update_neal_algorithm_full(
-                1,
-                &mut anchor_tmp,
-                &permutation,
-                &hyperpartition_prior_distribution,
-                &mut log_likelihood_contribution_fn,
-                &mut rng,
-            );
-            if do_baseline_partition {
-                partition_distribution.anchor = anchor_tmp.standardize();
-                partition_distribution.anchor.relabel_into_slice(
-                    1_i32,
-                    &mut result_slice[(update_index * n_items)..((update_index + 1) * n_items)],
-                );
-            } else {
-                for group in all.units.iter_mut() {
-                    sum += group
-                        .state
-                        .log_likelihood_contributions_of_missing(&group.data)
-                        .iter()
-                        .sum::<f64>();
-                }
-            }
-        }
-        grand_sum += sum / (n_updates as f64);
-    }
-    if do_baseline_partition {
-        result_rval.as_unknown()
-    } else {
-        grand_sum.to_r(pc).as_unknown()
-    }
 }
 
 #[roxido]
@@ -1084,14 +995,14 @@ fn fit(
     let rng = getrng(0);
     let rng2 = getrng(1);
     #[rustfmt::skip]
-    macro_rules! mcmc_update { // (_, HAS_PERMUTATION, HAS_SCALAR_SHRINKAGE, HAS_VECTOR_SHRINKAGE, HAS_VECTOR_SHRINKAGE_PROBABILITY)
-        ($tipe:ty, false, false, false, false) => {{
+    macro_rules! mcmc_update { // (_, HAS_PERMUTATION, HAS_SCALAR_SHRINKAGE, HAS_VECTOR_SHRINKAGE)
+        ($tipe:ty, false, false, false) => {{
             let partition_distribution = partition_distribution.as_external_ptr().stop().decode_as_mut::<$tipe>();
             for _ in 0..n_updates {
                 state.mcmc_iteration(&mcmc_tuning, data, hyperparameters, partition_distribution, rng, rng2);
             }
         }};
-        ($tipe:ty, true, false, false, false) => {{
+        ($tipe:ty, true, false, false) => {{
             let partition_distribution = partition_distribution.as_external_ptr().stop().decode_as_mut::<$tipe>();
             for _ in 0..n_updates {
                 state.mcmc_iteration(&mcmc_tuning, data, hyperparameters, partition_distribution, rng, rng2);
@@ -1099,17 +1010,17 @@ fn fit(
                 permutation_to_r(&partition_distribution.permutation, &permutation);
             }
         }};
-        ($tipe:ty, true, true, false, false) => {{
+        ($tipe:ty, true, true, false) => {{
             let partition_distribution = partition_distribution.as_external_ptr().stop().decode_as_mut::<$tipe>();
             for _ in 0..n_updates {
                 state.mcmc_iteration(&mcmc_tuning, data, hyperparameters, partition_distribution, rng, rng2);
                 monitor.monitor(1, |n_updates| { dahl_randompartition::mcmc::update_permutation(n_updates, partition_distribution, mcmc_tuning.n_items_per_permutation_update.unwrap(), &state.clustering, rng) });
                 permutation_to_r(&partition_distribution.permutation, &permutation);
                 dahl_randompartition::mcmc::update_scalar_shrinkage(1, partition_distribution, mcmc_tuning.shrinkage_slice_step_size.unwrap(), hyperparameters.shrinkage_shape.unwrap(), hyperparameters.shrinkage_rate.unwrap(), &state.clustering, rng);
-                rate_to_r(partition_distribution.rate, &shrinkage);
+                scalar_shrinkage_to_r(partition_distribution.shrinkage, &shrinkage);
             }
         }};
-        ($tipe:ty, true, false, true, false) => {{
+        ($tipe:ty, true, false, true) => {{
             let partition_distribution = partition_distribution.as_external_ptr().stop().decode_as_mut::<$tipe>();
             for _ in 0..n_updates {
                 state.mcmc_iteration(&mcmc_tuning, data, hyperparameters, partition_distribution, rng, rng2);
@@ -1119,55 +1030,25 @@ fn fit(
                 shrinkage_to_r(&partition_distribution.shrinkage, &shrinkage);
             }
         }};
-        ($tipe:ty, true, false, false, true) => {{
-            let partition_distribution = partition_distribution.as_external_ptr().stop().decode_as_mut::<$tipe>();
-            for _ in 0..n_updates {
-                state.mcmc_iteration(&mcmc_tuning, data, hyperparameters, partition_distribution, rng, rng2);
-                monitor.monitor(1, |n_updates| { dahl_randompartition::mcmc::update_permutation(n_updates, partition_distribution, mcmc_tuning.n_items_per_permutation_update.unwrap(), &state.clustering, rng) });
-                permutation_to_r(&partition_distribution.permutation, &permutation);
-                dahl_randompartition::mcmc::update_vector_shrinkage_probabilities(1, partition_distribution, hyperparameters.shrinkage_reference.unwrap(), mcmc_tuning.shrinkage_slice_step_size.unwrap(), hyperparameters.shrinkage_shape.unwrap(), hyperparameters.shrinkage_rate.unwrap(), &state.clustering, rng);
-                shrinkage_probabilities_to_r(&partition_distribution.shrinkage_probabilities, &shrinkage);
-            }
-        }};
     }
     let tag = partition_distribution.as_external_ptr().stop().tag();
     let prior_name = tag.as_str().stop();
     match prior_name {
-        "fixed" => mcmc_update!(FixedPartitionParameters, false, false, false, false),
-        "up" => mcmc_update!(UpParameters, false, false, false, false),
-        "jlp" => mcmc_update!(JlpParameters, true, false, false, false),
-        "crp" => mcmc_update!(CrpParameters, false, false, false, false),
-        "epa" => mcmc_update!(EpaParameters, true, false, false, false),
-        "lsp" => mcmc_update!(LspParameters, true, true, false, false),
-        "cpp-up" => mcmc_update!(CppParameters<UpParameters>, false, false, false, false),
-        "cpp-jlp" => mcmc_update!(CppParameters<JlpParameters>, false, false, false, false),
-        "cpp-crp" => mcmc_update!(CppParameters<CrpParameters>, false, false, false, false),
-        "frp" => mcmc_update!(FrpParameters, true, false, true, false),
-        "oldsp-up" => mcmc_update!(OldSpParameters<UpParameters>, true, false, true, false),
-        "oldsp-jlp" => mcmc_update!(OldSpParameters<JlpParameters>, true, false, true, false),
-        "oldsp-crp" => mcmc_update!(OldSpParameters<CrpParameters>, true, false, true, false),
-        "old2sp-up" => mcmc_update!(Old2SpParameters<UpParameters>, true, false, true, false),
-        "old2sp-jlp" => mcmc_update!(Old2SpParameters<JlpParameters>, true, false, true, false),
-        "old2sp-crp" => mcmc_update!(Old2SpParameters<CrpParameters>, true, false, true, false),
-        "sp-up" => mcmc_update!(SpParameters<UpParameters>, true, false, true, false),
-        "sp-jlp" => mcmc_update!(SpParameters<JlpParameters>, true, false, true, false),
-        "sp-crp" => mcmc_update!(SpParameters<CrpParameters>, true, false, true, false),
-        "sp-mixture-up" => {
-            mcmc_update!(SpMixtureParameters<UpParameters>, true, false, false, true)
-        }
-        "sp-mixture-jlp" => {
-            mcmc_update!(SpMixtureParameters<JlpParameters>, true, false, false, true)
-        }
-        "sp-mixture-crp" => {
-            mcmc_update!(SpMixtureParameters<CrpParameters>, true, false, false, true)
-        }
+        "fixed" => mcmc_update!(FixedPartitionParameters, false, false, false),
+        "up" => mcmc_update!(UpParameters, false, false, false),
+        "jlp" => mcmc_update!(JlpParameters, true, false, false),
+        "crp" => mcmc_update!(CrpParameters, false, false, false),
+        "epa" => mcmc_update!(EpaParameters, true, false, false),
+        "lsp" => mcmc_update!(LspParameters, true, true, false),
+        "cpp-up" => mcmc_update!(CppParameters<UpParameters>, false, false, false),
+        "cpp-jlp" => mcmc_update!(CppParameters<JlpParameters>, false, false, false),
+        "cpp-crp" => mcmc_update!(CppParameters<CrpParameters>, false, false, false),
+        "sp-up" => mcmc_update!(SpParameters<UpParameters>, true, false, true),
+        "sp-jlp" => mcmc_update!(SpParameters<JlpParameters>, true, false, true),
+        "sp-crp" => mcmc_update!(SpParameters<CrpParameters>, true, false, true),
         _ => stop!("Unsupported distribution: {}", prior_name),
     }
     state.canonicalize();
-    //let result = R::new_list(2, pc);
-    //let _ = result.set(0, &R::encode(state, &state_tag));
-    //let _ = result.set(1, &R::encode(monitor, &monitor_tag));
-    //result
 }
 
 #[roxido]

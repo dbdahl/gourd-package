@@ -1,10 +1,11 @@
+use dahl_randompartition::prelude::*;
 use nalgebra::{DMatrix, DVector};
 use roxido::*;
 
 #[derive(Debug)]
 pub struct Hyperparameters {
-    precision_response_shape: f64,
-    precision_response_rate: f64,
+    precision_response_shape: Shape,
+    precision_response_rate: Rate,
     global_coefficients_mean: DVector<f64>,
     global_coefficients_precision: DMatrix<f64>,
     global_coefficients_precision_times_mean: DVector<f64>,
@@ -13,28 +14,23 @@ pub struct Hyperparameters {
     clustered_coefficients_precision_times_mean: DVector<f64>,
     clustered_coefficients_precision_l_inv_transpose: DMatrix<f64>,
     pub shrinkage_reference: Option<usize>,
-    pub shrinkage_shape: Option<f64>,
-    pub shrinkage_rate: Option<f64>,
+    pub shrinkage_shape: Option<Shape>,
+    pub shrinkage_rate: Option<Rate>,
 }
 
 impl Hyperparameters {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
-        precision_response_shape: f64,
-        precision_response_rate: f64,
+        precision_response_shape: Shape,
+        precision_response_rate: Rate,
         global_coefficients_mean: DVector<f64>,
         global_coefficients_precision: DMatrix<f64>,
         clustered_coefficients_mean: DVector<f64>,
         clustered_coefficients_precision: DMatrix<f64>,
         shrinkage_reference: Option<usize>,
-        shrinkage_shape: Option<f64>,
-        shrinkage_rate: Option<f64>,
+        shrinkage_shape: Option<Shape>,
+        shrinkage_rate: Option<Rate>,
     ) -> Option<Self> {
-        if precision_response_shape <= 0.0 {
-            return None;
-        }
-        if precision_response_rate <= 0.0 {
-            return None;
-        }
         if global_coefficients_mean.len() != global_coefficients_mean.nrows() {
             return None;
         }
@@ -76,8 +72,10 @@ impl Hyperparameters {
 
     pub fn from_r(hyperparameters: RObject, pc: &mut Pc) -> Self {
         let hyperparameters = hyperparameters.as_list().stop();
-        let precision_response_shape = hyperparameters.get(0).unwrap().as_f64().stop();
-        let precision_response_rate = hyperparameters.get(1).unwrap().as_f64().stop();
+        let precision_response_shape = Shape::new(hyperparameters.get(0).unwrap().as_f64().stop())
+            .unwrap_or_else(|| stop!("Invalid shape parameter"));
+        let precision_response_rate = Rate::new(hyperparameters.get(1).unwrap().as_f64().stop())
+            .unwrap_or_else(|| stop!("Invalid rate parameter"));
         let global_coefficients_mean = hyperparameters
             .get(2)
             .unwrap()
@@ -121,13 +119,20 @@ impl Hyperparameters {
             clustered_coefficients_precision_slice,
         );
         let shrinkage_reference = hyperparameters.get(6).stop().as_usize().stop() - 1;
-        let shrinkage_shape = hyperparameters.get(7).unwrap().as_f64();
-        let shrinkage_rate = hyperparameters.get(8).unwrap().as_f64();
-        fn wrap(x: f64) -> Option<f64> {
+        let shrinkage_shape = hyperparameters.get(7).unwrap().as_f64().stop();
+        let shrinkage_rate = hyperparameters.get(8).unwrap().as_f64().stop();
+        fn wrap_shape(x: f64) -> Option<Shape> {
             if x.is_nan() || x.is_infinite() || x <= 0.0 {
                 None
             } else {
-                Some(x)
+                Some(Shape::new(x).unwrap())
+            }
+        }
+        fn wrap_rate(x: f64) -> Option<Rate> {
+            if x.is_nan() || x.is_infinite() || x <= 0.0 {
+                None
+            } else {
+                Some(Rate::new(x).unwrap())
             }
         }
         Self::new(
@@ -138,8 +143,8 @@ impl Hyperparameters {
             clustered_coefficients_mean,
             clustered_coefficients_precision,
             Some(shrinkage_reference),
-            wrap(shrinkage_shape.stop()),
-            wrap(shrinkage_rate.stop()),
+            wrap_shape(shrinkage_shape),
+            wrap_rate(shrinkage_rate),
         )
         .unwrap()
     }
@@ -152,11 +157,11 @@ impl Hyperparameters {
         self.clustered_coefficients_mean.len()
     }
 
-    pub fn precision_response_shape(&self) -> f64 {
+    pub fn precision_response_shape(&self) -> Shape {
         self.precision_response_shape
     }
 
-    pub fn precision_response_rate(&self) -> f64 {
+    pub fn precision_response_rate(&self) -> Rate {
         self.precision_response_rate
     }
 

@@ -146,6 +146,7 @@ impl State {
         self.clustered_coefficients = new_clustered_coefficients;
     }
 
+    #[allow(clippy::excessive_precision)]
     const NEGATIVE_LN_SQRT_2PI: f64 = -0.91893853320467274178032973640561763986139747363778;
     fn mk_constants(precision_response: f64) -> (f64, f64) {
         let log_normalizing_constant = Self::NEGATIVE_LN_SQRT_2PI + 0.5 * precision_response.ln();
@@ -338,6 +339,7 @@ impl State {
         result
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn update_clustering<S: FullConditional, T: Rng>(
         clustering: &mut Clustering,
         clustered_coefficients: &mut Vec<DVector<f64>>,
@@ -397,6 +399,7 @@ impl State {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn update_clustering_temporal<T: Rng>(
         clustering: &mut Clustering,
         clustered_coefficients: &mut Vec<DVector<f64>>,

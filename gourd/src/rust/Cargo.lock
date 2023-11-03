@@ -118,7 +118,7 @@ dependencies = [
 [[package]]
 name = "dahl-randompartition"
 version = "0.1.0"
-source = "git+https://github.com/dbdahl/rust-dahl-randompartition.git?rev=8d15818#8d15818d2702f71403421d8dc5dd5f613bd8d89e"
+source = "git+https://github.com/dbdahl/rust-dahl-randompartition.git?rev=71bc2ad#71bc2ad2955006c954c7fa066e309e51173e912f"
 dependencies = [
  "dahl-bellnumber",
  "dahl-salso",

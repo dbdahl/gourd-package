@@ -99,6 +99,6 @@ mod tests {
         let generator = super::MembershipGenerator::new(sizes);
         let guess = generator.indices_of_items([2, 1, 4, 0].iter());
         let truth = vec![7, 8, 9, 6, 12, 13, 14, 15, 0, 1, 2, 3, 4, 5];
-        assert_eq!(guess.map(|x| *x).collect::<Vec<_>>(), truth);
+        assert_eq!(guess.copied().collect::<Vec<_>>(), truth);
     }
 }
