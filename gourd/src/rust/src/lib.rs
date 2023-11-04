@@ -1103,9 +1103,11 @@ fn fit(
                 state.mcmc_iteration(&mcmc_tuning, data, hyperparameters, partition_distribution, rng, rng2);
                 monitor.monitor(1, |n_updates| { dahl_randompartition::mcmc::update_permutation(n_updates, partition_distribution, mcmc_tuning.n_items_per_permutation_update.unwrap(), &state.clustering, rng) });
                 permutation_to_r(&partition_distribution.permutation, &permutation);
-                if let Some(ShrinkageHyperparameters{shape, rate, ..}) = &hyperparameters.shrinkage_option {
-                    dahl_randompartition::mcmc::update_scalar_shrinkage(1, partition_distribution, mcmc_tuning.shrinkage_slice_step_size.unwrap(), *shape, *rate, &state.clustering, rng);
-                    scalar_shrinkage_to_r(&partition_distribution.shrinkage, &shrinkage);
+                if let Some(w) = mcmc_tuning.shrinkage_slice_step_size {
+                    if let Some(ShrinkageHyperparameters{shape, rate, ..}) = &hyperparameters.shrinkage_option {
+                        dahl_randompartition::mcmc::update_scalar_shrinkage(1, partition_distribution, w, *shape, *rate, &state.clustering, rng);
+                        scalar_shrinkage_to_r(&partition_distribution.shrinkage, &shrinkage);
+                    }
                 }
             }
         }};
@@ -1115,9 +1117,11 @@ fn fit(
                 state.mcmc_iteration(&mcmc_tuning, data, hyperparameters, partition_distribution, rng, rng2);
                 monitor.monitor(1, |n_updates| { dahl_randompartition::mcmc::update_permutation(n_updates, partition_distribution, mcmc_tuning.n_items_per_permutation_update.unwrap(), &state.clustering, rng) });
                 permutation_to_r(&partition_distribution.permutation, &permutation);
-                if let Some(ShrinkageHyperparameters{reference: Some(reference), shape, rate}) = &hyperparameters.shrinkage_option {
-                    dahl_randompartition::mcmc::update_shrinkage(1, partition_distribution, *reference, mcmc_tuning.shrinkage_slice_step_size.unwrap(), *shape, *rate, &state.clustering, rng);
-                    shrinkage_to_r(&partition_distribution.shrinkage, &shrinkage);
+                if let Some(w) = mcmc_tuning.shrinkage_slice_step_size {
+                    if let Some(ShrinkageHyperparameters{reference: Some(reference), shape, rate}) = &hyperparameters.shrinkage_option {
+                        dahl_randompartition::mcmc::update_shrinkage(1, partition_distribution, *reference, w, *shape, *rate, &state.clustering, rng);
+                        shrinkage_to_r(&partition_distribution.shrinkage, &shrinkage);
+                    }
                 }
                 if let Some(CostHyperparameters{shape1, shape2}) = &hyperparameters.cost_option {
                     dahl_randompartition::mcmc::update_cost(1, partition_distribution, mcmc_tuning.cost_slice_step_size.unwrap(), *shape1, *shape2, &state.clustering, rng);
