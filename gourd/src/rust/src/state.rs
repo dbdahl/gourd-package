@@ -50,36 +50,65 @@ impl State {
     }
 
     pub fn from_r(state: RObject, pc: &mut Pc) -> Self {
-        let state = state.as_list().stop();
-        let precision_response = state.get(0).stop().as_f64().stop();
-        let global_coefficients_slice = state
+        let list = validate_list(
+            state,
+            &[
+                "precision_response",
+                "global_coefficients",
+                "clustering",
+                "clustered_coefficients",
+            ],
+            "state",
+        );
+        let precision_response = list
+            .get(0)
+            .stop()
+            .as_f64()
+            .stop_str("Precision of response should be a numeric");
+        let global_coefficients_slice = list
             .get(1)
             .stop()
-            .as_matrix()
-            .stop()
+            .as_vector()
+            .stop_str("Global coefficients should be a vector")
             .to_mode_double(pc)
             .slice();
         let global_coefficients = DVector::from_column_slice(global_coefficients_slice);
         let clustering = {
-            let clustering_slice = state
+            let clustering_slice = list
                 .get(2)
                 .stop()
                 .as_vector()
-                .stop()
+                .stop_str("'clustering' should be a vector")
                 .to_mode_integer(pc)
                 .slice();
             let clust: Vec<_> = clustering_slice.iter().map(|&x| (x as usize) - 1).collect();
             Clustering::from_vector(clust)
         };
-        let clustered_coefficients_rval = state.get(3).stop().as_list().stop();
+        if clustering.n_clusters() != clustering.max_label() + 1 {
+            stop!("'clustering' should use consecutive labels starting at 1")
+        }
+        let clustered_coefficients_rval = list
+            .get(3)
+            .stop()
+            .as_list()
+            .stop_str("'clustered_coefficients' should be a list");
         let mut clustered_coefficients = Vec::with_capacity(clustered_coefficients_rval.len());
+        let mut n_clustered_coefficients = None;
         for i in 0..clustered_coefficients.capacity() {
             let element = clustered_coefficients_rval
                 .get(i)
                 .unwrap()
                 .as_vector()
-                .stop();
+                .stop_str("Elements of 'clustered coefficients' should be vectors");
             let slice = element.to_mode_double(pc).slice();
+            match n_clustered_coefficients {
+                None => n_clustered_coefficients = Some(slice.len()),
+                Some(n) => {
+                    if n != slice.len() {
+                        stop!("Inconsistent number of columns for clustered covariates")
+                    }
+                }
+            };
             clustered_coefficients.push(DVector::from_column_slice(slice));
         }
         Self::new(
