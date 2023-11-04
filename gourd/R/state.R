@@ -1,5 +1,7 @@
 #' @export
-fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition(n_items, 1), nIterations=1000, burnin=500, thin=10, mcmcTuning=list(TRUE, TRUE, TRUE, TRUE, length(data$response)/2, 1.0), missingItems=integer(0), validationData=NULL, save=list(samples=TRUE, logLikelihoodContributions=c("none", "all", "missing", "validation")[1]), progress=TRUE) {
+fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition(n_items, 1), nIterations=1000, burnin=500, thin=10,
+                mcmcTuning=list(TRUE, TRUE, TRUE, TRUE, length(data$response)/2, 1.0), missingItems=integer(0), validationData=NULL,
+                save=list(samples=TRUE, logLikelihoodContributions=c("none", "all", "missing", "validation")[1]), progress=TRUE) {
   # Verify data
   verifyData <- function(data) {
     if ( ! is.list(data) || length(data) != 4 || any(names(data) != c("response", "global_covariates", "clustered_covariates", "item_sizes")) ) {
@@ -82,42 +84,7 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
     }
   }
   state <- .Call(.state_r2rust, state)
-  # Verify hyperparameters
-  if ( ! is.list(hyperparameters) || length(hyperparameters) != 9 || any(names(hyperparameters) != c("precision_response_shape", "precision_response_rate", "global_coefficients_mean", "global_coefficients_precision", "clustered_coefficients_mean", "clustered_coefficients_precision", "shrinkage_reference", "shrinkage_shape", "shrinkage_rate")) ) {
-    stop("'hyperparameters' must be a named list of elements: 1. 'precision_response_shape', 2. 'precision_response_rate', 3. 'global_coefficients_mean', 4. 'global_coefficients_precision', 5. 'clustered_coefficients_mean', 6. 'clustered_coefficients_precision', 7. 'shrinkage_reference', 8. 'shrinkage_shape', 9. 'shrinkage_rate'.")
-  }
-  if ( ! is.numeric(hyperparameters$precision_response_shape) || ! is.numeric(hyperparameters$precision_response_rate) || ! is.numeric(hyperparameters$global_coefficients_mean) || ! is.numeric(hyperparameters$global_coefficients_precision)  || ! is.numeric(hyperparameters$clustered_coefficients_mean) || ! is.numeric(hyperparameters$clustered_coefficients_precision) ) {
-    stop("Elements of 'hyperparameters' must be numeric values.")
-  }
-  if ( length(hyperparameters$precision_response_shape) != 1 || hyperparameters$precision_response_shape <= 0.0 ) {
-    stop("'hyperparameters$precision_response_shape' must be a strictly positive scalar.")
-  }
-  if ( length(hyperparameters$precision_response_rate) != 1 || hyperparameters$precision_response_rate <= 0.0 ) {
-    stop("'hyperparameters$precision_response_rate' must be a strictly positive scalar.")
-  }
-  if ( length(hyperparameters$global_coefficients_mean) != n_global_coefficients ) {
-    stop("Inconsistent number of global covariates.")
-  }
-  if ( ( ! is.matrix(hyperparameters$global_coefficients_precision) ) || ( any(dim(hyperparameters$global_coefficients_precision) != rep(n_global_coefficients,2)) ) ) {
-    stop("Inconsistent number of global covariates.")
-  }
-  if ( length(hyperparameters$clustered_coefficients_mean) != n_clustered_coefficients ) {
-    stop("Inconsistent number of clustered covariates.")
-  }
-  if ( ! is.matrix(hyperparameters$clustered_coefficients_precision) || any(dim(hyperparameters$clustered_coefficients_precision) != rep(n_clustered_coefficients,2)) ) {
-    stop("Inconsistent number of clustered covariates.")
-  }
-  if ( length(hyperparameters$shrinkage_reference) != 1 || hyperparameters$shrinkage_reference < 1 || hyperparameters$shrinkage_reference > n_items ) {
-    stop("'hyperparameters$shrinkage_reference' must be in [1, 2, ..., n_items].")
-  }
-  if ( length(hyperparameters$shrinkage_shape) != 1 || hyperparameters$shrinkage_shape <= 0.0 ) {
-    stop("'hyperparameters$shrinkage_shape' must be a strictly positive scalar.")
-  }
-  if ( length(hyperparameters$shrinkage_rate) != 1 || hyperparameters$shrinkage_rate <= 0.0 ) {
-    stop("'hyperparameters$shrinkage_rate' must be a strictly positive scalar.")
-  }
   hyperparameters <- .Call(.hyperparameters_r2rust, hyperparameters)
-  check_list(mcmcTuning, "bbbbid")
   monitor <- .Call(.monitor_new)
   partitionDistribution <- pumpkin::mkDistrPtr(partitionDistribution)
   rngs <- .Call(.rngs_new)
@@ -125,7 +92,8 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
   if ( progress ) cat("Burning in...")
   permutation_bucket <- integer(n_items)
   shrinkage_bucket <- numeric(n_items)
-  .Call(.fit, burnin, data, state, hyperparameters, monitor, partitionDistribution, mcmcTuning, permutation_bucket, shrinkage_bucket, rngs)
+  cost_bucket <- numeric(1L)
+  .Call(.fit, burnin, data, state, hyperparameters, monitor, partitionDistribution, mcmcTuning, permutation_bucket, shrinkage_bucket, cost_bucket, rngs)
   .Call(.monitor_reset, monitor);
   if ( progress ) cat("\r")
   nSamples <- floor((nIterations-burnin)/thin)
@@ -136,7 +104,8 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
       clustering=matrix(0L, nrow=nSamples, ncol=n_items),
       clustered_coefficients=vector(mode="list", nSamples),
       permutation=matrix(0L, nrow=nSamples, ncol=n_items),
-      shrinkage=matrix(0, nrow=nSamples, ncol=n_items)
+      shrinkage=matrix(0, nrow=nSamples, ncol=n_items),
+      cost=numeric(nSamples)
     )
   }
   if ( save$logLikelihoodContributions != "none" ) {
@@ -151,7 +120,7 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
   }
   if ( progress ) { pb <- txtProgressBar(0,nSamples,style=3) }
   for ( i in seq_len(nSamples) ) {
-    .Call(.fit, thin, data, state, hyperparameters, monitor, partitionDistribution, mcmcTuning, permutation_bucket, shrinkage_bucket, rngs)
+    .Call(.fit, thin, data, state, hyperparameters, monitor, partitionDistribution, mcmcTuning, permutation_bucket, shrinkage_bucket, cost_bucket, rngs)
     if ( save$logLikelihoodContributions != "none" ) {
       logLikeContr[i,] <- if ( save$logLikelihoodContributions == "all" ) {
         .Call(.log_likelihood_contributions, state, data)
@@ -171,17 +140,17 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
       samples$clustering[i,] <- tmp[[3]]
       samples$permutation[i,] <- permutation_bucket
       samples$shrinkage[i,] <- shrinkage_bucket
+      samples$cost[i] <- cost_bucket
     }
     if ( progress ) setTxtProgressBar(pb, i)
   }
   if ( progress ) close(pb)
-  rates <- c(permutation_acceptance_rate = .Call(.monitor_rate, monitor))
-  result <- list()
+  result <- list(rates = c(permutation_acceptance_rate = .Call(.monitor_rate, monitor)))
   if ( save$samples ) {
-    result <- c(result, list(samples=samples, rates=rates))
+    result <- c(result, list(samples=samples))
   }
   if ( save$logLikelihoodContributions != "none" ) {
-    result <- c(result, list(logLikelihoodContributions=logLikeContr, rates=rates))
+    result <- c(result, list(logLikelihoodContributions=logLikeContr))
   }
   result
 }

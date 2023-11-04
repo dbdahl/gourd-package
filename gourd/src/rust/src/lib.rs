@@ -1210,6 +1210,13 @@ fn validate_list(
         stop!("'{}' must be of length {}", arg_name, expected_names.len());
     }
     let names = list.get_names();
+    if names.len() != expected_names.len() {
+        stop!(
+            "'{}' must be an named list with names:\n    {}",
+            arg_name,
+            expected_names.join("\n    ")
+        );
+    }
     for (i, name) in expected_names.iter().enumerate() {
         if *name != names.get(i).unwrap() {
             stop!("Element {} of '{}' should be named '{}'", i, arg_name, name);
