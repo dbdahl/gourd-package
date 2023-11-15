@@ -1123,9 +1123,11 @@ fn fit(
                         shrinkage_to_r(&partition_distribution.shrinkage, &shrinkage);
                     }
                 }
-                if let Some(CostHyperparameters{shape1, shape2}) = &hyperparameters.cost_option {
-                    dahl_randompartition::mcmc::update_cost(1, partition_distribution, mcmc_tuning.cost_slice_step_size.unwrap(), *shape1, *shape2, &state.clustering, rng);
-                    cost_to_r(&partition_distribution.cost, &cost);
+                if let Some(w) = mcmc_tuning.cost_slice_step_size {
+                    if let Some(CostHyperparameters{shape1, shape2}) = &hyperparameters.cost_option {
+                        dahl_randompartition::mcmc::update_cost(1, partition_distribution, w, *shape1, *shape2, &state.clustering, rng);
+                        cost_to_r(&partition_distribution.cost, &cost);
+                    }
                 }
             }
         }};

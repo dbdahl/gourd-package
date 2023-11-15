@@ -541,6 +541,7 @@ impl State {
     }
 }
 
+#[derive(Debug)]
 pub struct McmcTuning {
     pub update_precision_response: bool,
     pub update_global_coefficients: bool,

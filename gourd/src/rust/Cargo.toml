@@ -15,7 +15,7 @@ debug = 1
 [dependencies]
 rayon = "1.7.0"
 roxido = { path="roxido" }
-dahl-randompartition = { git="https://github.com/dbdahl/rust-dahl-randompartition.git", rev="80ba6c0" }
+dahl-randompartition = { git="https://github.com/dbdahl/rust-dahl-randompartition.git", rev="53f78b7" }
 # dahl-randompartition = { path="/home/dahl/docs/devel/rust-dahl-randompartition" }
 walltime = { git="https://github.com/dbdahl/rust-dahl-walltime.git", rev="030fad7" }
 slice_sampler = { git="https://github.com/dbdahl/rust_slice_sampler.git", rev="bacf2b5" }
