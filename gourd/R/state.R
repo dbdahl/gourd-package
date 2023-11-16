@@ -92,8 +92,8 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
   if ( progress ) cat("Burning in...")
   permutation_bucket <- integer(n_items)
   shrinkage_bucket <- numeric(n_items)
-  cost_bucket <- numeric(1L)
-  .Call(.fit, burnin, data, state, hyperparameters, monitor, partitionDistribution, mcmcTuning, permutation_bucket, shrinkage_bucket, cost_bucket, rngs)
+  grit_bucket <- numeric(1L)
+  .Call(.fit, burnin, data, state, hyperparameters, monitor, partitionDistribution, mcmcTuning, permutation_bucket, shrinkage_bucket, grit_bucket, rngs)
   .Call(.monitor_reset, monitor);
   if ( progress ) cat("\r")
   nSamples <- floor((nIterations-burnin)/thin)
@@ -105,7 +105,7 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
       clustered_coefficients=vector(mode="list", nSamples),
       permutation=matrix(0L, nrow=nSamples, ncol=n_items),
       shrinkage=matrix(0, nrow=nSamples, ncol=n_items),
-      cost=numeric(nSamples)
+      grit=numeric(nSamples)
     )
   }
   if ( save$logLikelihoodContributions != "none" ) {
@@ -120,7 +120,7 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
   }
   if ( progress ) { pb <- txtProgressBar(0,nSamples,style=3) }
   for ( i in seq_len(nSamples) ) {
-    .Call(.fit, thin, data, state, hyperparameters, monitor, partitionDistribution, mcmcTuning, permutation_bucket, shrinkage_bucket, cost_bucket, rngs)
+    .Call(.fit, thin, data, state, hyperparameters, monitor, partitionDistribution, mcmcTuning, permutation_bucket, shrinkage_bucket, grit_bucket, rngs)
     if ( save$logLikelihoodContributions != "none" ) {
       logLikeContr[i,] <- if ( save$logLikelihoodContributions == "all" ) {
         .Call(.log_likelihood_contributions, state, data)
@@ -140,7 +140,7 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
       samples$clustering[i,] <- tmp[[3]]
       samples$permutation[i,] <- permutation_bucket
       samples$shrinkage[i,] <- shrinkage_bucket
-      samples$cost[i] <- cost_bucket
+      samples$grit[i] <- grit_bucket
     }
     if ( progress ) setTxtProgressBar(pb, i)
   }

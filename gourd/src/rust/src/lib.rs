@@ -10,7 +10,7 @@ mod mvnorm;
 mod state;
 
 use crate::data::Data;
-use crate::hyperparameters::{CostHyperparameters, Hyperparameters, ShrinkageHyperparameters};
+use crate::hyperparameters::{GritHyperparameters, Hyperparameters, ShrinkageHyperparameters};
 use crate::monitor::Monitor;
 use crate::mvnorm::sample_multivariate_normal_repeatedly;
 use crate::state::{McmcTuning, State};
@@ -142,8 +142,8 @@ fn shrinkage_to_r(shrinkage: &Shrinkage, rval: &RObject) {
     }
 }
 
-fn cost_to_r(cost: &Cost, rval: &RObject) {
-    rval.as_vector().stop().as_mode_double().stop().slice()[0] = cost.get();
+fn grit_to_r(grit: &Grit, rval: &RObject) {
+    rval.as_vector().stop().as_mode_double().stop().slice()[0] = grit.get();
 }
 
 struct Group {
@@ -221,7 +221,7 @@ impl GlobalMcmcTuning {
                 "n_permutations_updates_per_scan",
                 "n_items_per_permutation_update",
                 "shrinkage_slice_step_size",
-                "cost_slice_step_size",
+                "grit_slice_step_size",
                 "validation_data",
             ],
             "global_mcmc_tuning",
@@ -302,7 +302,7 @@ impl GlobalMcmcTuning {
 }
 
 struct GlobalHyperparametersTemporal {
-    cost: Cost,
+    grit: Grit,
     baseline_concentration: Concentration,
     shrinkage: ShrinkageHyperparameters,
 }
@@ -311,22 +311,22 @@ impl GlobalHyperparametersTemporal {
     fn from_r(x: RObject, _pc: &mut Pc) -> Self {
         let list = validate_list(
             x,
-            &["cost", "baselinse_concentration", "shrinkage"],
+            &["grit", "baselinse_concentration", "shrinkage"],
             "global_hyperparameters_temporal",
         );
         Self {
-            cost: Cost::new(
+            grit: Grit::new(
                 list.get(0)
                     .stop()
                     .as_f64()
-                    .stop_str("Cost parameter should be a numeric"),
+                    .stop_str("Grit parameter should be a numeric"),
             )
-            .unwrap_or_else(|| stop!("Invalid cost parameter")),
+            .unwrap_or_else(|| stop!("Invalid grit parameter")),
             baseline_concentration: Concentration::new(
                 list.get(1)
                     .stop()
                     .as_f64()
-                    .stop_str("Cost parameter should be a numeric"),
+                    .stop_str("Grit parameter should be a numeric"),
             )
             .unwrap_or_else(|| stop!("Invalid concentration parameter")),
             shrinkage: ShrinkageHyperparameters::from_r(list.get(2).stop()),
@@ -439,7 +439,7 @@ fn fit_temporal_model(
         anchor,
         shrinkage,
         permutation,
-        global_hyperparameters.cost,
+        global_hyperparameters.grit,
         baseline_distribution,
     )
     .unwrap();
@@ -668,7 +668,7 @@ fn fit_temporal_model(
 }
 
 struct GlobalHyperparametersHierarchical {
-    cost: Cost,
+    grit: Grit,
     baseline_concentration: Concentration,
     anchor_concentration: Concentration,
     shrinkage_value: ScalarShrinkage,
@@ -680,7 +680,7 @@ impl GlobalHyperparametersHierarchical {
         let list = validate_list(
             x,
             &[
-                "cost",
+                "grit",
                 "baseline_concentration",
                 "anchor_concentration",
                 "shrinkage_value",
@@ -689,13 +689,13 @@ impl GlobalHyperparametersHierarchical {
             "global_hyperparameters_hierarchical",
         );
         Self {
-            cost: Cost::new(
+            grit: Grit::new(
                 list.get(0)
                     .stop()
                     .as_f64()
-                    .stop_str("Cost should be a numeric"),
+                    .stop_str("Grit should be a numeric"),
             )
-            .unwrap_or_else(|| stop!("Invalid cost parameter")),
+            .unwrap_or_else(|| stop!("Invalid grit parameter")),
             baseline_concentration: Concentration::new(
                 list.get(1)
                     .stop()
@@ -835,14 +835,14 @@ fn fit_hierarchical_model(
         .clone();
     let shrinkage = Shrinkage::constant(global_hyperparameters.shrinkage_value, all.n_items);
     let permutation = Permutation::random(all.n_items, &mut rng);
-    let cost = global_hyperparameters.cost;
+    let grit = global_hyperparameters.grit;
     let baseline_distribution =
         CrpParameters::new(all.n_items, global_hyperparameters.baseline_concentration);
     let anchor_distribution =
         CrpParameters::new(all.n_items, global_hyperparameters.anchor_concentration);
     let anchor_update_permutation = Permutation::natural_and_fixed(all.n_items);
     let mut partition_distribution =
-        SpParameters::new(anchor, shrinkage, permutation, cost, baseline_distribution).unwrap();
+        SpParameters::new(anchor, shrinkage, permutation, grit, baseline_distribution).unwrap();
     struct Timers {
         units: TicToc,
         anchor: TicToc,
@@ -1045,7 +1045,7 @@ fn fit(
     mcmc_tuning: RObject,
     permutation: RObject,
     shrinkage: RObject,
-    cost: RObject,
+    grit: RObject,
     rngs: RObject,
 ) -> RObject {
     let n_updates: u32 = n_updates.as_i32().stop().try_into().unwrap();
@@ -1082,7 +1082,7 @@ fn fit(
     let rng = getrng(0);
     let rng2 = getrng(1);
     #[rustfmt::skip]
-    macro_rules! mcmc_update { // (_, HAS_PERMUTATION, HAS_SCALAR_SHRINKAGE, HAS_VECTOR_SHRINKAGE, HAS_COST)
+    macro_rules! mcmc_update { // (_, HAS_PERMUTATION, HAS_SCALAR_SHRINKAGE, HAS_VECTOR_SHRINKAGE, HAS_GRIT)
         ($tipe:ty, false, false, false, false) => {{
             let partition_distribution = partition_distribution.as_external_ptr().stop().decode_as_mut::<$tipe>();
             for _ in 0..n_updates {
@@ -1123,10 +1123,10 @@ fn fit(
                         shrinkage_to_r(&partition_distribution.shrinkage, &shrinkage);
                     }
                 }
-                if let Some(w) = mcmc_tuning.cost_slice_step_size {
-                    if let Some(CostHyperparameters{shape1, shape2}) = &hyperparameters.cost_option {
-                        dahl_randompartition::mcmc::update_cost(1, partition_distribution, w, *shape1, *shape2, &state.clustering, rng);
-                        cost_to_r(&partition_distribution.cost, &cost);
+                if let Some(w) = mcmc_tuning.grit_slice_step_size {
+                    if let Some(GritHyperparameters{shape1, shape2}) = &hyperparameters.grit_option {
+                        dahl_randompartition::mcmc::update_grit(1, partition_distribution, w, *shape1, *shape2, &state.clustering, rng);
+                        grit_to_r(&partition_distribution.grit, &grit);
                     }
                 }
             }

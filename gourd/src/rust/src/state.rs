@@ -549,7 +549,7 @@ pub struct McmcTuning {
     pub update_clustered_coefficients: bool,
     pub n_items_per_permutation_update: Option<u32>,
     pub shrinkage_slice_step_size: Option<f64>,
-    pub cost_slice_step_size: Option<f64>,
+    pub grit_slice_step_size: Option<f64>,
 }
 
 impl McmcTuning {
@@ -560,7 +560,7 @@ impl McmcTuning {
         update_clustered_coefficients: bool,
         n_items_per_permutation_update: Option<u32>,
         shrinkage_slice_step_size: Option<f64>,
-        cost_slice_step_size: Option<f64>,
+        grit_slice_step_size: Option<f64>,
     ) -> Result<Self, &'static str> {
         if let Some(s) = shrinkage_slice_step_size {
             if s.is_nan() || s.is_infinite() || s < 0.0 {
@@ -574,7 +574,7 @@ impl McmcTuning {
             update_clustered_coefficients,
             n_items_per_permutation_update,
             shrinkage_slice_step_size,
-            cost_slice_step_size,
+            grit_slice_step_size,
         })
     }
     pub fn from_r(x: RObject, _pc: &mut Pc) -> Self {
@@ -587,7 +587,7 @@ impl McmcTuning {
                 "update_clustered_coefficients",
                 "n_items_per_permutation_update",
                 "shrinkage_slice_step_size",
-                "cost_slice_step_size",
+                "grit_slice_step_size",
             ],
             "mcmc_tuning",
         );
@@ -601,10 +601,10 @@ impl McmcTuning {
             )
         };
         let y = list.get(6).stop();
-        let cost_slice_step_size = if y.is_null() || y.is_na() || y.is_nan() {
+        let grit_slice_step_size = if y.is_null() || y.is_na() || y.is_nan() {
             None
         } else {
-            Some(y.as_f64().stop_str("Step size for cost should be numeric"))
+            Some(y.as_f64().stop_str("Step size for grit should be numeric"))
         };
         Self::new(
             list.get(0)
@@ -632,7 +632,7 @@ impl McmcTuning {
                     .unwrap(),
             ),
             shrinkage_slice_step_size,
-            cost_slice_step_size,
+            grit_slice_step_size,
         )
         .unwrap()
     }

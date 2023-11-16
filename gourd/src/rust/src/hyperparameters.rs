@@ -15,7 +15,7 @@ pub struct Hyperparameters {
     clustered_coefficients_precision_times_mean: DVector<f64>,
     clustered_coefficients_precision_l_inv_transpose: DMatrix<f64>,
     pub shrinkage_option: Option<ShrinkageHyperparameters>,
-    pub cost_option: Option<CostHyperparameters>,
+    pub grit_option: Option<GritHyperparameters>,
 }
 
 #[derive(Debug)]
@@ -62,14 +62,14 @@ impl ShrinkageHyperparameters {
 }
 
 #[derive(Debug)]
-pub struct CostHyperparameters {
+pub struct GritHyperparameters {
     pub shape1: Shape,
     pub shape2: Shape,
 }
 
-impl CostHyperparameters {
-    pub fn from_r(cost: RObject) -> CostHyperparameters {
-        let list = validate_list(cost, &["shape1", "shape2"], "cost");
+impl GritHyperparameters {
+    pub fn from_r(grit: RObject) -> GritHyperparameters {
+        let list = validate_list(grit, &["shape1", "shape2"], "grit");
         let shape1 = Shape::new(
             list.get(0)
                 .unwrap()
@@ -84,7 +84,7 @@ impl CostHyperparameters {
                 .stop_str("Shrinkage shape should be a numeric value"),
         )
         .unwrap_or_else(|| stop!("Shape of shrinkage is not valid"));
-        CostHyperparameters { shape1, shape2 }
+        GritHyperparameters { shape1, shape2 }
     }
 }
 
@@ -98,7 +98,7 @@ impl Hyperparameters {
         clustered_coefficients_mean: DVector<f64>,
         clustered_coefficients_precision: DMatrix<f64>,
         shrinkage_option: Option<ShrinkageHyperparameters>,
-        cost_option: Option<CostHyperparameters>,
+        grit_option: Option<GritHyperparameters>,
     ) -> Option<Self> {
         if global_coefficients_mean.len() != global_coefficients_mean.nrows() {
             return None;
@@ -134,7 +134,7 @@ impl Hyperparameters {
             clustered_coefficients_precision_times_mean,
             clustered_coefficients_precision_l_inv_transpose,
             shrinkage_option,
-            cost_option,
+            grit_option,
         })
     }
 
@@ -149,7 +149,7 @@ impl Hyperparameters {
                 "clustered_coefficients_mean",
                 "clustered_coefficients_precision",
                 "shrinkage",
-                "cost",
+                "grit",
             ],
             "hyperparameters",
         );
@@ -226,11 +226,11 @@ impl Hyperparameters {
         } else {
             Some(ShrinkageHyperparameters::from_r(shrinkage_rval))
         };
-        let cost_rval = hyperparameters.get(7).stop();
-        let cost_option = if cost_rval.is_null() {
+        let grit_rval = hyperparameters.get(7).stop();
+        let grit_option = if grit_rval.is_null() {
             None
         } else {
-            Some(CostHyperparameters::from_r(cost_rval))
+            Some(GritHyperparameters::from_r(grit_rval))
         };
         Self::new(
             precision_response_shape,
@@ -240,7 +240,7 @@ impl Hyperparameters {
             clustered_coefficients_mean,
             clustered_coefficients_precision,
             shrinkage_option,
-            cost_option,
+            grit_option,
         )
         .unwrap()
     }
