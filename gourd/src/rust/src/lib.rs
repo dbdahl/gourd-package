@@ -35,7 +35,7 @@ use rand_pcg::Pcg64Mcg;
 use rayon::prelude::*;
 use roxido::*;
 use slice_sampler::univariate::stepping_out;
-use statrs::distribution::{Continuous, Gamma};
+use statrs::distribution::{Beta, Continuous, Gamma};
 use walltime::TicToc;
 
 #[roxido]
@@ -205,6 +205,7 @@ struct GlobalMcmcTuning {
     n_permutation_updates_per_scan: usize,
     n_items_per_permutation_update: Option<usize>,
     shrinkage_slice_step_size: Option<f64>,
+    grit_slice_step_size: Option<f64>,
     validation_data: Option<Vec<Data>>,
 }
 
@@ -272,6 +273,14 @@ impl GlobalMcmcTuning {
                     .stop_str("Slice size for shrinkage should be a numeric"),
             )
         };
+        let grit_slice_step_size = if y.is_null() || y.is_na() || y.is_nan() {
+            None
+        } else {
+            Some(
+                y.as_f64()
+                    .stop_str("Slice size for grit should be a numeric"),
+            )
+        };
         let y = list
             .get(7)
             .stop()
@@ -296,6 +305,7 @@ impl GlobalMcmcTuning {
             n_permutation_updates_per_scan,
             n_items_per_permutation_update,
             shrinkage_slice_step_size,
+            grit_slice_step_size,
             validation_data,
         }
     }
@@ -448,12 +458,14 @@ fn fit_temporal_model(
         anchor: TicToc,
         permutation: TicToc,
         shrinkage: TicToc,
+        grit: TicToc,
     }
     let mut timers = Timers {
         units: TicToc::new(),
         anchor: TicToc::new(),
         permutation: TicToc::new(),
         shrinkage: TicToc::new(),
+        grit: TicToc::new(),
     };
     let mut permutation_n_acceptances: u64 = 0;
     let mut shrinkage_slice_n_evaluations: u64 = 0;
@@ -660,6 +672,7 @@ fn fit_temporal_model(
                 timers.anchor.as_secs_f64(),
                 timers.permutation.as_secs_f64(),
                 timers.shrinkage.as_secs_f64(),
+                timers.grit.as_secs_f64(),
             ]
             .to_r(pc),
         )
@@ -668,11 +681,12 @@ fn fit_temporal_model(
 }
 
 struct GlobalHyperparametersHierarchical {
-    grit: Grit,
     baseline_concentration: Concentration,
     anchor_concentration: Concentration,
     shrinkage_value: ScalarShrinkage,
     shrinkage_hyperparameter: ShrinkageHyperparameters,
+    grit_value: Grit,
+    grit_hyperparameter: GritHyperparameters,
 }
 
 impl GlobalHyperparametersHierarchical {
@@ -680,41 +694,42 @@ impl GlobalHyperparametersHierarchical {
         let list = validate_list(
             x,
             &[
-                "grit",
                 "baseline_concentration",
                 "anchor_concentration",
                 "shrinkage_value",
                 "shrinkage_hyperparameters",
+                "grit_value",
+                "grit_hyperparameters",
             ],
             "global_hyperparameters_hierarchical",
         );
         Self {
-            grit: Grit::new(
-                list.get(0)
-                    .stop()
-                    .as_f64()
-                    .stop_str("Grit should be a numeric"),
-            )
-            .unwrap_or_else(|| stop!("Invalid grit parameter")),
             baseline_concentration: Concentration::new(
-                list.get(1)
+                list.get(0)
                     .stop()
                     .as_f64()
                     .stop_str("Baseline concentration should be a numeric"),
             )
             .unwrap_or_else(|| stop!("Invalid concentration parameter")),
             anchor_concentration: Concentration::new(
-                list.get(2)
+                list.get(1)
                     .stop()
                     .as_f64()
                     .stop_str("Anchor concentration should be a numeric"),
             )
             .unwrap_or_else(|| stop!("Invalid concentration parameter")),
             shrinkage_value: ScalarShrinkage::new(
-                list.get(3).stop().as_f64().stop_str(" should be a numeric"),
+                list.get(2).stop().as_f64().stop_str(" should be a numeric"),
             )
             .unwrap_or_else(|| stop!("Invalid scalar shrinkage parameter")),
-            shrinkage_hyperparameter: ShrinkageHyperparameters::from_r(list.get(4).stop()),
+            shrinkage_hyperparameter: ShrinkageHyperparameters::from_r(list.get(3).stop()),
+            grit_ Grit::new(
+                list.get(4)
+                    .stop()
+                    .as_f64()
+                    .stop_str("Grit should be a numeric"),
+            )
+            .unwrap_or_else(|| stop!("Invalid grit parameter")),
         }
     }
 }
@@ -848,12 +863,14 @@ fn fit_hierarchical_model(
         anchor: TicToc,
         permutation: TicToc,
         shrinkage: TicToc,
+        grit: TicToc,
     }
     let mut timers = Timers {
         units: TicToc::new(),
         anchor: TicToc::new(),
         permutation: TicToc::new(),
         shrinkage: TicToc::new(),
+        grit: TicToc::new(),
     };
     let mut permutation_n_acceptances = 0;
     let mut shrinkage_slice_n_evaluations = 0;
@@ -966,6 +983,42 @@ fn fit_hierarchical_model(
                 }
             }
             timers.shrinkage.toc();
+            // Update ***grit***
+            timers.grit.tic();
+            if let Some(w) = global_mcmc_tuning.shrinkage_slice_step_size {
+                let grit_prior_distribution = Beta::new(
+                    global_hyperparameters.grit_hyperparameter.shape1.get(),
+                    global_hyperparameters.grit_hyperparameter.shape2.get(),
+                )
+                .unwrap();
+                let tuning_parameters = stepping_out::TuningParameters::new().width(w);
+                let (_s_new, n_evaluations) =
+                    stepping_out::univariate_slice_sampler_stepping_out_and_shrinkage(
+                        partition_distribution.shrinkage[reference].get(),
+                        |s| match ScalarShrinkage::new(s) {
+                            None => f64::NEG_INFINITY,
+                            Some(shrinkage) => {
+                                partition_distribution
+                                    .shrinkage
+                                    .rescale_by_reference(reference, shrinkage);
+                                shrinkage_prior_distribution.ln_pdf(s)
+                                    + compute_log_likelihood(&partition_distribution)
+                            }
+                        },
+                        true,
+                        &tuning_parameters,
+                        fastrand_option,
+                    );
+                // // Not necessary... see implementation of slice_sampler function.
+                // partition_distribution.shrinkage.rescale_by_reference(
+                //     global_hyperparameters.shrinkage_reference,
+                //     ScalarShrinkage::new(_s_new).unwrap(),
+                // );
+                if loop_counter >= global_mcmc_tuning.n_loops_burnin {
+                    shrinkage_slice_n_evaluations += n_evaluations;
+                }
+            }
+            timers.grit.toc();
         }
         // Report
         if loop_counter >= global_mcmc_tuning.n_loops_burnin {
@@ -1027,6 +1080,7 @@ fn fit_hierarchical_model(
                 timers.anchor.as_secs_f64(),
                 timers.permutation.as_secs_f64(),
                 timers.shrinkage.as_secs_f64(),
+                timers.grit.as_secs_f64(),
             ]
             .to_r(pc),
         )
