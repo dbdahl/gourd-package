@@ -74,16 +74,16 @@ impl GritHyperparameters {
             list.get(0)
                 .unwrap()
                 .as_f64()
-                .stop_str("Shrinkage shape should be a numeric value"),
+                .stop_str("Grit shape should be a numeric value"),
         )
-        .unwrap_or_else(|| stop!("Shape of shrinkage is not valid"));
+        .unwrap_or_else(|| stop!("Shape 1 of grit is not valid"));
         let shape2 = Shape::new(
             list.get(1)
                 .unwrap()
                 .as_f64()
-                .stop_str("Shrinkage shape should be a numeric value"),
+                .stop_str("Grit shape should be a numeric value"),
         )
-        .unwrap_or_else(|| stop!("Shape of shrinkage is not valid"));
+        .unwrap_or_else(|| stop!("Shape 2 of grit is not valid"));
         GritHyperparameters { shape1, shape2 }
     }
 }
