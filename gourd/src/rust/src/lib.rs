@@ -17,7 +17,9 @@ use crate::state::{McmcTuning, State};
 use dahl_randompartition::clust::Clustering;
 use dahl_randompartition::cpp::CppParameters;
 use dahl_randompartition::crp::CrpParameters;
-use dahl_randompartition::distr::{ProbabilityMassFunction, ProbabilityMassFunctionPartial};
+use dahl_randompartition::distr::{
+    HasGrit, ProbabilityMassFunction, ProbabilityMassFunctionPartial,
+};
 use dahl_randompartition::epa::EpaParameters;
 use dahl_randompartition::fixed::FixedPartitionParameters;
 use dahl_randompartition::jlp::JlpParameters;
