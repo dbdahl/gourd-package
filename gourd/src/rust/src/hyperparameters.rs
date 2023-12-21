@@ -1,4 +1,3 @@
-use crate::validate_list;
 use dahl_randompartition::prelude::*;
 use nalgebra::{DMatrix, DVector};
 use roxido::*;
@@ -9,13 +8,13 @@ pub struct Hyperparameters {
     precision_response_rate: Rate,
     global_coefficients_mean: DVector<f64>,
     global_coefficients_precision: DMatrix<f64>,
-    global_coefficients_precision_times_mean: DVector<f64>,
     clustered_coefficients_mean: DVector<f64>,
     clustered_coefficients_precision: DMatrix<f64>,
+    global_coefficients_precision_times_mean: DVector<f64>,
     clustered_coefficients_precision_times_mean: DVector<f64>,
     clustered_coefficients_precision_l_inv_transpose: DMatrix<f64>,
-    pub shrinkage_option: Option<ShrinkageHyperparameters>,
-    pub grit_option: Option<GritHyperparameters>,
+    pub shrinkage: Option<ShrinkageHyperparameters>,
+    pub grit: Option<GritHyperparameters>,
 }
 
 #[derive(Debug)]
@@ -25,39 +24,17 @@ pub struct ShrinkageHyperparameters {
     pub rate: Rate,
 }
 
-impl ShrinkageHyperparameters {
-    pub fn from_r(shrinkage: RObject) -> ShrinkageHyperparameters {
-        let list = validate_list(shrinkage, &["reference", "shape", "rate"], "shrinkage");
-        let reference_rval = list.get(0).stop();
-        let reference = if reference_rval.is_null() {
-            None
-        } else {
-            Some(
-                reference_rval
-                    .as_usize()
-                    .stop_str("Shrinkage reference should be an integer")
-                    - 1,
-            )
+impl FromR for ShrinkageHyperparameters {
+    fn from_r(x: RObject, _pc: &mut Pc) -> Result<Self, String> {
+        let x = x.as_list()?;
+        let mut map = x.make_map();
+        let result = Self {
+            reference: map.get("reference")?.as_usize().ok(),
+            shape: Shape::new(map.get("shape")?.as_f64()?).ok_or("Invalid shape")?,
+            rate: Rate::new(map.get("rate")?.as_f64()?).ok_or("Invalid rate")?,
         };
-        let shape = Shape::new(
-            list.get(1)
-                .unwrap()
-                .as_f64()
-                .stop_str("Shrinkage shape should be a numeric value"),
-        )
-        .unwrap_or_else(|| stop!("Shape of shrinkage is not valid"));
-        let rate = Rate::new(
-            list.get(2)
-                .unwrap()
-                .as_f64()
-                .stop_str("Shrinkage rate should be a numeric value"),
-        )
-        .unwrap_or_else(|| stop!("Rate of shrinkage is not valid"));
-        ShrinkageHyperparameters {
-            reference,
-            shape,
-            rate,
-        }
+        map.exhaustive()?;
+        Ok(result)
     }
 }
 
@@ -67,53 +44,60 @@ pub struct GritHyperparameters {
     pub shape2: Shape,
 }
 
-impl GritHyperparameters {
-    pub fn from_r(grit: RObject) -> GritHyperparameters {
-        let list = validate_list(grit, &["shape1", "shape2"], "grit");
-        let shape1 = Shape::new(
-            list.get(0)
-                .unwrap()
-                .as_f64()
-                .stop_str("Grit shape should be a numeric value"),
-        )
-        .unwrap_or_else(|| stop!("Shape 1 of grit is not valid"));
-        let shape2 = Shape::new(
-            list.get(1)
-                .unwrap()
-                .as_f64()
-                .stop_str("Grit shape should be a numeric value"),
-        )
-        .unwrap_or_else(|| stop!("Shape 2 of grit is not valid"));
-        GritHyperparameters { shape1, shape2 }
+impl FromR for GritHyperparameters {
+    fn from_r(x: RObject, _pc: &mut Pc) -> Result<Self, String> {
+        let x = x.as_list()?;
+        let mut map = x.make_map();
+        let result = Self {
+            shape1: Shape::new(map.get("shape1")?.as_f64()?).ok_or("Invalid shape1")?,
+            shape2: Shape::new(map.get("shape2")?.as_f64()?).ok_or("Invalid shape2")?,
+        };
+        map.exhaustive()?;
+        Ok(result)
     }
 }
 
-impl Hyperparameters {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        precision_response_shape: Shape,
-        precision_response_rate: Rate,
-        global_coefficients_mean: DVector<f64>,
-        global_coefficients_precision: DMatrix<f64>,
-        clustered_coefficients_mean: DVector<f64>,
-        clustered_coefficients_precision: DMatrix<f64>,
-        shrinkage_option: Option<ShrinkageHyperparameters>,
-        grit_option: Option<GritHyperparameters>,
-    ) -> Option<Self> {
-        if global_coefficients_mean.len() != global_coefficients_mean.nrows() {
-            return None;
-        }
-        if !global_coefficients_precision.is_square() {
-            return None;
-        }
-        // Check of positive semi-definiteness?
-        if clustered_coefficients_mean.len() != clustered_coefficients_mean.nrows() {
-            return None;
-        }
-        if !clustered_coefficients_precision.is_square() {
-            return None;
-        }
-        // Check of positive semi-definiteness?
+fn helper_mean_precision(
+    map: &mut roxido::r::RListMap,
+    vector_name: &str,
+    matrix_name: &str,
+    pc: &mut Pc,
+) -> Result<(DVector<f64>, DMatrix<f64>), String> {
+    let r1 = DVector::from_column_slice(
+        map.get(vector_name)?
+            .as_vector()?
+            .to_mode_double(pc)
+            .slice(),
+    );
+    let n = r1.len();
+    let x = map.get(matrix_name)?.as_matrix()?.to_mode_double(pc);
+    if x.nrow() != n || x.ncol() != n {
+        return Err(format!(
+            "To match '{}', '{}' is expected to be a {}-by-{} square matrix",
+            vector_name, matrix_name, n, n
+        ));
+    }
+    let r2 = DMatrix::from_column_slice(n, n, x.slice());
+    Ok((r1, r2))
+}
+
+impl FromR for Hyperparameters {
+    fn from_r(x: RObject, pc: &mut Pc) -> Result<Self, String> {
+        let x = x.as_list()?;
+        let mut map = x.make_map();
+        let (global_coefficients_mean, global_coefficients_precision) = helper_mean_precision(
+            &mut map,
+            "global_coefficients_mean",
+            "global_coefficients_precision",
+            pc,
+        )?;
+        let (clustered_coefficients_mean, clustered_coefficients_precision) =
+            helper_mean_precision(
+                &mut map,
+                "clustered_coefficients_mean",
+                "clustered_coefficients_precision",
+                pc,
+            )?;
         let global_coefficients_precision_times_mean =
             global_coefficients_precision.clone() * &global_coefficients_mean;
         let clustered_coefficients_precision_times_mean =
@@ -121,130 +105,35 @@ impl Hyperparameters {
         let clustered_coefficients_precision_l_inv_transpose =
             match crate::mvnorm::prepare(clustered_coefficients_precision.clone()) {
                 Some(lit) => lit,
-                None => return None,
+                None => return Err("Cannot decompose clustered coefficients precision".to_owned()),
             };
-        Some(Self {
-            precision_response_shape,
-            precision_response_rate,
+        let result = Self {
+            precision_response_shape: Shape::new(map.get("precision_response_shape")?.as_f64()?)
+                .ok_or("Invalid shape for response precision")?,
+            precision_response_rate: Rate::new(map.get("precision_response_rate")?.as_f64()?)
+                .ok_or("Invalid rate for response precision")?,
             global_coefficients_mean,
             global_coefficients_precision,
-            global_coefficients_precision_times_mean,
             clustered_coefficients_mean,
             clustered_coefficients_precision,
+            global_coefficients_precision_times_mean,
             clustered_coefficients_precision_times_mean,
             clustered_coefficients_precision_l_inv_transpose,
-            shrinkage_option,
-            grit_option,
-        })
-    }
-
-    pub fn from_r(hyperparameters: RObject, pc: &mut Pc) -> Self {
-        let hyperparameters = validate_list(
-            hyperparameters,
-            &[
-                "precision_response_shape",
-                "precision_response_rate",
-                "global_coefficients_mean",
-                "global_coefficients_precision",
-                "clustered_coefficients_mean",
-                "clustered_coefficients_precision",
-                "shrinkage",
-                "grit",
-            ],
-            "hyperparameters",
-        );
-        let precision_response_shape = Shape::new(
-            hyperparameters
-                .get(0)
-                .unwrap()
-                .as_f64()
-                .stop_str("Invalid rate parameter for precision response"),
-        )
-        .unwrap_or_else(|| stop!("Invalid shape parameter for precision response"));
-        let precision_response_rate = Rate::new(
-            hyperparameters
-                .get(1)
-                .unwrap()
-                .as_f64()
-                .stop_str("Invalid rate parameter for precision response"),
-        )
-        .unwrap_or_else(|| stop!("Invalid rate parameter for precision response"));
-        let global_coefficients_mean = DVector::from_column_slice(
-            hyperparameters
-                .get(2)
-                .unwrap()
-                .as_vector()
-                .stop_str("Invalid global coefficients mean")
-                .to_mode_double(pc)
-                .slice(),
-        );
-        let global_coefficients_precision_rval = hyperparameters
-            .get(3)
-            .stop()
-            .as_matrix()
-            .stop_str("Precision matrix of the global coefficients should be a matrix")
-            .to_mode_double(pc);
-        let nrows = global_coefficients_precision_rval.nrow();
-        let ncols = global_coefficients_precision_rval.ncol();
-        if nrows != ncols {
-            stop!("Precision matrix of the global coefficients should be a square matrix");
-        }
-        if global_coefficients_mean.len() != nrows {
-            stop!("The dimensions of the precision matrix of the global coefficients does not match it's mean");
-        }
-        let global_coefficients_precision =
-            DMatrix::from_column_slice(nrows, ncols, global_coefficients_precision_rval.slice());
-        let clustered_coefficients_mean = DVector::from_column_slice(
-            hyperparameters
-                .get(4)
-                .stop()
-                .as_vector()
-                .stop_str("Invalid clustered coefficients mean")
-                .to_mode_double(pc)
-                .slice(),
-        );
-        let clustered_coefficients_precision_rval = hyperparameters
-            .get(5)
-            .stop()
-            .as_matrix()
-            .stop_str("Precision matrix of the clustered coefficients should be a matrix")
-            .to_mode_double(pc);
-        let nrows = clustered_coefficients_precision_rval.nrow();
-        let ncols = clustered_coefficients_precision_rval.ncol();
-        if nrows != ncols {
-            stop!("Precision matrix of the clustered coefficients should be a square matrix");
-        }
-        if clustered_coefficients_mean.len() != nrows {
-            stop!("The dimensions of the precision matrix of the clustered coefficients does not match it's mean");
-        }
-        let clustered_coefficients_precision_slice = clustered_coefficients_precision_rval.slice();
-        let clustered_coefficients_precision =
-            DMatrix::from_column_slice(nrows, ncols, clustered_coefficients_precision_slice);
-        let shrinkage_rval = hyperparameters.get(6).stop();
-        let shrinkage_option = if shrinkage_rval.is_null() {
-            None
-        } else {
-            Some(ShrinkageHyperparameters::from_r(shrinkage_rval))
+            shrinkage: match map.get("shrinkage")?.option() {
+                Some(x) => Some(ShrinkageHyperparameters::from_r(x, pc)?),
+                None => None,
+            },
+            grit: match map.get("grit")?.option() {
+                Some(x) => Some(GritHyperparameters::from_r(x, pc)?),
+                None => None,
+            },
         };
-        let grit_rval = hyperparameters.get(7).stop();
-        let grit_option = if grit_rval.is_null() {
-            None
-        } else {
-            Some(GritHyperparameters::from_r(grit_rval))
-        };
-        Self::new(
-            precision_response_shape,
-            precision_response_rate,
-            global_coefficients_mean,
-            global_coefficients_precision,
-            clustered_coefficients_mean,
-            clustered_coefficients_precision,
-            shrinkage_option,
-            grit_option,
-        )
-        .unwrap()
+        map.exhaustive()?;
+        Ok(result)
     }
+}
 
+impl Hyperparameters {
     pub fn n_global_covariates(&self) -> usize {
         self.global_coefficients_mean.len()
     }

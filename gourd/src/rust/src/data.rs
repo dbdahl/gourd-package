@@ -23,21 +23,25 @@ impl Data {
         global_covariates: DMatrix<f64>,
         clustered_covariates: DMatrix<f64>,
         item_sizes: Vec<usize>,
-    ) -> Option<Self> {
+    ) -> Result<Self, String> {
         let n_observations = response.nrows();
         if global_covariates.nrows() != n_observations
             || clustered_covariates.nrows() != n_observations
         {
-            return None;
+            return Err(format!("Inconsistent number of row...\n    response: {}\n    global_covariates: {}\n    clustered_covariates: {}", n_observations, global_covariates.nrows(), clustered_covariates.nrows()));
         }
         let membership_generator = MembershipGenerator::new(item_sizes);
         if membership_generator.n_observations() != n_observations {
-            return None;
+            return Err(format!(
+                "Item sizes don't add up...\n    response: {}\n    item_sizes: {}",
+                n_observations,
+                membership_generator.n_observations()
+            ));
         }
         let global_covariates_transpose = global_covariates.transpose();
         let global_covariates_transpose_times_self =
             global_covariates_transpose.clone() * &global_covariates;
-        Some(Self {
+        Ok(Self {
             response,
             global_covariates,
             global_covariates_transpose,
@@ -46,47 +50,6 @@ impl Data {
             membership_generator,
             missing: Vec::new(),
         })
-    }
-
-    pub fn from_r(data: RObject, pc: &mut Pc) -> Self {
-        let data = data.as_list().stop();
-        let response = data
-            .get(0)
-            .stop()
-            .as_vector()
-            .stop_str("Element should be a vector.")
-            .to_mode_double(pc);
-        let response_slice = response.slice();
-        let n_items = response_slice.len();
-        let response = DVector::from_column_slice(response_slice);
-        let global_covariates_rval = data
-            .get(1)
-            .stop()
-            .as_matrix()
-            .stop_str("Element should be a matrix.")
-            .to_mode_double(pc);
-        let global_covariates_slice = global_covariates_rval.slice();
-        let n_global_covariates = global_covariates_rval.ncol();
-        let global_covariates =
-            DMatrix::from_column_slice(n_items, n_global_covariates, global_covariates_slice);
-        let clustered_covariates_rval = data.get(2).unwrap().as_matrix().stop().to_mode_double(pc);
-        let clustered_covariates_slice = clustered_covariates_rval.slice();
-        let n_clustered_covariates = clustered_covariates_rval.ncol();
-        let clustered_covariates =
-            DMatrix::from_column_slice(n_items, n_clustered_covariates, clustered_covariates_slice);
-        let item_sizes = data.get(3).stop().as_vector().stop().to_mode_integer(pc);
-        let item_sizes_slice = item_sizes.slice();
-        let item_sizes: Vec<_> = item_sizes_slice
-            .iter()
-            .map(|x| usize::try_from(*x).unwrap())
-            .collect();
-        Data::new(
-            response,
-            global_covariates,
-            clustered_covariates,
-            item_sizes,
-        )
-        .unwrap()
     }
 
     pub fn declare_missing(&mut self, items: Vec<usize>) {
@@ -165,5 +128,45 @@ impl Data {
 
     pub fn missing(&self) -> &[(usize, DVector<f64>)] {
         &self.missing
+    }
+}
+
+impl FromR for Data {
+    fn from_r(x: RObject, pc: &mut Pc) -> Result<Self, String> {
+        let x = x.as_list()?;
+        let mut map = x.make_map();
+        let response = map.get("response")?.as_vector()?.to_mode_double(pc);
+        let response_slice = response.slice();
+        let n_items = response_slice.len();
+        let response = DVector::from_column_slice(response_slice);
+        let global_covariates_rval = map
+            .get("global_covariates")?
+            .as_matrix()?
+            .to_mode_double(pc);
+        let global_covariates_slice = global_covariates_rval.slice();
+        let n_global_covariates = global_covariates_rval.ncol();
+        let global_covariates =
+            DMatrix::from_column_slice(n_items, n_global_covariates, global_covariates_slice);
+        let clustered_covariates_rval = map
+            .get("clustered_covariates")?
+            .as_matrix()?
+            .to_mode_double(pc);
+        let clustered_covariates_slice = clustered_covariates_rval.slice();
+        let n_clustered_covariates = clustered_covariates_rval.ncol();
+        let clustered_covariates =
+            DMatrix::from_column_slice(n_items, n_clustered_covariates, clustered_covariates_slice);
+        let item_sizes = map.get("item_sizes")?.as_vector()?.to_mode_integer(pc);
+        let item_sizes_slice = item_sizes.slice();
+        let item_sizes: Vec<_> = item_sizes_slice
+            .iter()
+            .map(|x| usize::try_from(*x).unwrap())
+            .collect();
+        map.exhaustive()?;
+        Data::new(
+            response,
+            global_covariates,
+            clustered_covariates,
+            item_sizes,
+        )
     }
 }

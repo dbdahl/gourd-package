@@ -29,7 +29,7 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
     if ( ( length(missingItems) > 0 ) && ( ! is.numeric(missingItems) || min(missingItems) < 1 || max(missingItems) > n_items ) ) {
       stop("Elements of 'missing' are out of range.")
     }
-    list(obj = .Call(.data_r2rust, data, missingItems), n_items = n_items, n_global_coefficients = ncol(data$global_covariates), n_clustered_coefficients = ncol(data$clustered_covariates))
+    list(obj = .Call(.data_encode, data, missingItems), n_items = n_items, n_global_coefficients = ncol(data$global_covariates), n_clustered_coefficients = ncol(data$clustered_covariates))
   }
   dataList <- verifyData(data)
   if (!is.null(validationData)) {
@@ -83,8 +83,8 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
       stop("Inconsistent number of clustered covariates.")
     }
   }
-  state <- .Call(.state_r2rust, state)
-  hyperparameters <- .Call(.hyperparameters_r2rust, hyperparameters)
+  state <- .Call(.state_encode, state)
+  hyperparameters <- .Call(.hyperparameters_encode, hyperparameters)
   monitor <- .Call(.monitor_new)
   partitionDistribution <- pumpkin::mkDistrPtr(partitionDistribution)
   rngs <- .Call(.rngs_new)
@@ -133,7 +133,7 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
       }
     }
     if ( save$samples ) {
-      tmp <- .Call(.state_rust2r, state)
+      tmp <- .Call(.state_decode, state)
       samples$precision_response[i] <- tmp[[1]]
       samples$global_coefficients[i,] <- tmp[[2]]
       samples$clustered_coefficients[[i]] <- tmp[[4]]

@@ -28,117 +28,32 @@ impl State {
         global_coefficients: DVector<f64>,
         clustering: Clustering,
         clustered_coefficients: Vec<DVector<f64>>,
-    ) -> Option<Self> {
+    ) -> Result<Self, String> {
         if precision_response <= 0.0 {
-            return None;
+            return Err("Response precision must be nonnegative".to_owned());
         }
         if clustered_coefficients.len() != clustering.max_label() + 1 {
-            return None;
+            return Err(format!(
+                "Number of clusters indicated by number of clustered coefficients ({}) does not match the number indicated by the clustering ({})"
+                    , clustered_coefficients.len(), clustering.max_label()+1
+            ));
         }
         let ncol = clustered_coefficients[0].len();
         for coef in &clustered_coefficients {
             if coef.len() != ncol {
-                return None;
+                return Err(format!(
+                    "Inconsistent number of clustered coefficients... {} vs {}",
+                    ncol,
+                    coef.len()
+                ));
             }
         }
-        Some(Self {
+        Ok(Self {
             precision_response,
             global_coefficients,
             clustering,
             clustered_coefficients,
         })
-    }
-
-    pub fn from_r(state: RObject, pc: &mut Pc) -> Self {
-        let list = validate_list(
-            state,
-            &[
-                "precision_response",
-                "global_coefficients",
-                "clustering",
-                "clustered_coefficients",
-            ],
-            "state",
-        );
-        let precision_response = list
-            .get(0)
-            .stop()
-            .as_f64()
-            .stop_str("Precision of response should be a numeric");
-        let global_coefficients_slice = list
-            .get(1)
-            .stop()
-            .as_vector()
-            .stop_str("Global coefficients should be a vector")
-            .to_mode_double(pc)
-            .slice();
-        let global_coefficients = DVector::from_column_slice(global_coefficients_slice);
-        let clustering = {
-            let clustering_slice = list
-                .get(2)
-                .stop()
-                .as_vector()
-                .stop_str("'clustering' should be a vector")
-                .to_mode_integer(pc)
-                .slice();
-            let clust: Vec<_> = clustering_slice.iter().map(|&x| (x as usize) - 1).collect();
-            Clustering::from_vector(clust)
-        };
-        if clustering.n_clusters() != clustering.max_label() + 1 {
-            stop!("'clustering' should use consecutive labels starting at 1")
-        }
-        let clustered_coefficients_rval = list
-            .get(3)
-            .stop()
-            .as_list()
-            .stop_str("'clustered_coefficients' should be a list");
-        let mut clustered_coefficients = Vec::with_capacity(clustered_coefficients_rval.len());
-        let mut n_clustered_coefficients = None;
-        for i in 0..clustered_coefficients.capacity() {
-            let element = clustered_coefficients_rval
-                .get(i)
-                .unwrap()
-                .as_vector()
-                .stop_str("Elements of 'clustered coefficients' should be vectors");
-            let slice = element.to_mode_double(pc).slice();
-            match n_clustered_coefficients {
-                None => n_clustered_coefficients = Some(slice.len()),
-                Some(n) => {
-                    if n != slice.len() {
-                        stop!("Inconsistent number of columns for clustered covariates")
-                    }
-                }
-            };
-            clustered_coefficients.push(DVector::from_column_slice(slice));
-        }
-        Self::new(
-            precision_response,
-            global_coefficients,
-            clustering,
-            clustered_coefficients,
-        )
-        .unwrap()
-    }
-
-    pub fn to_r(&self, pc: &mut Pc) -> RObject {
-        let result = R::new_list(4, pc);
-        result.set(0, &self.precision_response.to_r(pc)).stop();
-        result
-            .set(1, &self.global_coefficients.as_slice().to_r(pc))
-            .stop();
-        let x: Vec<_> = self
-            .clustering
-            .allocation()
-            .iter()
-            .map(|&label| i32::try_from(label + 1).unwrap())
-            .collect();
-        result.set(2, &(&x[..]).to_r(pc)).stop();
-        let rval = R::new_list(self.clustered_coefficients.len(), pc);
-        for (i, coef) in self.clustered_coefficients.iter().enumerate() {
-            rval.set(i, &coef.as_slice().to_r(pc)).unwrap();
-        }
-        result.set(3, &rval).stop();
-        result.as_unknown()
     }
 
     pub fn precision_response(&self) -> f64 {
@@ -541,6 +456,101 @@ impl State {
     }
 }
 
+impl ToR1<roxido::r::Vector, roxido::r::List> for State {
+    fn to_r(&self, pc: &mut Pc) -> RObject<roxido::r::Vector, roxido::r::List> {
+        let result = R::new_list(4, pc);
+        result.set(0, self.precision_response.to_r(pc)).stop();
+        result
+            .set(1, self.global_coefficients.as_slice().to_r(pc))
+            .stop();
+        let x: Vec<_> = self
+            .clustering
+            .allocation()
+            .iter()
+            .map(|&label| i32::try_from(label + 1).unwrap())
+            .collect();
+        result.set(2, (&x[..]).to_r(pc)).stop();
+        let rval = R::new_list(self.clustered_coefficients.len(), pc);
+        for (i, coef) in self.clustered_coefficients.iter().enumerate() {
+            rval.set(i, coef.as_slice().to_r(pc)).unwrap();
+        }
+        result.set(3, rval).stop();
+        result
+    }
+}
+
+impl FromR for State {
+    fn from_r(state: RObject, pc: &mut Pc) -> Result<Self, String> {
+        let list = validate_list(
+            state,
+            &[
+                "precision_response",
+                "global_coefficients",
+                "clustering",
+                "clustered_coefficients",
+            ],
+            "state",
+        );
+        let precision_response = list
+            .get(0)
+            .stop()
+            .as_f64()
+            .stop_str("Precision of response should be a numeric");
+        let global_coefficients_slice = list
+            .get(1)
+            .stop()
+            .as_vector()
+            .stop_str("Global coefficients should be a vector")
+            .to_mode_double(pc)
+            .slice();
+        let global_coefficients = DVector::from_column_slice(global_coefficients_slice);
+        let clustering = {
+            let clustering_slice = list
+                .get(2)
+                .stop()
+                .as_vector()
+                .stop_str("'clustering' should be a vector")
+                .to_mode_integer(pc)
+                .slice();
+            let clust: Vec<_> = clustering_slice.iter().map(|&x| (x as usize) - 1).collect();
+            Clustering::from_vector(clust)
+        };
+        if clustering.n_clusters() != clustering.max_label() + 1 {
+            stop!("'clustering' should use consecutive labels starting at 1")
+        }
+        let clustered_coefficients_rval = list
+            .get(3)
+            .stop()
+            .as_list()
+            .stop_str("'clustered_coefficients' should be a list");
+        let mut clustered_coefficients = Vec::with_capacity(clustered_coefficients_rval.len());
+        let mut n_clustered_coefficients = None;
+        for i in 0..clustered_coefficients.capacity() {
+            let element = clustered_coefficients_rval
+                .get(i)
+                .unwrap()
+                .as_vector()
+                .stop_str("Elements of 'clustered coefficients' should be vectors");
+            let slice = element.to_mode_double(pc).slice();
+            match n_clustered_coefficients {
+                None => n_clustered_coefficients = Some(slice.len()),
+                Some(n) => {
+                    if n != slice.len() {
+                        stop!("Inconsistent number of columns for clustered covariates")
+                    }
+                }
+            };
+            clustered_coefficients.push(DVector::from_column_slice(slice));
+        }
+        Self::new(
+            precision_response,
+            global_coefficients,
+            clustering,
+            clustered_coefficients,
+        )
+    }
+}
+
 #[derive(Debug)]
 pub struct McmcTuning {
     pub update_precision_response: bool,
@@ -552,88 +562,32 @@ pub struct McmcTuning {
     pub grit_slice_step_size: Option<f64>,
 }
 
-impl McmcTuning {
-    pub fn new(
-        update_precision_response: bool,
-        update_global_coefficients: bool,
-        update_clustering: bool,
-        update_clustered_coefficients: bool,
-        n_items_per_permutation_update: Option<u32>,
-        shrinkage_slice_step_size: Option<f64>,
-        grit_slice_step_size: Option<f64>,
-    ) -> Result<Self, &'static str> {
-        if let Some(s) = shrinkage_slice_step_size {
-            if s.is_nan() || s.is_infinite() || s < 0.0 {
-                return Err("shrinkage_slice_step_size must be a finite nonpositive number.");
-            }
-        }
-        Ok(Self {
-            update_precision_response,
-            update_global_coefficients,
-            update_clustering,
-            update_clustered_coefficients,
-            n_items_per_permutation_update,
-            shrinkage_slice_step_size,
-            grit_slice_step_size,
-        })
-    }
-    pub fn from_r(x: RObject, _pc: &mut Pc) -> Self {
-        let list = validate_list(
-            x,
-            &[
-                "update_precision_response",
-                "update_global_coefficients",
-                "update_clustering",
-                "update_clustered_coefficients",
-                "n_items_per_permutation_update",
-                "shrinkage_slice_step_size",
-                "grit_slice_step_size",
-            ],
-            "mcmc_tuning",
-        );
-        let y = list.get(5).stop();
-        let shrinkage_slice_step_size = if y.is_null() || y.is_na() || y.is_nan() {
-            None
-        } else {
-            Some(
-                y.as_f64()
-                    .stop_str("Step size for shrinkage should be numeric"),
-            )
+impl FromR for McmcTuning {
+    fn from_r(x: RObject, _pc: &mut Pc) -> Result<Self, String> {
+        let x = x.as_list()?;
+        let mut map = x.make_map();
+        let result = McmcTuning {
+            update_precision_response: map.get("update_precision_response")?.as_bool()?,
+            update_global_coefficients: map.get("update_global_coefficients")?.as_bool()?,
+            update_clustering: map.get("update_clustering")?.as_bool()?,
+            update_clustered_coefficients: map.get("update_clustered_coefficients")?.as_bool()?,
+            n_items_per_permutation_update: match map
+                .get("n_items_per_permutation_update")?
+                .option()
+            {
+                Some(x) => Some(u32::try_from(x.as_i32()?).map_err(|w| w.to_string())?),
+                None => None,
+            },
+            shrinkage_slice_step_size: match map.get("shrinkage_slice_step_size")?.option() {
+                Some(x) => Some(x.as_f64()?),
+                None => None,
+            },
+            grit_slice_step_size: match map.get("grit_slice_step_size")?.option() {
+                Some(x) => Some(x.as_f64()?),
+                None => None,
+            },
         };
-        let y = list.get(6).stop();
-        let grit_slice_step_size = if y.is_null() || y.is_na() || y.is_nan() {
-            None
-        } else {
-            Some(y.as_f64().stop_str("Step size for grit should be numeric"))
-        };
-        Self::new(
-            list.get(0)
-                .stop()
-                .as_bool()
-                .stop_str("Update precision response should be a logical"),
-            list.get(1)
-                .stop()
-                .as_bool()
-                .stop_str("Update global coefficients should be a logical"),
-            list.get(2)
-                .stop()
-                .as_bool()
-                .stop_str("Update clustering should be a logical"),
-            list.get(3)
-                .stop()
-                .as_bool()
-                .stop_str("Update clustered coefficients should be a logical"),
-            Some(
-                list.get(4)
-                    .stop()
-                    .as_i32()
-                    .stop_str("Number of items per permutation update should be an integer")
-                    .try_into()
-                    .unwrap(),
-            ),
-            shrinkage_slice_step_size,
-            grit_slice_step_size,
-        )
-        .unwrap()
+        map.exhaustive()?;
+        Ok(result)
     }
 }
