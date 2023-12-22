@@ -156,12 +156,9 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
 }
 
 #' @export
-fit_hierarchical_model <- function(all, unit_mcmc_tuning, global_hyperparameters, global_mcmc_tuning) {
-  check_list(unit_mcmc_tuning, "bbbbid")
-  check_list(global_hyperparameters, "ddddidd")
-  check_list(global_mcmc_tuning, "iiibiidl")
+fit_hierarchical_model <- function(all, unit_mcmc_tuning, global_hyperparameters, global_mcmc_tuning, validation_data_list) {
   all_ptr <- .Call(.all, all)
-  .Call(.fit_hierarchical_model, all_ptr, unit_mcmc_tuning, global_hyperparameters, global_mcmc_tuning)
+  .Call(.fit_hierarchical_model, all_ptr, unit_mcmc_tuning, global_hyperparameters, global_mcmc_tuning, validation_data_list)
 }
 
 #' @export

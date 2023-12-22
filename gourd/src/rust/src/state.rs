@@ -557,7 +557,8 @@ pub struct McmcTuning {
     pub update_global_coefficients: bool,
     pub update_clustering: bool,
     pub update_clustered_coefficients: bool,
-    pub n_items_per_permutation_update: Option<u32>,
+    pub n_permutation_updates_per_scan: usize,
+    pub n_items_per_permutation_update: usize,
     pub shrinkage_slice_step_size: Option<f64>,
     pub grit_slice_step_size: Option<f64>,
 }
@@ -571,13 +572,12 @@ impl FromR for McmcTuning {
             update_global_coefficients: map.get("update_global_coefficients")?.as_bool()?,
             update_clustering: map.get("update_clustering")?.as_bool()?,
             update_clustered_coefficients: map.get("update_clustered_coefficients")?.as_bool()?,
-            n_items_per_permutation_update: match map
+            n_permutation_updates_per_scan: map
+                .get("n_permutation_updates_per_scan")?
+                .as_usize()?,
+            n_items_per_permutation_update: map
                 .get("n_items_per_permutation_update")?
-                .option()
-            {
-                Some(x) => Some(u32::try_from(x.as_i32()?).map_err(|w| w.to_string())?),
-                None => None,
-            },
+                .as_usize()?,
             shrinkage_slice_step_size: match map.get("shrinkage_slice_step_size")?.option() {
                 Some(x) => Some(x.as_f64()?),
                 None => None,

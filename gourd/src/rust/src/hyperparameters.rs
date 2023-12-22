@@ -13,8 +13,8 @@ pub struct Hyperparameters {
     global_coefficients_precision_times_mean: DVector<f64>,
     clustered_coefficients_precision_times_mean: DVector<f64>,
     clustered_coefficients_precision_l_inv_transpose: DMatrix<f64>,
-    pub shrinkage: Option<ShrinkageHyperparameters>,
-    pub grit: Option<GritHyperparameters>,
+    pub shrinkage: ShrinkageHyperparameters,
+    pub grit: GritHyperparameters,
 }
 
 #[derive(Debug)]
@@ -119,14 +119,8 @@ impl FromR for Hyperparameters {
             global_coefficients_precision_times_mean,
             clustered_coefficients_precision_times_mean,
             clustered_coefficients_precision_l_inv_transpose,
-            shrinkage: match map.get("shrinkage")?.option() {
-                Some(x) => Some(ShrinkageHyperparameters::from_r(x, pc)?),
-                None => None,
-            },
-            grit: match map.get("grit")?.option() {
-                Some(x) => Some(GritHyperparameters::from_r(x, pc)?),
-                None => None,
-            },
+            shrinkage: ShrinkageHyperparameters::from_r(map.get("shrinkage")?, pc)?,
+            grit: GritHyperparameters::from_r(map.get("grit")?, pc)?,
         };
         map.exhaustive()?;
         Ok(result)
