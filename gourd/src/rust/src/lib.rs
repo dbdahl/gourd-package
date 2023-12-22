@@ -235,6 +235,14 @@ fn validation_data_from_r(
     }
 }
 
+struct Timers {
+    units: TicToc,
+    anchor: TicToc,
+    permutation: TicToc,
+    shrinkage: TicToc,
+    grit: TicToc,
+}
+
 struct Results<'a> {
     rval: RObject<roxido::r::Vector, roxido::r::List>,
     counter: usize,
@@ -245,6 +253,7 @@ struct Results<'a> {
     shrinkages: &'a mut [f64],
     grits: &'a mut [f64],
     log_likelihoods: &'a mut [f64],
+    timers: Timers,
 }
 
 impl<'a> Results<'a> {
@@ -262,7 +271,7 @@ impl<'a> Results<'a> {
         let shrinkages_rval = R::new_vector_double(n_saves, pc);
         let grits_rval = R::new_vector_double(n_saves, pc);
         let log_likelihoods_rval = R::new_vector_double(n_saves, pc);
-        let rval = R::new_list(9, pc); // Extra 3 items for rates after looping.
+        let rval = R::new_list(10, pc); // Extra 4 items for rates after looping.
         rval.set_names(
             [
                 "unit_partitions",
@@ -273,6 +282,7 @@ impl<'a> Results<'a> {
                 "log_likelihood",
                 "permutation_acceptance_rate",
                 "shrinkage_slice_n_evaluations_rate",
+                "grit_slice_n_evaluations_rate",
                 "wall_times",
             ]
             .to_r(pc),
@@ -294,6 +304,13 @@ impl<'a> Results<'a> {
             shrinkages: shrinkages_rval.slice(),
             grits: grits_rval.slice(),
             log_likelihoods: log_likelihoods_rval.slice(),
+            timers: Timers {
+                units: TicToc::new(),
+                anchor: TicToc::new(),
+                permutation: TicToc::new(),
+                shrinkage: TicToc::new(),
+                grit: TicToc::new(),
+            },
         }
     }
 
@@ -323,6 +340,35 @@ impl<'a> Results<'a> {
         self.grits[self.counter] = grit;
         self.log_likelihoods[self.counter] = log_likelihoods;
         self.counter += 1;
+    }
+
+    fn finalize(
+        &mut self,
+        permutation_rate: f64,
+        shrinkage_slice_evaluations_rate: f64,
+        grit_slice_evaluations_rate: f64,
+        pc: &mut Pc,
+    ) {
+        self.rval.set(6, permutation_rate.to_r(pc)).stop();
+        self.rval
+            .set(7, shrinkage_slice_evaluations_rate.to_r(pc))
+            .stop();
+        self.rval
+            .set(8, grit_slice_evaluations_rate.to_r(pc))
+            .stop();
+        self.rval
+            .set(
+                9,
+                [
+                    self.timers.units.as_secs_f64(),
+                    self.timers.anchor.as_secs_f64(),
+                    self.timers.permutation.as_secs_f64(),
+                    self.timers.shrinkage.as_secs_f64(),
+                    self.timers.grit.as_secs_f64(),
+                ]
+                .to_r(pc),
+            )
+            .stop();
     }
 }
 
@@ -369,28 +415,15 @@ fn fit_temporal_model(
     );
     let mut partition_distribution =
         SpParameters::new(anchor, shrinkage, permutation, grit, baseline_distribution).unwrap();
-    struct Timers {
-        units: TicToc,
-        anchor: TicToc,
-        permutation: TicToc,
-        shrinkage: TicToc,
-        grit: TicToc,
-    }
-    let mut timers = Timers {
-        units: TicToc::new(),
-        anchor: TicToc::new(),
-        permutation: TicToc::new(),
-        shrinkage: TicToc::new(),
-        grit: TicToc::new(),
-    };
     let mut permutation_n_acceptances: u64 = 0;
     let mut shrinkage_slice_n_evaluations: u64 = 0;
+    let mut grit_slice_n_evaluations: u64 = 0;
     for iteration_counter in
         (0..global_mcmc_tuning.n_iterations).step_by(global_mcmc_tuning.thinning)
     {
         for _ in 0..global_mcmc_tuning.thinning {
             // Update each unit
-            timers.units.tic();
+            results.timers.units.tic();
             for time in 0..all.units.len() {
                 let (left, not_left) = all.units.split_at_mut(time);
                 if time == 0 {
@@ -461,7 +494,7 @@ fn fit_temporal_model(
                     );
                 }
             }
-            timers.units.toc();
+            results.timers.units.toc();
             // Helper
             let compute_log_likelihood = |pd: &SpParameters<CrpParameters>| {
                 all.units
@@ -470,7 +503,7 @@ fn fit_temporal_model(
                     .sum::<f64>()
             };
             // Update permutation
-            timers.permutation.tic();
+            results.timers.permutation.tic();
             if unit_mcmc_tuning.n_permutation_updates_per_scan > 0 {
                 let k = unit_mcmc_tuning.n_items_per_permutation_update;
                 let mut log_target_current: f64 = compute_log_likelihood(&partition_distribution);
@@ -492,9 +525,9 @@ fn fit_temporal_model(
                     }
                 }
             }
-            timers.permutation.toc();
+            results.timers.permutation.toc();
             // Update shrinkage
-            timers.shrinkage.tic();
+            results.timers.shrinkage.tic();
             if let Some(w) = unit_mcmc_tuning.shrinkage_slice_step_size {
                 if let Some(reference) = hyperparameters.shrinkage.reference {
                     let shrinkage_prior_distribution = Gamma::new(
@@ -530,9 +563,9 @@ fn fit_temporal_model(
                     }
                 }
             }
-            timers.shrinkage.toc();
+            results.timers.shrinkage.toc();
             // Update grit
-            timers.grit.tic();
+            results.timers.grit.tic();
             if let Some(w) = unit_mcmc_tuning.grit_slice_step_size {
                 let grit_prior_distribution = Beta::new(
                     hyperparameters.grit.shape1.get(),
@@ -561,10 +594,10 @@ fn fit_temporal_model(
                 //     ScalarShrinkage::new(_s_new).unwrap(),
                 // );
                 if iteration_counter >= global_mcmc_tuning.burnin {
-                    shrinkage_slice_n_evaluations += u64::from(n_evaluations);
+                    grit_slice_n_evaluations += u64::from(n_evaluations);
                 }
             }
-            timers.grit.toc();
+            results.timers.grit.toc();
         }
         // Report
         if iteration_counter >= global_mcmc_tuning.burnin {
@@ -602,36 +635,13 @@ fn fit_temporal_model(
         }
     }
     let denominator = (global_mcmc_tuning.n_saves() * global_mcmc_tuning.thinning) as f64;
-    results
-        .rval
-        .set(
-            5,
-            (permutation_n_acceptances as f64
-                / (unit_mcmc_tuning.n_permutation_updates_per_scan as f64 * denominator))
-                .to_r(pc),
-        )
-        .stop();
-    results
-        .rval
-        .set(
-            6,
-            (shrinkage_slice_n_evaluations as f64 / denominator).to_r(pc),
-        )
-        .stop();
-    results
-        .rval
-        .set(
-            7,
-            [
-                timers.units.as_secs_f64(),
-                timers.anchor.as_secs_f64(),
-                timers.permutation.as_secs_f64(),
-                timers.shrinkage.as_secs_f64(),
-                timers.grit.as_secs_f64(),
-            ]
-            .to_r(pc),
-        )
-        .stop();
+    results.finalize(
+        permutation_n_acceptances as f64
+            / (unit_mcmc_tuning.n_permutation_updates_per_scan as f64 * denominator),
+        shrinkage_slice_n_evaluations as f64 / denominator,
+        grit_slice_n_evaluations as f64 / denominator,
+        pc,
+    );
     results.rval
 }
 
@@ -693,28 +703,15 @@ fn fit_hierarchical_model(
     let anchor_update_permutation = Permutation::natural_and_fixed(all.n_items);
     let mut partition_distribution =
         SpParameters::new(anchor, shrinkage, permutation, grit, baseline_distribution).unwrap();
-    struct Timers {
-        units: TicToc,
-        anchor: TicToc,
-        permutation: TicToc,
-        shrinkage: TicToc,
-        grit: TicToc,
-    }
-    let mut timers = Timers {
-        units: TicToc::new(),
-        anchor: TicToc::new(),
-        permutation: TicToc::new(),
-        shrinkage: TicToc::new(),
-        grit: TicToc::new(),
-    };
     let mut permutation_n_acceptances: u64 = 0;
     let mut shrinkage_slice_n_evaluations: u64 = 0;
+    let mut grit_slice_n_evaluations: u64 = 0;
     for iteration_counter in
         (0..global_mcmc_tuning.n_iterations).step_by(global_mcmc_tuning.thinning)
     {
         for _ in 0..global_mcmc_tuning.thinning {
             // Update each unit
-            timers.units.tic();
+            results.timers.units.tic();
             all.units
                 .par_iter_mut()
                 .zip(rngs.par_iter_mut())
@@ -728,9 +725,9 @@ fn fit_hierarchical_model(
                         r2,
                     )
                 });
-            timers.units.toc();
+            results.timers.units.toc();
             // Update anchor
-            timers.anchor.tic();
+            results.timers.anchor.tic();
             let mut pd = partition_distribution.clone();
             let mut compute_log_likelihood = |item: usize, anchor: &Clustering| {
                 pd.anchor = anchor.clone();
@@ -751,7 +748,7 @@ fn fit_hierarchical_model(
                     &mut rng,
                 )
             }
-            timers.anchor.toc();
+            results.timers.anchor.toc();
             // Helper
             let compute_log_likelihood = |pd: &SpParameters<CrpParameters>| {
                 all.units
@@ -760,7 +757,7 @@ fn fit_hierarchical_model(
                     .sum::<f64>()
             };
             // Update permutation
-            timers.permutation.tic();
+            results.timers.permutation.tic();
             if unit_mcmc_tuning.n_permutation_updates_per_scan > 0 {
                 let k = unit_mcmc_tuning.n_items_per_permutation_update;
                 let mut log_target_current: f64 = compute_log_likelihood(&partition_distribution);
@@ -782,9 +779,9 @@ fn fit_hierarchical_model(
                     }
                 }
             }
-            timers.permutation.toc();
+            results.timers.permutation.toc();
             // Update shrinkage
-            timers.shrinkage.tic();
+            results.timers.shrinkage.tic();
             if let Some(w) = unit_mcmc_tuning.shrinkage_slice_step_size {
                 if let Some(reference) = hyperparameters.shrinkage.reference {
                     let shrinkage_prior_distribution = Gamma::new(
@@ -820,9 +817,9 @@ fn fit_hierarchical_model(
                     }
                 }
             }
-            timers.shrinkage.toc();
+            results.timers.shrinkage.toc();
             // Update grit
-            timers.grit.tic();
+            results.timers.grit.tic();
             if let Some(w) = unit_mcmc_tuning.grit_slice_step_size {
                 let grit_prior_distribution = Beta::new(
                     hyperparameters.grit.shape1.get(),
@@ -851,10 +848,10 @@ fn fit_hierarchical_model(
                 //     ScalarShrinkage::new(_s_new).unwrap(),
                 // );
                 if iteration_counter >= global_mcmc_tuning.burnin {
-                    shrinkage_slice_n_evaluations += u64::from(n_evaluations);
+                    grit_slice_n_evaluations += u64::from(n_evaluations);
                 }
             }
-            timers.grit.toc();
+            results.timers.grit.toc();
         }
         // Report
         if iteration_counter >= global_mcmc_tuning.burnin {
@@ -892,36 +889,13 @@ fn fit_hierarchical_model(
         }
     }
     let denominator = (global_mcmc_tuning.n_saves() * global_mcmc_tuning.thinning) as f64;
-    results
-        .rval
-        .set(
-            6,
-            (permutation_n_acceptances as f64
-                / (unit_mcmc_tuning.n_permutation_updates_per_scan as f64 * denominator))
-                .to_r(pc),
-        )
-        .stop();
-    results
-        .rval
-        .set(
-            7,
-            (shrinkage_slice_n_evaluations as f64 / denominator).to_r(pc),
-        )
-        .stop();
-    results
-        .rval
-        .set(
-            8,
-            [
-                timers.units.as_secs_f64(),
-                timers.anchor.as_secs_f64(),
-                timers.permutation.as_secs_f64(),
-                timers.shrinkage.as_secs_f64(),
-                timers.grit.as_secs_f64(),
-            ]
-            .to_r(pc),
-        )
-        .stop();
+    results.finalize(
+        permutation_n_acceptances as f64
+            / (unit_mcmc_tuning.n_permutation_updates_per_scan as f64 * denominator),
+        shrinkage_slice_n_evaluations as f64 / denominator,
+        grit_slice_n_evaluations as f64 / denominator,
+        pc,
+    );
     results.rval
 }
 
