@@ -116,26 +116,18 @@ fn permutation_to_r(permutation: &Permutation, rval: RObject<roxido::r::Vector, 
     }
 }
 
-fn scalar_shrinkage_to_r(shrinkage: &ScalarShrinkage, rval: RObject) {
-    rval.as_vector().stop().as_mode_double().stop().slice()[0] = shrinkage.get();
+fn scalar_shrinkage_to_r(shrinkage: &ScalarShrinkage, rval: RObject<roxido::r::Vector, f64>) {
+    rval.slice()[0] = shrinkage.get();
 }
 
-fn shrinkage_to_r(shrinkage: &Shrinkage, rval: RObject) {
-    for (x, y) in rval
-        .as_vector()
-        .stop()
-        .as_mode_double()
-        .stop()
-        .slice()
-        .iter_mut()
-        .zip(shrinkage.as_slice())
-    {
+fn shrinkage_to_r(shrinkage: &Shrinkage, rval: RObject<roxido::r::Vector, f64>) {
+    for (x, y) in rval.slice().iter_mut().zip(shrinkage.as_slice()) {
         *x = y.get()
     }
 }
 
-fn grit_to_r(grit: &Grit, rval: RObject) {
-    rval.as_vector().stop().as_mode_double().stop().slice()[0] = grit.get();
+fn grit_to_r(grit: &Grit, rval: RObject<roxido::r::Vector, f64>) {
+    rval.slice()[0] = grit.get();
 }
 
 struct Group {
@@ -908,9 +900,9 @@ fn fit(
     monitor: RObject,
     partition_distribution: RObject,
     mcmc_tuning: RObject,
-    permutation: RObject, // This is used to communicating temporary results back to R
-    shrinkage: RObject,   // This is used to communicating temporary results back to R
-    grit: RObject,        // This is used to communicating temporary results back to R
+    permutation_bucket: RObject, // This is used to communicating temporary results back to R
+    shrinkage_bucket: RObject,   // This is used to communicating temporary results back to R
+    grit_bucket: RObject,        // This is used to communicating temporary results back to R
     rngs: RObject,
 ) -> RObject {
     let n_updates: u32 = n_updates.as_i32().stop().try_into().unwrap();
@@ -936,7 +928,13 @@ fn fit(
     if data.n_items() != state.clustering.n_items() {
         stop!("Inconsistent number of items.")
     }
-    let permutation = permutation.as_vector().stop().to_mode_integer(pc);
+    let permutation_bucket = permutation_bucket
+        .as_vector()
+        .stop()
+        .as_mode_integer()
+        .stop();
+    let shrinkage_bucket = shrinkage_bucket.as_vector().stop().as_mode_double().stop();
+    let grit_bucket = grit_bucket.as_vector().stop().as_mode_double().stop();
     let rngs = rngs.as_list().stop();
     let getrng = |i: usize| {
         rngs.get(i)
@@ -960,7 +958,7 @@ fn fit(
             for _ in 0..n_updates {
                 state.mcmc_iteration(&mcmc_tuning, data, hyperparameters, partition_distribution, rng, rng2);
                 monitor.monitor(u32::try_from(mcmc_tuning.n_permutation_updates_per_scan).unwrap(), |n_updates| { dahl_randompartition::mcmc::update_permutation(n_updates, partition_distribution, u32::try_from(mcmc_tuning.n_items_per_permutation_update).unwrap(), &state.clustering, rng) });
-                permutation_to_r(&partition_distribution.permutation, permutation);
+                permutation_to_r(&partition_distribution.permutation, permutation_bucket);
             }
         }};
         ($tipe:ty, true, true, false, false) => {{
@@ -968,10 +966,10 @@ fn fit(
             for _ in 0..n_updates {
                 state.mcmc_iteration(&mcmc_tuning, data, hyperparameters, partition_distribution, rng, rng2);
                 monitor.monitor(u32::try_from(mcmc_tuning.n_permutation_updates_per_scan).unwrap(), |n_updates| { dahl_randompartition::mcmc::update_permutation(n_updates, partition_distribution, u32::try_from(mcmc_tuning.n_items_per_permutation_update).unwrap(), &state.clustering, rng) });
-                permutation_to_r(&partition_distribution.permutation, permutation);
+                permutation_to_r(&partition_distribution.permutation, permutation_bucket);
                 if let Some(w) = mcmc_tuning.shrinkage_slice_step_size {
                     dahl_randompartition::mcmc::update_scalar_shrinkage(1, partition_distribution, w, hyperparameters.shrinkage.shape, hyperparameters.shrinkage.rate, &state.clustering, rng);
-                    scalar_shrinkage_to_r(&partition_distribution.shrinkage, shrinkage);
+                    scalar_shrinkage_to_r(&partition_distribution.shrinkage, shrinkage_bucket);
                 }
             }
         }};
@@ -980,16 +978,16 @@ fn fit(
             for _ in 0..n_updates {
                 state.mcmc_iteration(&mcmc_tuning, data, hyperparameters, partition_distribution, rng, rng2);
                 monitor.monitor(u32::try_from(mcmc_tuning.n_permutation_updates_per_scan).unwrap(), |n_updates| { dahl_randompartition::mcmc::update_permutation(n_updates, partition_distribution, u32::try_from(mcmc_tuning.n_items_per_permutation_update).unwrap(), &state.clustering, rng) });
-                permutation_to_r(&partition_distribution.permutation, permutation);
+                permutation_to_r(&partition_distribution.permutation, permutation_bucket);
                 if let Some(w) = mcmc_tuning.shrinkage_slice_step_size {
                     if let Some(reference) = &hyperparameters.shrinkage.reference {
                         dahl_randompartition::mcmc::update_shrinkage(1, partition_distribution, *reference, w, hyperparameters.shrinkage.shape, hyperparameters.shrinkage.rate, &state.clustering, rng);
-                        shrinkage_to_r(&partition_distribution.shrinkage, shrinkage);
+                        shrinkage_to_r(&partition_distribution.shrinkage, shrinkage_bucket);
                     }
                 }
                 if let Some(w) = mcmc_tuning.grit_slice_step_size {
                     dahl_randompartition::mcmc::update_grit(1, partition_distribution, w, hyperparameters.grit.shape1, hyperparameters.grit.shape2, &state.clustering, rng);
-                    grit_to_r(&partition_distribution.grit, grit);
+                    grit_to_r(&partition_distribution.grit, grit_bucket);
                 }
             }
         }};

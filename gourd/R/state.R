@@ -162,12 +162,9 @@ fit_hierarchical_model <- function(all, unit_mcmc_tuning, global_hyperparameters
 }
 
 #' @export
-fit_temporal_model <- function(all, unit_mcmc_tuning, global_hyperparameters, global_mcmc_tuning) {
-  check_list(unit_mcmc_tuning, "bbbbid")
-  check_list(global_hyperparameters, "ddidd")
-  check_list(global_mcmc_tuning, "iiibiidl")
+fit_temporal_model <- function(all, unit_mcmc_tuning, global_hyperparameters, global_mcmc_tuning, validation_data_list) {
   all_ptr <- .Call(.all, all)
-  .Call(.fit_temporal_model, all_ptr, unit_mcmc_tuning, global_hyperparameters, global_mcmc_tuning)
+  .Call(.fit_temporal_model, all_ptr, unit_mcmc_tuning, global_hyperparameters, global_mcmc_tuning, validation_data_list)
 }
 
 check_list <- function(x, arg_types) {
