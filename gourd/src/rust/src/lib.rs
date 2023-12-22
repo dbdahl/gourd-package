@@ -348,19 +348,18 @@ impl<'a> Results<'a> {
         self.rval
             .set(8, grit_slice_evaluations_rate.to_r(pc))
             .stop();
-        self.rval
-            .set(
-                9,
-                [
-                    self.timers.units.as_secs_f64(),
-                    self.timers.anchor.as_secs_f64(),
-                    self.timers.permutation.as_secs_f64(),
-                    self.timers.shrinkage.as_secs_f64(),
-                    self.timers.grit.as_secs_f64(),
-                ]
-                .to_r(pc),
-            )
+        let wall_times = [
+            self.timers.units.as_secs_f64(),
+            self.timers.anchor.as_secs_f64(),
+            self.timers.permutation.as_secs_f64(),
+            self.timers.shrinkage.as_secs_f64(),
+            self.timers.grit.as_secs_f64(),
+        ]
+        .to_r(pc);
+        wall_times
+            .set_names(["units", "anchor", "permutation", "shrinkage", "grit"].to_r(pc))
             .stop();
+        self.rval.set(9, wall_times).stop();
     }
 }
 
@@ -638,15 +637,19 @@ fn fit_temporal_model(
 }
 
 #[roxido]
-fn fit_hierarchical_model(
+fn fit_dependent_model(
+    model_id: RObject,
     all_ptr: RObject,
-    unit_mcmc_tuning: RObject,
-    hyperparameters: RObject,
     anchor_concentration: RObject,
     baseline_concentration: RObject,
+    hyperparameters: RObject,
+    unit_mcmc_tuning: RObject,
     global_mcmc_tuning: RObject,
     validation_data: RObject,
 ) -> RObject {
+    if model_id.as_str().stop() != "hierarchical" {
+        stop!("Unsupported model.")
+    }
     let all: &mut All = all_ptr.as_external_ptr().stop().decode_as_mut();
     let validation_data = validation_data_from_r(validation_data, pc).stop();
     let unit_mcmc_tuning = McmcTuning::from_r(unit_mcmc_tuning, pc).stop();
