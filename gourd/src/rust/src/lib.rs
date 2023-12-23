@@ -557,10 +557,37 @@ fn fit_dependent(
             }
             // Helper
             let compute_log_likelihood = |pd: &SpParameters<CrpParameters>| {
-                all.units
-                    .par_iter()
-                    .fold_with(0.0, |acc, x| acc + pd.log_pmf(&x.state.clustering))
-                    .sum::<f64>()
+                if do_hierarchical_model {
+                    all.units
+                        .par_iter()
+                        .fold_with(0.0, |acc, x| acc + pd.log_pmf(&x.state.clustering))
+                        .sum::<f64>()
+                } else {
+                    let mut partition_distribution = pd.clone();
+                    let mut shrinkage_value = partition_distribution.shrinkage[0];
+                    let mut sum = 0.0;
+                    for time in 0..all.units.len() {
+                        let (left, not_left) = all.units.split_at(time);
+                        if time == 0 {
+                            shrinkage_value = partition_distribution.shrinkage[0];
+                            partition_distribution
+                                .shrinkage
+                                .set_constant(ScalarShrinkage::zero());
+                        } else {
+                            if time == 1 {
+                                partition_distribution
+                                    .shrinkage
+                                    .set_constant(shrinkage_value);
+                            }
+                            partition_distribution.anchor =
+                                left.last().unwrap().state.clustering.clone();
+                        };
+                        let (middle, _) = not_left.split_at(1);
+                        let unit = middle.first().unwrap();
+                        sum += partition_distribution.log_pmf(&unit.state.clustering)
+                    }
+                    sum
+                }
             };
             // Update permutation
             results.timers.permutation.tic();
