@@ -364,14 +364,21 @@ impl<'a> Results<'a> {
 }
 
 #[roxido]
-fn fit_temporal_model(
+fn fit_dependent_model(
+    model_id: RObject,
     all_ptr: RObject,
-    unit_mcmc_tuning: RObject,
-    hyperparameters: RObject,
+    anchor_concentration: RObject,
     baseline_concentration: RObject,
+    hyperparameters: RObject,
+    unit_mcmc_tuning: RObject,
     global_mcmc_tuning: RObject,
     validation_data: RObject,
 ) -> RObject {
+    let do_hierarchical_model = match model_id.as_str().stop() {
+        "hierarchical" => true,
+        "temporal" => false,
+        model_id => stop!("Unsupported model {}", model_id),
+    };
     let all: &mut All = all_ptr.as_external_ptr().stop().decode_as_mut();
     let validation_data = validation_data_from_r(validation_data, pc).stop();
     let unit_mcmc_tuning = McmcTuning::from_r(unit_mcmc_tuning, pc).stop();
@@ -383,283 +390,6 @@ fn fit_temporal_model(
     let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
     rng.fill(&mut seed);
     let mut rng2 = Pcg64Mcg::from_seed(seed);
-    let fastrand = fastrand::Rng::with_seed(rng.gen());
-    let fastrand_option = &mut Some(fastrand);
-    let anchor = all.units[rng.gen_range(0..all.units.len())]
-        .state
-        .clustering()
-        .clone();
-    let mut shrinkage_value = ScalarShrinkage::new(
-        hyperparameters.shrinkage.shape / hyperparameters.shrinkage.rate.get(),
-    )
-    .stop();
-    let shrinkage = Shrinkage::constant(shrinkage_value, all.n_items);
-    let grit = Grit::new(
-        hyperparameters.grit.shape1
-            / (hyperparameters.grit.shape1 + hyperparameters.grit.shape2.get()),
-    )
-    .stop();
-    let permutation = Permutation::random(all.n_items, &mut rng);
-    let baseline_distribution = CrpParameters::new(
-        all.n_items,
-        Concentration::new(baseline_concentration.as_f64().stop()).stop(),
-    );
-    let mut partition_distribution =
-        SpParameters::new(anchor, shrinkage, permutation, grit, baseline_distribution).unwrap();
-    let mut permutation_n_acceptances: u64 = 0;
-    let mut shrinkage_slice_n_evaluations: u64 = 0;
-    let mut grit_slice_n_evaluations: u64 = 0;
-    for iteration_counter in
-        (0..global_mcmc_tuning.n_iterations).step_by(global_mcmc_tuning.thinning)
-    {
-        for _ in 0..global_mcmc_tuning.thinning {
-            // Update each unit
-            results.timers.units.tic();
-            for time in 0..all.units.len() {
-                let (left, not_left) = all.units.split_at_mut(time);
-                if time == 0 {
-                    shrinkage_value = partition_distribution.shrinkage[0];
-                    partition_distribution
-                        .shrinkage
-                        .set_constant(ScalarShrinkage::zero());
-                } else {
-                    if time == 1 {
-                        partition_distribution
-                            .shrinkage
-                            .set_constant(shrinkage_value);
-                    }
-                    partition_distribution.anchor = left.last().unwrap().state.clustering.clone();
-                };
-                let (middle, right) = not_left.split_at_mut(1);
-                let unit = middle.first_mut().unwrap();
-                let clustering_next = right.get(0).map(|x| &x.state.clustering);
-                unit.data.impute(&unit.state, &mut rng);
-                if unit_mcmc_tuning.update_precision_response {
-                    State::update_precision_response(
-                        &mut unit.state.precision_response,
-                        &unit.state.global_coefficients,
-                        &unit.state.clustering,
-                        &unit.state.clustered_coefficients,
-                        &unit.data,
-                        &unit.hyperparameters,
-                        &mut rng,
-                    );
-                }
-                if unit_mcmc_tuning.update_global_coefficients {
-                    State::update_global_coefficients(
-                        &mut unit.state.global_coefficients,
-                        unit.state.precision_response,
-                        &unit.state.clustering,
-                        &unit.state.clustered_coefficients,
-                        &unit.data,
-                        &unit.hyperparameters,
-                        &mut rng,
-                    );
-                }
-                if unit_mcmc_tuning.update_clustering {
-                    let permutation =
-                        Permutation::natural_and_fixed(unit.state.clustering.n_items());
-                    State::update_clustering_temporal(
-                        &mut unit.state.clustering,
-                        &mut unit.state.clustered_coefficients,
-                        unit.state.precision_response,
-                        &unit.state.global_coefficients,
-                        &permutation,
-                        &unit.data,
-                        &unit.hyperparameters,
-                        &partition_distribution,
-                        clustering_next,
-                        &mut rng,
-                        &mut rng2,
-                    );
-                }
-                if unit_mcmc_tuning.update_clustered_coefficients {
-                    State::update_clustered_coefficients(
-                        &mut unit.state.clustered_coefficients,
-                        &unit.state.clustering,
-                        unit.state.precision_response,
-                        &unit.state.global_coefficients,
-                        &unit.data,
-                        &unit.hyperparameters,
-                        &mut rng,
-                    );
-                }
-            }
-            results.timers.units.toc();
-            // Helper
-            let compute_log_likelihood = |pd: &SpParameters<CrpParameters>| {
-                all.units
-                    .par_iter()
-                    .fold_with(0.0, |acc, x| acc + pd.log_pmf(&x.state.clustering))
-                    .sum::<f64>()
-            };
-            // Update permutation
-            results.timers.permutation.tic();
-            if unit_mcmc_tuning.n_permutation_updates_per_scan > 0 {
-                let k = unit_mcmc_tuning.n_items_per_permutation_update;
-                let mut log_target_current: f64 = compute_log_likelihood(&partition_distribution);
-                for _ in 0..unit_mcmc_tuning.n_permutation_updates_per_scan {
-                    partition_distribution
-                        .permutation
-                        .partial_shuffle(k, &mut rng);
-                    let log_target_proposal = compute_log_likelihood(&partition_distribution);
-                    let log_hastings_ratio = log_target_proposal - log_target_current;
-                    if 0.0 <= log_hastings_ratio
-                        || rng.gen_range(0.0..1.0_f64).ln() < log_hastings_ratio
-                    {
-                        log_target_current = log_target_proposal;
-                        if iteration_counter >= global_mcmc_tuning.burnin {
-                            permutation_n_acceptances += 1;
-                        }
-                    } else {
-                        partition_distribution.permutation.partial_shuffle_undo(k);
-                    }
-                }
-            }
-            results.timers.permutation.toc();
-            // Update shrinkage
-            results.timers.shrinkage.tic();
-            if let Some(w) = unit_mcmc_tuning.shrinkage_slice_step_size {
-                if let Some(reference) = hyperparameters.shrinkage.reference {
-                    let shrinkage_prior_distribution = Gamma::new(
-                        hyperparameters.shrinkage.shape.get(),
-                        hyperparameters.shrinkage.rate.get(),
-                    )
-                    .unwrap();
-                    let tuning_parameters = stepping_out::TuningParameters::new().width(w);
-                    let (_s_new, n_evaluations) =
-                        stepping_out::univariate_slice_sampler_stepping_out_and_shrinkage(
-                            partition_distribution.shrinkage[reference].get(),
-                            |s| match ScalarShrinkage::new(s) {
-                                None => f64::NEG_INFINITY,
-                                Some(shrinkage) => {
-                                    partition_distribution
-                                        .shrinkage
-                                        .rescale_by_reference(reference, shrinkage);
-                                    shrinkage_prior_distribution.ln_pdf(s)
-                                        + compute_log_likelihood(&partition_distribution)
-                                }
-                            },
-                            true,
-                            &tuning_parameters,
-                            fastrand_option,
-                        );
-                    // // Not necessary... see implementation of slice_sampler function.
-                    // partition_distribution.shrinkage.rescale_by_reference(
-                    //     global_hyperparameters.shrinkage_reference,
-                    //     ScalarShrinkage::new(_s_new).unwrap(),
-                    // );
-                    if iteration_counter >= global_mcmc_tuning.burnin {
-                        shrinkage_slice_n_evaluations += u64::from(n_evaluations);
-                    }
-                }
-            }
-            results.timers.shrinkage.toc();
-            // Update grit
-            results.timers.grit.tic();
-            if let Some(w) = unit_mcmc_tuning.grit_slice_step_size {
-                let grit_prior_distribution = Beta::new(
-                    hyperparameters.grit.shape1.get(),
-                    hyperparameters.grit.shape2.get(),
-                )
-                .unwrap();
-                let tuning_parameters = stepping_out::TuningParameters::new().width(w);
-                let (_g_new, n_evaluations) =
-                    stepping_out::univariate_slice_sampler_stepping_out_and_shrinkage(
-                        partition_distribution.grit.get(),
-                        |g| match Grit::new(g) {
-                            None => f64::NEG_INFINITY,
-                            Some(grit) => {
-                                partition_distribution.grit = grit;
-                                grit_prior_distribution.ln_pdf(g)
-                                    + compute_log_likelihood(&partition_distribution)
-                            }
-                        },
-                        true,
-                        &tuning_parameters,
-                        fastrand_option,
-                    );
-                // // Not necessary... see implementation of slice_sampler function.
-                // partition_distribution.shrinkage.rescale_by_reference(
-                //     global_hyperparameters.shrinkage_reference,
-                //     ScalarShrinkage::new(_s_new).unwrap(),
-                // );
-                if iteration_counter >= global_mcmc_tuning.burnin {
-                    grit_slice_n_evaluations += u64::from(n_evaluations);
-                }
-            }
-            results.timers.grit.toc();
-        }
-        // Report
-        if iteration_counter >= global_mcmc_tuning.burnin {
-            let log_likelihood = match &validation_data {
-                Some(validation_data) => all
-                    .units
-                    .par_iter()
-                    .zip(validation_data.par_iter())
-                    .fold(
-                        || 0.0,
-                        |acc, (group, data)| acc + group.state.log_likelihood(data),
-                    )
-                    .sum(),
-                None => all
-                    .units
-                    .par_iter()
-                    .fold(
-                        || 0.0,
-                        |acc, group| acc + group.state.log_likelihood(&group.data),
-                    )
-                    .sum(),
-            };
-            results.push(
-                all.units.iter().map(|x| &x.state.clustering),
-                None,
-                &partition_distribution.permutation,
-                if let Some(reference) = hyperparameters.shrinkage.reference {
-                    partition_distribution.shrinkage[reference].get()
-                } else {
-                    f64::NAN
-                },
-                partition_distribution.grit.get(),
-                log_likelihood,
-            );
-        }
-    }
-    let denominator = (global_mcmc_tuning.n_saves() * global_mcmc_tuning.thinning) as f64;
-    results.finalize(
-        permutation_n_acceptances as f64
-            / (unit_mcmc_tuning.n_permutation_updates_per_scan as f64 * denominator),
-        shrinkage_slice_n_evaluations as f64 / denominator,
-        grit_slice_n_evaluations as f64 / denominator,
-        pc,
-    );
-    results.rval
-}
-
-#[roxido]
-fn fit_dependent_model(
-    model_id: RObject,
-    all_ptr: RObject,
-    anchor_concentration: RObject,
-    baseline_concentration: RObject,
-    hyperparameters: RObject,
-    unit_mcmc_tuning: RObject,
-    global_mcmc_tuning: RObject,
-    validation_data: RObject,
-) -> RObject {
-    if model_id.as_str().stop() != "hierarchical" {
-        stop!("Unsupported model.")
-    }
-    let all: &mut All = all_ptr.as_external_ptr().stop().decode_as_mut();
-    let validation_data = validation_data_from_r(validation_data, pc).stop();
-    let unit_mcmc_tuning = McmcTuning::from_r(unit_mcmc_tuning, pc).stop();
-    let hyperparameters = Hyperparameters::from_r(hyperparameters, pc).stop();
-    let global_mcmc_tuning = GlobalMcmcTuning::from_r(global_mcmc_tuning, pc).stop();
-    let n_units = all.units.len();
-    let mut results = Results::new(&global_mcmc_tuning, all.n_items, n_units, pc);
-    let mut rng = Pcg64Mcg::from_seed(R::random_bytes::<16>());
-    let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
-    rng.fill(&mut seed);
     let mut rngs: Vec<_> = std::iter::repeat_with(|| {
         let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
         rng.fill(&mut seed);
@@ -676,11 +406,10 @@ fn fit_dependent_model(
         .state
         .clustering()
         .clone();
-    let shrinkage_value = ScalarShrinkage::new(
+    let mut shrinkage_value = ScalarShrinkage::new(
         hyperparameters.shrinkage.shape / hyperparameters.shrinkage.rate.get(),
     )
     .stop();
-    let shrinkage = Shrinkage::constant(shrinkage_value, all.n_items);
     let grit = Grit::new(
         hyperparameters.grit.shape1
             / (hyperparameters.grit.shape1 + hyperparameters.grit.shape2.get()),
@@ -696,8 +425,14 @@ fn fit_dependent_model(
         Concentration::new(anchor_concentration.as_f64().stop()).stop(),
     );
     let anchor_update_permutation = Permutation::natural_and_fixed(all.n_items);
-    let mut partition_distribution =
-        SpParameters::new(anchor, shrinkage, permutation, grit, baseline_distribution).unwrap();
+    let mut partition_distribution = SpParameters::new(
+        anchor,
+        Shrinkage::constant(shrinkage_value, all.n_items),
+        permutation,
+        grit,
+        baseline_distribution,
+    )
+    .unwrap();
     let mut permutation_n_acceptances: u64 = 0;
     let mut shrinkage_slice_n_evaluations: u64 = 0;
     let mut grit_slice_n_evaluations: u64 = 0;
@@ -707,43 +442,120 @@ fn fit_dependent_model(
         for _ in 0..global_mcmc_tuning.thinning {
             // Update each unit
             results.timers.units.tic();
-            all.units
-                .par_iter_mut()
-                .zip(rngs.par_iter_mut())
-                .for_each(|(unit, (r1, r2))| {
-                    unit.state.mcmc_iteration(
-                        &unit_mcmc_tuning,
-                        &mut unit.data,
-                        &unit.hyperparameters,
-                        &partition_distribution,
-                        r1,
-                        r2,
-                    )
-                });
+            if do_hierarchical_model {
+                all.units
+                    .par_iter_mut()
+                    .zip(rngs.par_iter_mut())
+                    .for_each(|(unit, (r1, r2))| {
+                        unit.state.mcmc_iteration(
+                            &unit_mcmc_tuning,
+                            &mut unit.data,
+                            &unit.hyperparameters,
+                            &partition_distribution,
+                            r1,
+                            r2,
+                        )
+                    });
+            } else {
+                results.timers.units.tic();
+                for time in 0..all.units.len() {
+                    let (left, not_left) = all.units.split_at_mut(time);
+                    if time == 0 {
+                        shrinkage_value = partition_distribution.shrinkage[0];
+                        partition_distribution
+                            .shrinkage
+                            .set_constant(ScalarShrinkage::zero());
+                    } else {
+                        if time == 1 {
+                            partition_distribution
+                                .shrinkage
+                                .set_constant(shrinkage_value);
+                        }
+                        partition_distribution.anchor =
+                            left.last().unwrap().state.clustering.clone();
+                    };
+                    let (middle, right) = not_left.split_at_mut(1);
+                    let unit = middle.first_mut().unwrap();
+                    let clustering_next = right.get(0).map(|x| &x.state.clustering);
+                    unit.data.impute(&unit.state, &mut rng);
+                    if unit_mcmc_tuning.update_precision_response {
+                        State::update_precision_response(
+                            &mut unit.state.precision_response,
+                            &unit.state.global_coefficients,
+                            &unit.state.clustering,
+                            &unit.state.clustered_coefficients,
+                            &unit.data,
+                            &unit.hyperparameters,
+                            &mut rng,
+                        );
+                    }
+                    if unit_mcmc_tuning.update_global_coefficients {
+                        State::update_global_coefficients(
+                            &mut unit.state.global_coefficients,
+                            unit.state.precision_response,
+                            &unit.state.clustering,
+                            &unit.state.clustered_coefficients,
+                            &unit.data,
+                            &unit.hyperparameters,
+                            &mut rng,
+                        );
+                    }
+                    if unit_mcmc_tuning.update_clustering {
+                        let permutation =
+                            Permutation::natural_and_fixed(unit.state.clustering.n_items());
+                        State::update_clustering_temporal(
+                            &mut unit.state.clustering,
+                            &mut unit.state.clustered_coefficients,
+                            unit.state.precision_response,
+                            &unit.state.global_coefficients,
+                            &permutation,
+                            &unit.data,
+                            &unit.hyperparameters,
+                            &partition_distribution,
+                            clustering_next,
+                            &mut rng,
+                            &mut rng2,
+                        );
+                    }
+                    if unit_mcmc_tuning.update_clustered_coefficients {
+                        State::update_clustered_coefficients(
+                            &mut unit.state.clustered_coefficients,
+                            &unit.state.clustering,
+                            unit.state.precision_response,
+                            &unit.state.global_coefficients,
+                            &unit.data,
+                            &unit.hyperparameters,
+                            &mut rng,
+                        );
+                    }
+                }
+            }
             results.timers.units.toc();
             // Update anchor
-            results.timers.anchor.tic();
-            let mut pd = partition_distribution.clone();
-            let mut compute_log_likelihood = |item: usize, anchor: &Clustering| {
-                pd.anchor = anchor.clone();
-                all.units
-                    .par_iter()
-                    .fold_with(0.0, |acc, x| {
-                        acc + pd.log_pmf_partial(item, &x.state.clustering)
-                    })
-                    .sum::<f64>()
-            };
-            if global_mcmc_tuning.update_anchor {
-                update_partition_gibbs(
-                    1,
-                    &mut partition_distribution.anchor,
-                    &anchor_update_permutation,
-                    &anchor_distribution,
-                    &mut compute_log_likelihood,
-                    &mut rng,
-                )
+            if do_hierarchical_model {
+                results.timers.anchor.tic();
+                let mut pd = partition_distribution.clone();
+                let mut compute_log_likelihood = |item: usize, anchor: &Clustering| {
+                    pd.anchor = anchor.clone();
+                    all.units
+                        .par_iter()
+                        .fold_with(0.0, |acc, x| {
+                            acc + pd.log_pmf_partial(item, &x.state.clustering)
+                        })
+                        .sum::<f64>()
+                };
+                if global_mcmc_tuning.update_anchor {
+                    update_partition_gibbs(
+                        1,
+                        &mut partition_distribution.anchor,
+                        &anchor_update_permutation,
+                        &anchor_distribution,
+                        &mut compute_log_likelihood,
+                        &mut rng,
+                    )
+                }
+                results.timers.anchor.toc();
             }
-            results.timers.anchor.toc();
             // Helper
             let compute_log_likelihood = |pd: &SpParameters<CrpParameters>| {
                 all.units
@@ -871,7 +683,11 @@ fn fit_dependent_model(
             };
             results.push(
                 all.units.iter().map(|x| &x.state.clustering),
-                Some(&partition_distribution.anchor),
+                if do_hierarchical_model {
+                    Some(&partition_distribution.anchor)
+                } else {
+                    None
+                },
                 &partition_distribution.permutation,
                 if let Some(reference) = hyperparameters.shrinkage.reference {
                     partition_distribution.shrinkage[reference].get()
