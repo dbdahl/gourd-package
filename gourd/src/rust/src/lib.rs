@@ -364,7 +364,7 @@ impl<'a> Results<'a> {
 }
 
 #[roxido]
-fn fit_dependent_model(
+fn fit_dependent(
     model_id: RObject,
     all_ptr: RObject,
     anchor_concentration: RObject,
@@ -457,7 +457,6 @@ fn fit_dependent_model(
                         )
                     });
             } else {
-                results.timers.units.tic();
                 for time in 0..all.units.len() {
                     let (left, not_left) = all.units.split_at_mut(time);
                     if time == 0 {
