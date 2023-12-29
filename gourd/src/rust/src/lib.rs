@@ -17,7 +17,10 @@ use crate::state::{McmcTuning, State};
 use dahl_randompartition::clust::Clustering;
 use dahl_randompartition::cpp::CppParameters;
 use dahl_randompartition::crp::CrpParameters;
-use dahl_randompartition::distr::{ProbabilityMassFunction, ProbabilityMassFunctionPartial};
+use dahl_randompartition::distr::PredictiveProbabilityFunction;
+use dahl_randompartition::distr::{
+    PartitionSampler, ProbabilityMassFunction, ProbabilityMassFunctionPartial,
+};
 use dahl_randompartition::epa::EpaParameters;
 use dahl_randompartition::fixed::FixedPartitionParameters;
 use dahl_randompartition::jlp::JlpParameters;
@@ -36,7 +39,266 @@ use rayon::prelude::*;
 use roxido::*;
 use slice_sampler::univariate::stepping_out;
 use statrs::distribution::{Beta, Continuous, Gamma};
+use std::ptr::NonNull;
 use walltime::TicToc;
+
+#[roxido]
+fn new_CrpParameters(n_items: RObject, concentration: RObject, discount: RObject) -> RObject {
+    let n_items = n_items.as_usize().stop();
+    let discount =
+        Discount::new(discount.as_f64().stop()).unwrap_or_else(|| stop!("Invalid discount value"));
+    let concentration = Concentration::new_with_discount(concentration.as_f64().stop(), discount)
+        .unwrap_or_else(|| stop!("Invalid concentration value"));
+    let p = CrpParameters::new_with_discount(n_items, concentration, discount).unwrap();
+    R::encode(p, "crp".to_r(pc), true, pc)
+}
+
+#[roxido]
+fn new_SpParameters(
+    anchor: RObject,
+    shrinkage: RObject,
+    permutation: RObject,
+    grit: RObject,
+    baseline: RObject,
+) -> RObject {
+    let anchor = mk_clustering(anchor, pc);
+    let shrinkage = mk_shrinkage(shrinkage, pc);
+    let permutation = mk_permutation(permutation, pc);
+    let grit = mk_grit(grit);
+    let baseline = baseline.as_external_ptr().stop();
+    macro_rules! distr_macro {
+        ($tipe:ty, $label:literal) => {{
+            let p = NonNull::new(baseline.address() as *mut $tipe).unwrap();
+            let baseline = unsafe { p.as_ref().clone() };
+            R::encode(
+                SpParameters::new(anchor, shrinkage, permutation, grit, baseline).unwrap(),
+                $label.to_r(pc),
+                true,
+                pc,
+            )
+        }};
+    }
+    let tag = baseline.tag();
+    let name = tag.as_str().stop();
+    match name {
+        "up" => distr_macro!(UpParameters, "sp-up"),
+        "jlp" => distr_macro!(JlpParameters, "sp-jlp"),
+        "crp" => distr_macro!(CrpParameters, "sp-crp"),
+        _ => stop!("Unsupported distribution: {}", name),
+    }
+}
+
+fn mk_clustering(partition: RObject, pc: &mut Pc) -> Clustering {
+    let partition = partition.as_vector().stop().to_mode_integer(pc);
+    Clustering::from_slice(partition.slice())
+}
+
+fn mk_shrinkage(shrinkage: RObject, pc: &mut Pc) -> Shrinkage {
+    let shrinkage = shrinkage.as_vector().stop().to_mode_double(pc);
+    Shrinkage::from(shrinkage.slice()).unwrap()
+}
+
+fn mk_permutation(permutation: RObject, pc: &mut Pc) -> Permutation {
+    let permutation = permutation.as_vector().stop().to_mode_integer(pc);
+    let slice = permutation.slice();
+    let vector = slice.iter().map(|x| *x as usize).collect();
+    Permutation::from_vector(vector).unwrap()
+}
+
+fn mk_grit(grit: RObject) -> Grit {
+    let b = grit.as_f64().stop();
+    match Grit::new(b) {
+        Some(grit) => grit,
+        None => stop!("Out of range."),
+    }
+}
+
+#[derive(PartialEq, Copy, Clone)]
+enum RandomizeShrinkage {
+    Fixed,
+    Common,
+    Cluster,
+    Idiosyncratic,
+}
+
+#[roxido]
+fn prPartition(partition: RObject, prior: RObject) -> RObject {
+    let partition = partition
+        .as_matrix()
+        .stop_str("'partition' should be a matrix.")
+        .to_mode_integer(pc);
+    let matrix = partition.slice();
+    let np = partition.nrow();
+    let ni = partition.ncol();
+    let log_probs_rval = R::new_vector_double(np, pc);
+    let log_probs_slice = log_probs_rval.slice();
+    let prior = prior.as_external_ptr().stop();
+    macro_rules! distr_macro {
+        ($tipe:ty) => {{
+            let p = prior.address() as *mut $tipe;
+            let distr = unsafe { NonNull::new(p).unwrap().as_mut() };
+            for i in 0..np {
+                let mut target_labels = Vec::with_capacity(ni);
+                for j in 0..ni {
+                    target_labels.push((matrix[np * j + i]).try_into().unwrap());
+                }
+                let target = Clustering::from_vector(target_labels);
+                log_probs_slice[i] = distr.log_pmf(&target);
+            }
+        }};
+    }
+    let tag = prior.tag();
+    let name = tag.as_str().stop();
+    match name {
+        "crp" => distr_macro!(CrpParameters),
+        "sp-crp" => distr_macro!(SpParameters<CrpParameters>),
+        _ => stop!("Unsupported distribution: {}", name),
+    }
+    log_probs_rval
+}
+
+#[roxido]
+fn samplePartition(
+    n_samples: RObject,
+    n_items: RObject,
+    prior: RObject,
+    randomize_permutation: RObject,
+    randomize_shrinkage: RObject,
+    max: RObject,
+    shape1: RObject,
+    shape2: RObject,
+    n_cores: RObject,
+) -> RObject {
+    let n_cores = {
+        let x = n_cores
+            .as_usize()
+            .stop_str("'nCores' should be a scalar integer");
+        if x == 0 {
+            num_cpus::get()
+        } else {
+            x
+        }
+    };
+    let np = n_samples
+        .as_usize()
+        .map(|x| x.max(1))
+        .stop_str("'nSamples' should be a scalar integer");
+    let np_per_core = np / n_cores;
+    let np_extra = np % n_cores;
+    let ni = n_items
+        .as_usize()
+        .map(|x| x.max(1))
+        .stop_str("'nItems' should be a scalar integer");
+    let chunk_size = np_per_core * ni;
+    let matrix_rval = R::new_matrix_integer(ni, np, pc);
+    let mut stick = matrix_rval.slice();
+    let randomize_permutation = randomize_permutation
+        .as_bool()
+        .stop_str("'randomizePermutation' should be a scalar logical");
+    let randomize_shrinkage = match randomize_shrinkage.as_str() {
+        Ok("fixed") => RandomizeShrinkage::Fixed,
+        Ok("common") => RandomizeShrinkage::Common,
+        Ok("cluster") => RandomizeShrinkage::Cluster,
+        Ok("idiosyncratic") => RandomizeShrinkage::Idiosyncratic,
+        _ => stop!("Unrecognized randomize_shrinkage value"),
+    };
+    let max = ScalarShrinkage::new(max.as_f64().stop_str("'max' should be a scalar double"))
+        .unwrap_or_else(|| stop!("'max' should be non-negative"));
+    let shape1 = Shape::new(
+        shape1
+            .as_f64()
+            .stop_str("'shape1' should be a scalar double"),
+    )
+    .unwrap_or_else(|| stop!("'shape1' should be greater than 0"));
+    let shape2 = Shape::new(
+        shape2
+            .as_f64()
+            .stop_str("'shape2' should be a scalar double"),
+    )
+    .unwrap_or_else(|| stop!("'shape2' should be greater than 0"));
+    let prior = prior.as_external_ptr().stop();
+    macro_rules! distr_macro {
+        ($tipe: ty, $callback: tt) => {{
+            let _ = crossbeam::scope(|s| {
+                let mut nonnull = NonNull::new(prior.address() as *mut $tipe).unwrap();
+                let distr = unsafe { nonnull.as_mut() };
+                let mut plan = Vec::with_capacity(n_cores);
+                let mut rng = Pcg64Mcg::from_seed(R::random_bytes::<16>());
+                for k in 0..n_cores - 1 {
+                    let (left, right) =
+                        stick.split_at_mut(chunk_size + if k < np_extra { ni } else { 0 });
+                    plan.push((left, distr.clone(), rng.gen::<u128>()));
+                    stick = right;
+                }
+                plan.push((stick, distr.clone(), rng.gen()));
+                plan.into_iter().for_each(|mut p| {
+                    s.spawn(move |_| {
+                        let mut rng = Pcg64Mcg::new(p.2);
+                        for j in 0..p.0.len() / ni {
+                            ($callback)(&mut p.1, &mut rng);
+                            let clust = p.1.sample(&mut rng).standardize();
+                            let labels = clust.allocation();
+                            for i in 0..ni {
+                                p.0[ni * j + i] = (labels[i] + 1).try_into().unwrap();
+                            }
+                        }
+                    });
+                });
+            });
+        }};
+    }
+    fn mk_lambda_sp<D: PredictiveProbabilityFunction + Clone>(
+        randomize_permutation: bool,
+        randomize_shrinkage: RandomizeShrinkage,
+        max: ScalarShrinkage,
+        shape1: Shape,
+        shape2: Shape,
+    ) -> impl Fn(&mut SpParameters<D>, &mut Pcg64Mcg) {
+        move |distr: &mut SpParameters<D>, rng: &mut Pcg64Mcg| {
+            if randomize_permutation {
+                distr.permutation.shuffle(rng);
+            }
+            match randomize_shrinkage {
+                RandomizeShrinkage::Fixed => {}
+                RandomizeShrinkage::Common => {
+                    distr.shrinkage.randomize_common(max, shape1, shape2, rng)
+                }
+                RandomizeShrinkage::Cluster => distr.shrinkage.randomize_common_cluster(
+                    max,
+                    shape1,
+                    shape2,
+                    &distr.anchor,
+                    rng,
+                ),
+                RandomizeShrinkage::Idiosyncratic => distr
+                    .shrinkage
+                    .randomize_idiosyncratic(max, shape1, shape2, rng),
+            };
+        }
+    }
+    let tag = prior.tag();
+    let name = tag.as_str().stop();
+    match name {
+        "crp" => distr_macro!(
+            CrpParameters,
+            (|_distr: &mut CrpParameters, _rng: &mut Pcg64Mcg| {})
+        ),
+        "sp-crp" => {
+            distr_macro!(
+                SpParameters<CrpParameters>,
+                (mk_lambda_sp::<CrpParameters>(
+                    randomize_permutation,
+                    randomize_shrinkage,
+                    max,
+                    shape1,
+                    shape2
+                ))
+            );
+        }
+        _ => stop!("Unsupported distribution: {}", name),
+    }
+    matrix_rval.transpose(pc)
+}
 
 #[roxido]
 fn rngs_new() -> RObject {

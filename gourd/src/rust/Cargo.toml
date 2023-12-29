@@ -13,6 +13,8 @@ crate-type = ["staticlib"]
 debug = 1
 
 [dependencies]
+num_cpus = "1.13.1"
+crossbeam = "0.8.1"
 rayon = "1.7.0"
 roxido = { path="roxido" }
 dahl-randompartition = { git="https://github.com/dbdahl/rust-dahl-randompartition.git", rev="f97de48" }

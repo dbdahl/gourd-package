@@ -1,4 +1,3 @@
-#' @export
 fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition(n_items, 1), nIterations=1000, burnin=500, thin=10,
                 mcmcTuning=list(TRUE, TRUE, TRUE, TRUE, length(data$response)/2, 1.0), missingItems=integer(0), validationData=NULL,
                 save=list(samples=TRUE, logLikelihoodContributions=c("none", "all", "missing", "validation")[1]), progress=TRUE) {
@@ -155,7 +154,6 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
   result
 }
 
-#' @export
 fit_dependent <- function(model_name, all, anchor_concentration, baseline_concentration, hyperparameters, unit_mcmc_tuning, global_mcmc_tuning, validation_data_list) {
   all_ptr <- .Call(.all, all)
   .Call(.fit_dependent, model_name, all_ptr, anchor_concentration, baseline_concentration, hyperparameters, unit_mcmc_tuning, global_mcmc_tuning, validation_data_list)

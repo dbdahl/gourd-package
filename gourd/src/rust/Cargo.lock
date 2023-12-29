@@ -464,10 +464,12 @@ dependencies = [
 name = "rust"
 version = "0.1.0"
 dependencies = [
+ "crossbeam",
  "dahl-randompartition",
  "fastrand",
  "nalgebra 0.32.3",
  "num-traits",
+ "num_cpus",
  "rand",
  "rand_distr",
  "rand_pcg",
