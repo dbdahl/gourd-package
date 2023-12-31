@@ -1,6 +1,6 @@
 Package: gourd
 Title: Shrinkage Partition Distribution
-Version: 0.2.0
+Version: 0.2.1
 Authors@R: c(person(given="David B.",family="Dahl",role=c("aut","cre"),email="dahl@stat.byu.edu",comment=c(ORCID="0000-0002-8173-1547")),
              person(given="Richard L.",family="Warr",role=c("aut"),email="warr@stat.byu.edu",comment=c(ORCID="0000-0001-8508-3105")),
              person(given="Tomas P.",family="Jensen",role=c("aut"),email="tompjensen@gmail.com",comment=c(ORCID="0009-0000-0015-3881")),
@@ -9,7 +9,7 @@ Authors@R: c(person(given="David B.",family="Dahl",role=c("aut","cre"),email="da
     person(given = "David", family = "Tolnay", email = "dtolnay@gmail.com", role = "cph", comment = "Rust crates: syn, proc-macro2, quote, unicode-ident."),
     person(given = "Unicode, Inc.", role = "cph", comment = "Rust crate: unicode-ident.")
     )
-Description: This package implements the distribution introduced in our paper "Dependent Random Partitions by Shrinking Toward an Anchor".
+Description: Implementation of the distribution introduced in our paper "Dependent Random Partitions by Shrinking Toward an Anchor".
 License: MIT + file LICENSE | Apache License 2.0
 Depends: R (>= 4.2.0)
 SystemRequirements: Cargo (Rust's package manager), rustc (>= 1.64)

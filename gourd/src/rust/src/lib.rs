@@ -43,6 +43,21 @@ use std::ptr::NonNull;
 use walltime::TicToc;
 
 #[roxido]
+fn new_UpParameters(n_items: RObject) -> RObject {
+    let p = UpParameters::new(n_items.as_usize().stop());
+    R::encode(p, "up".to_r(pc), true, pc)
+}
+
+#[roxido]
+fn new_JlpParameters(concentration: RObject, permutation: RObject) -> RObject {
+    let permutation = mk_permutation(permutation, pc);
+    let concentration = Concentration::new(concentration.as_f64().stop())
+        .unwrap_or_else(|| stop!("Invalid concentration value"));
+    let p = JlpParameters::new(permutation.n_items(), concentration, permutation).unwrap();
+    R::encode(p, "jlp".to_r(pc), true, pc)
+}
+
+#[roxido]
 fn new_CrpParameters(n_items: RObject, concentration: RObject, discount: RObject) -> RObject {
     let n_items = n_items.as_usize().stop();
     let discount =
@@ -151,6 +166,10 @@ fn prPartition(partition: RObject, prior: RObject) -> RObject {
     let name = tag.as_str().stop();
     match name {
         "crp" => distr_macro!(CrpParameters),
+        "up" => distr_macro!(UpParameters),
+        "jlp" => distr_macro!(JlpParameters),
+        "sp-up" => distr_macro!(SpParameters<UpParameters>),
+        "sp-jlp" => distr_macro!(SpParameters<JlpParameters>),
         "sp-crp" => distr_macro!(SpParameters<CrpParameters>),
         _ => stop!("Unsupported distribution: {}", name),
     }
@@ -279,10 +298,42 @@ fn samplePartition(
     let tag = prior.tag();
     let name = tag.as_str().stop();
     match name {
+        "up" => distr_macro!(
+            UpParameters,
+            (|_distr: &mut UpParameters, _rng: &mut Pcg64Mcg| {})
+        ),
+        "jlp" => distr_macro!(
+            JlpParameters,
+            (|_distr: &mut JlpParameters, _rng: &mut Pcg64Mcg| {})
+        ),
         "crp" => distr_macro!(
             CrpParameters,
             (|_distr: &mut CrpParameters, _rng: &mut Pcg64Mcg| {})
         ),
+        "sp-up" => {
+            distr_macro!(
+                SpParameters<UpParameters>,
+                (mk_lambda_sp::<UpParameters>(
+                    randomize_permutation,
+                    randomize_shrinkage,
+                    max,
+                    shape1,
+                    shape2
+                ))
+            );
+        }
+        "sp-jlp" => {
+            distr_macro!(
+                SpParameters<JlpParameters>,
+                (mk_lambda_sp::<JlpParameters>(
+                    randomize_permutation,
+                    randomize_shrinkage,
+                    max,
+                    shape1,
+                    shape2
+                ))
+            );
+        }
         "sp-crp" => {
             distr_macro!(
                 SpParameters<CrpParameters>,

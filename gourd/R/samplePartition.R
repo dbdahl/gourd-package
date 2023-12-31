@@ -2,10 +2,6 @@
 #'
 #' This function samples from a partition distribution.
 #'
-#' Note that the centered partition distribution \code{\link{CenteredPartition}}
-#' is supported by Markov chain Monte Carlo using the function
-#' \code{\link{nealAlgorithm3}}.
-#'
 #' @param distr A specification of the partition distribution, i.e., an object
 #'   of class \code{PartitionDistribution} as returned by, for example, a
 #'   function such as \code{\link{CRPPartition}}.

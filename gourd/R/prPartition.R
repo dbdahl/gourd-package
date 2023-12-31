@@ -26,8 +26,5 @@ prPartition <- function(distr, partition, log=TRUE) {
   nSamples <- nrow(partition)
   if ( nSamples == 0 ) return(numeric(0))
   logProbabilities <- .Call(.prPartition, partition, mkDistrPtr(distr))
-  if ( inherits(distr, "CenteredPartition") ) {
-    warning("Calculations for 'CenteredPartition' are not normalized (i.e., they don't sum to one across all partitions).")
-  }
   if (isTRUE(log)) logProbabilities else exp(logProbabilities)
 }

@@ -1,3 +1,4 @@
+#' @importFrom utils setTxtProgressBar txtProgressBar
 fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition(n_items, 1), nIterations=1000, burnin=500, thin=10,
                 mcmcTuning=list(TRUE, TRUE, TRUE, TRUE, length(data$response)/2, 1.0), missingItems=integer(0), validationData=NULL,
                 save=list(samples=TRUE, logLikelihoodContributions=c("none", "all", "missing", "validation")[1]), progress=TRUE) {
@@ -85,7 +86,7 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
   state <- .Call(.state_encode, state)
   hyperparameters <- .Call(.hyperparameters_encode, hyperparameters)
   monitor <- .Call(.monitor_new)
-  partitionDistribution <- pumpkin::mkDistrPtr(partitionDistribution)
+  partitionDistribution <- mkDistrPtr(partitionDistribution)
   rngs <- .Call(.rngs_new)
   # Run MCMC
   if ( progress ) cat("Burning in...")

@@ -49,11 +49,6 @@ label notation.
 \description{
 This function samples from a partition distribution.
 }
-\details{
-Note that the centered partition distribution \code{\link{CenteredPartition}}
-is supported by Markov chain Monte Carlo using the function
-\code{\link{nealAlgorithm3}}.
-}
 \examples{
 concentration <- 1.0
 discount <- 0.1
