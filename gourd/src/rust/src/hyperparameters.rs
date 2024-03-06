@@ -24,8 +24,8 @@ pub struct ShrinkageHyperparameters {
     pub rate: Rate,
 }
 
-impl FromR for ShrinkageHyperparameters {
-    fn from_r(x: RObject, _pc: &mut Pc) -> Result<Self, String> {
+impl<RType, RMode, RMutability> FromR<RType, RMode, RMutability> for ShrinkageHyperparameters {
+    fn from_r(x: RObject<RType, RMode, RMutability>, _pc: &mut Pc) -> Result<Self, String> {
         let x = x.as_list()?;
         let mut map = x.make_map();
         let result = Self {
@@ -44,8 +44,8 @@ pub struct GritHyperparameters {
     pub shape2: Shape,
 }
 
-impl FromR for GritHyperparameters {
-    fn from_r(x: RObject, _pc: &mut Pc) -> Result<Self, String> {
+impl<RType, RMode, RMutability> FromR<RType, RMode, RMutability> for GritHyperparameters {
+    fn from_r(x: RObject<RType, RMode, RMutability>, _pc: &mut Pc) -> Result<Self, String> {
         let x = x.as_list()?;
         let mut map = x.make_map();
         let result = Self {
@@ -57,8 +57,8 @@ impl FromR for GritHyperparameters {
     }
 }
 
-fn helper_mean_precision(
-    map: &mut roxido::r::RListMap,
+fn helper_mean_precision<RMutability>(
+    map: &mut roxido::r::RListMap<RMutability>,
     vector_name: &str,
     matrix_name: &str,
     pc: &mut Pc,
@@ -81,8 +81,8 @@ fn helper_mean_precision(
     Ok((r1, r2))
 }
 
-impl FromR for Hyperparameters {
-    fn from_r(x: RObject, pc: &mut Pc) -> Result<Self, String> {
+impl<RType, RMode, RMutability> FromR<RType, RMode, RMutability> for Hyperparameters {
+    fn from_r(x: RObject<RType, RMode, RMutability>, pc: &mut Pc) -> Result<Self, String> {
         let x = x.as_list()?;
         let mut map = x.make_map();
         let (global_coefficients_mean, global_coefficients_precision) = helper_mean_precision(

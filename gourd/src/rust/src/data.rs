@@ -131,8 +131,8 @@ impl Data {
     }
 }
 
-impl FromR for Data {
-    fn from_r(x: RObject, pc: &mut Pc) -> Result<Self, String> {
+impl<RType, RMode, RMutability> FromR<RType, RMode, RMutability> for Data {
+    fn from_r(x: RObject<RType, RMode, RMutability>, pc: &mut Pc) -> Result<Self, String> {
         let x = x.as_list()?;
         let mut map = x.make_map();
         let response = map.get("response")?.as_vector()?.to_mode_double(pc);

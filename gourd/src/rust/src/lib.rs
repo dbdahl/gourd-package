@@ -145,8 +145,8 @@ fn prPartition(partition: RObject, prior: RObject) -> RObject {
     let matrix = partition.slice();
     let np = partition.nrow();
     let ni = partition.ncol();
-    let log_probs_rval = R::new_vector_double(np, pc);
-    let log_probs_slice = log_probs_rval.slice();
+    let mut log_probs_rval = R::new_vector_double(np, pc);
+    let log_probs_slice = log_probs_rval.slice_mut();
     let prior = prior.as_external_ptr().stop();
     macro_rules! distr_macro {
         ($tipe:ty) => {{
@@ -209,8 +209,8 @@ fn samplePartition(
         .map(|x| x.max(1))
         .stop_str("'nItems' should be a scalar integer");
     let chunk_size = np_per_core * ni;
-    let matrix_rval = R::new_matrix_integer(ni, np, pc);
-    let mut stick = matrix_rval.slice();
+    let mut matrix_rval = R::new_matrix_integer(ni, np, pc);
+    let mut stick = matrix_rval.slice_mut();
     let randomize_permutation = randomize_permutation
         .as_bool()
         .stop_str("'randomizePermutation' should be a scalar logical");
@@ -357,7 +357,7 @@ fn rngs_new() -> RObject {
     let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
     rng.fill(&mut seed);
     let rng2 = Pcg64Mcg::from_seed(seed);
-    let result = R::new_list(2, pc);
+    let mut result = R::new_list(2, pc);
     result
         .set(0, R::encode(rng, "rng".to_r(pc), true, pc))
         .stop();
@@ -398,11 +398,8 @@ fn monitor_rate(monitor: RObject) -> RObject {
 
 #[roxido]
 fn monitor_reset(monitor: RObject) -> RObject {
-    let monitor = monitor
-        .as_external_ptr()
-        .stop()
-        .decode_as_mut::<Monitor<u32>>();
-    monitor.reset();
+    let mut monitor = monitor.as_external_ptr().stop();
+    monitor.decode_as_mut::<Monitor<u32>>().reset();
 }
 
 #[roxido]
@@ -414,8 +411,9 @@ fn hyperparameters_encode(hyperparameters: RObject) -> RObject {
 #[roxido]
 fn data_encode(data: RObject, missing_items: RObject) -> RObject {
     let mut data = Data::from_r(data, pc).stop();
-    let missing_items = missing_items.as_vector().stop().to_mode_integer(pc).slice();
+    let missing_items = missing_items.as_vector().stop().to_mode_integer(pc);
     let missing_items: Vec<_> = missing_items
+        .slice()
         .iter()
         .map(|x| usize::try_from(*x - 1).unwrap())
         .collect();
@@ -423,24 +421,33 @@ fn data_encode(data: RObject, missing_items: RObject) -> RObject {
     R::encode(data, "data".to_r(pc), true, pc)
 }
 
-fn permutation_to_r(permutation: &Permutation, rval: RObject<roxido::r::Vector, i32>) {
-    for (x, y) in permutation.as_slice().iter().zip(rval.slice()) {
+fn permutation_to_r(
+    permutation: &Permutation,
+    rval: &mut RObject<roxido::r::Vector, i32, roxido::r::Mutable>,
+) {
+    for (x, y) in permutation.as_slice().iter().zip(rval.slice_mut()) {
         *y = i32::try_from(*x).unwrap() + 1;
     }
 }
 
-fn scalar_shrinkage_to_r(shrinkage: &ScalarShrinkage, rval: RObject<roxido::r::Vector, f64>) {
-    rval.slice()[0] = shrinkage.get();
+fn scalar_shrinkage_to_r(
+    shrinkage: &ScalarShrinkage,
+    rval: &mut RObject<roxido::r::Vector, f64, roxido::r::Mutable>,
+) {
+    rval.slice_mut()[0] = shrinkage.get();
 }
 
-fn shrinkage_to_r(shrinkage: &Shrinkage, rval: RObject<roxido::r::Vector, f64>) {
-    for (x, y) in rval.slice().iter_mut().zip(shrinkage.as_slice()) {
+fn shrinkage_to_r(
+    shrinkage: &Shrinkage,
+    rval: &mut RObject<roxido::r::Vector, f64, roxido::r::Mutable>,
+) {
+    for (x, y) in rval.slice_mut().iter_mut().zip(shrinkage.as_slice()) {
         *x = y.get()
     }
 }
 
-fn grit_to_r(grit: &Grit, rval: RObject<roxido::r::Vector, f64>) {
-    rval.slice()[0] = grit.get();
+fn grit_to_r(grit: &Grit, rval: &mut RObject<roxido::r::Vector, f64, roxido::r::Mutable>) {
+    rval.slice_mut()[0] = grit.get();
 }
 
 struct Group {
@@ -507,8 +514,8 @@ impl GlobalMcmcTuning {
     }
 }
 
-impl FromR for GlobalMcmcTuning {
-    fn from_r(x: RObject, _pc: &mut Pc) -> Result<Self, String> {
+impl<RType, RMode, RMutability> FromR<RType, RMode, RMutability> for GlobalMcmcTuning {
+    fn from_r(x: RObject<RType, RMode, RMutability>, _pc: &mut Pc) -> Result<Self, String> {
         let x = x.as_list()?;
         let mut map = x.make_map();
         let result = Self {
@@ -549,7 +556,7 @@ struct Timers {
 }
 
 struct Results<'a> {
-    rval: RObject<roxido::r::Vector, roxido::r::List>,
+    rval: RObject<roxido::r::Vector, roxido::r::List, roxido::r::Mutable>,
     counter: usize,
     n_items: usize,
     unit_partitions: Vec<&'a mut [i32]>,
@@ -564,11 +571,11 @@ struct Results<'a> {
 impl<'a> Results<'a> {
     pub fn new(tuning: &GlobalMcmcTuning, n_items: usize, n_units: usize, pc: &mut Pc) -> Self {
         let n_saves = tuning.n_saves();
-        let unit_partitions_rval = R::new_list(n_units, pc);
+        let mut unit_partitions_rval = R::new_list(n_units, pc);
         let mut unit_partitions = Vec::with_capacity(n_units);
         for t in 0..n_units {
             let rval = R::new_matrix_integer(n_items, n_saves, pc);
-            unit_partitions.push(rval.slice());
+            unit_partitions.push(unsafe { rval.slice_mut_static() });
             unit_partitions_rval.set(t, rval).stop();
         }
         let anchors_rval = R::new_matrix_integer(n_items, n_saves, pc);
@@ -576,7 +583,7 @@ impl<'a> Results<'a> {
         let shrinkages_rval = R::new_vector_double(n_saves, pc);
         let grits_rval = R::new_vector_double(n_saves, pc);
         let log_likelihoods_rval = R::new_vector_double(n_saves, pc);
-        let rval = R::new_list(10, pc); // Extra 4 items for rates after looping.
+        let mut rval = R::new_list(10, pc); // Extra 4 items for rates after looping.
         rval.set_names(
             [
                 "unit_partitions",
@@ -599,23 +606,25 @@ impl<'a> Results<'a> {
         rval.set(3, shrinkages_rval).stop();
         rval.set(4, grits_rval).stop();
         rval.set(5, log_likelihoods_rval).stop();
-        Self {
-            rval,
-            counter: 0,
-            n_items,
-            unit_partitions,
-            anchors: anchors_rval.slice(),
-            permutations: permutations_rval.slice(),
-            shrinkages: shrinkages_rval.slice(),
-            grits: grits_rval.slice(),
-            log_likelihoods: log_likelihoods_rval.slice(),
-            timers: Timers {
-                units: TicToc::new(),
-                anchor: TicToc::new(),
-                permutation: TicToc::new(),
-                shrinkage: TicToc::new(),
-                grit: TicToc::new(),
-            },
+        unsafe {
+            Self {
+                rval,
+                counter: 0,
+                n_items,
+                unit_partitions,
+                anchors: anchors_rval.slice_mut_static(),
+                permutations: permutations_rval.slice_mut_static(),
+                shrinkages: shrinkages_rval.slice_mut_static(),
+                grits: grits_rval.slice_mut_static(),
+                log_likelihoods: log_likelihoods_rval.slice_mut_static(),
+                timers: Timers {
+                    units: TicToc::new(),
+                    anchor: TicToc::new(),
+                    permutation: TicToc::new(),
+                    shrinkage: TicToc::new(),
+                    grit: TicToc::new(),
+                },
+            }
         }
     }
 
@@ -661,7 +670,7 @@ impl<'a> Results<'a> {
         self.rval
             .set(8, grit_slice_evaluations_rate.to_r(pc))
             .stop();
-        let wall_times = [
+        let mut wall_times = [
             self.timers.units.as_secs_f64(),
             self.timers.anchor.as_secs_f64(),
             self.timers.permutation.as_secs_f64(),
@@ -692,7 +701,8 @@ fn fit_dependent(
         "temporal" => false,
         model_id => stop!("Unsupported model {}", model_id),
     };
-    let all: &mut All = all_ptr.as_external_ptr().stop().decode_as_mut();
+    let mut all = all_ptr.as_external_ptr().stop();
+    let all: &mut All = all.decode_as_mut();
     let validation_data = validation_data_from_r(validation_data, pc).stop();
     let unit_mcmc_tuning = McmcTuning::from_r(unit_mcmc_tuning, pc).stop();
     let hyperparameters = Hyperparameters::from_r(hyperparameters, pc).stop();
@@ -788,7 +798,7 @@ fn fit_dependent(
                     };
                     let (middle, right) = not_left.split_at_mut(1);
                     let unit = middle.first_mut().unwrap();
-                    let clustering_next = right.get(0).map(|x| &x.state.clustering);
+                    let clustering_next = right.first().map(|x| &x.state.clustering);
                     unit.data.impute(&unit.state, &mut rng);
                     if unit_mcmc_tuning.update_precision_response {
                         State::update_precision_response(
@@ -1064,14 +1074,14 @@ fn fit(
     rngs: RObject,
 ) -> RObject {
     let n_updates: u32 = n_updates.as_i32().stop().try_into().unwrap();
-    let data: &mut Data = data.as_external_ptr().stop().decode_as_mut();
-    let state: &mut State = state.as_external_ptr().stop().decode_as_mut();
-    let hyperparameters: &Hyperparameters =
-        hyperparameters.as_external_ptr().stop().decode_as_ref();
-    let monitor = monitor
-        .as_external_ptr()
-        .stop()
-        .decode_as_mut::<Monitor<u32>>();
+    let mut data = data.as_external_ptr().stop();
+    let data: &mut Data = data.decode_as_mut();
+    let mut state = state.as_external_ptr().stop();
+    let state: &mut State = state.decode_as_mut();
+    let hyperparameters = hyperparameters.as_external_ptr().stop();
+    let hyperparameters: &Hyperparameters = hyperparameters.decode_as_ref();
+    let mut monitor = monitor.as_external_ptr().stop();
+    let monitor = monitor.decode_as_mut::<Monitor<u32>>();
     let mcmc_tuning = McmcTuning::from_r(mcmc_tuning, pc).stop();
     if data.n_global_covariates() != state.n_global_covariates()
         || hyperparameters.n_global_covariates() != state.n_global_covariates()
@@ -1086,66 +1096,82 @@ fn fit(
     if data.n_items() != state.clustering.n_items() {
         stop!("Inconsistent number of items.")
     }
-    let permutation_bucket = permutation_bucket
-        .as_vector()
-        .stop()
-        .as_mode_integer()
-        .stop();
-    let shrinkage_bucket = shrinkage_bucket.as_vector().stop().as_mode_double().stop();
-    let grit_bucket = grit_bucket.as_vector().stop().as_mode_double().stop();
-    let rngs = rngs.as_list().stop();
-    let getrng = |i: usize| {
-        rngs.get(i)
+    let mut permutation_bucket = unsafe {
+        permutation_bucket
+            .as_vector()
             .stop()
-            .as_external_ptr()
+            .as_mode_integer()
             .stop()
-            .decode_as_mut::<Pcg64Mcg>()
+            .as_mutable()
     };
-    let rng = getrng(0);
-    let rng2 = getrng(1);
+    let mut shrinkage_bucket = unsafe {
+        shrinkage_bucket
+            .as_vector()
+            .stop()
+            .as_mode_double()
+            .stop()
+            .as_mutable()
+    };
+    let mut grit_bucket = unsafe {
+        grit_bucket
+            .as_vector()
+            .stop()
+            .as_mode_double()
+            .stop()
+            .as_mutable()
+    };
+    let rngs = rngs.as_list().stop();
+    let mut rng = rngs.get(0).stop().as_external_ptr().stop();
+    let rng = rng.decode_as_mut::<Pcg64Mcg>();
+    let mut rng2 = rngs.get(1).stop().as_external_ptr().stop();
+    let rng2 = rng2.decode_as_mut::<Pcg64Mcg>();
     #[rustfmt::skip]
     macro_rules! mcmc_update { // (_, HAS_PERMUTATION, HAS_SCALAR_SHRINKAGE, HAS_VECTOR_SHRINKAGE, HAS_GRIT)
         ($tipe:ty, false, false, false, false) => {{
-            let partition_distribution = partition_distribution.as_external_ptr().stop().decode_as_mut::<$tipe>();
+            let mut partition_distribution = partition_distribution.as_external_ptr().stop();
+            let partition_distribution = partition_distribution.decode_as_mut::<$tipe>();
             for _ in 0..n_updates {
                 state.mcmc_iteration(&mcmc_tuning, data, hyperparameters, partition_distribution, rng, rng2);
             }
         }};
         ($tipe:ty, true, false, false, false) => {{
-            let partition_distribution = partition_distribution.as_external_ptr().stop().decode_as_mut::<$tipe>();
+            let mut partition_distribution = partition_distribution.as_external_ptr().stop();
+            let partition_distribution = partition_distribution.decode_as_mut::<$tipe>();
             for _ in 0..n_updates {
                 state.mcmc_iteration(&mcmc_tuning, data, hyperparameters, partition_distribution, rng, rng2);
                 monitor.monitor(u32::try_from(mcmc_tuning.n_permutation_updates_per_scan).unwrap(), |n_updates| { dahl_randompartition::mcmc::update_permutation(n_updates, partition_distribution, u32::try_from(mcmc_tuning.n_items_per_permutation_update).unwrap(), &state.clustering, rng) });
-                permutation_to_r(&partition_distribution.permutation, permutation_bucket);
+                permutation_to_r(&partition_distribution.permutation, &mut permutation_bucket);
             }
         }};
         ($tipe:ty, true, true, false, false) => {{
-            let partition_distribution = partition_distribution.as_external_ptr().stop().decode_as_mut::<$tipe>();
+            let mut partition_distribution = partition_distribution.as_external_ptr().stop();
+            let partition_distribution = partition_distribution.decode_as_mut::<$tipe>();
             for _ in 0..n_updates {
                 state.mcmc_iteration(&mcmc_tuning, data, hyperparameters, partition_distribution, rng, rng2);
                 monitor.monitor(u32::try_from(mcmc_tuning.n_permutation_updates_per_scan).unwrap(), |n_updates| { dahl_randompartition::mcmc::update_permutation(n_updates, partition_distribution, u32::try_from(mcmc_tuning.n_items_per_permutation_update).unwrap(), &state.clustering, rng) });
-                permutation_to_r(&partition_distribution.permutation, permutation_bucket);
+                permutation_to_r(&partition_distribution.permutation, &mut permutation_bucket);
                 if let Some(w) = mcmc_tuning.shrinkage_slice_step_size {
                     dahl_randompartition::mcmc::update_scalar_shrinkage(1, partition_distribution, w, hyperparameters.shrinkage.shape, hyperparameters.shrinkage.rate, &state.clustering, rng);
-                    scalar_shrinkage_to_r(&partition_distribution.shrinkage, shrinkage_bucket);
+                    scalar_shrinkage_to_r(&partition_distribution.shrinkage, &mut shrinkage_bucket);
                 }
             }
         }};
         ($tipe:ty, true, false, true, true) => {{
-            let partition_distribution = partition_distribution.as_external_ptr().stop().decode_as_mut::<$tipe>();
+            let mut partition_distribution = partition_distribution.as_external_ptr().stop();
+            let partition_distribution = partition_distribution.decode_as_mut::<$tipe>();
             for _ in 0..n_updates {
                 state.mcmc_iteration(&mcmc_tuning, data, hyperparameters, partition_distribution, rng, rng2);
                 monitor.monitor(u32::try_from(mcmc_tuning.n_permutation_updates_per_scan).unwrap(), |n_updates| { dahl_randompartition::mcmc::update_permutation(n_updates, partition_distribution, u32::try_from(mcmc_tuning.n_items_per_permutation_update).unwrap(), &state.clustering, rng) });
-                permutation_to_r(&partition_distribution.permutation, permutation_bucket);
+                permutation_to_r(&partition_distribution.permutation, &mut permutation_bucket);
                 if let Some(w) = mcmc_tuning.shrinkage_slice_step_size {
                     if let Some(reference) = &hyperparameters.shrinkage.reference {
                         dahl_randompartition::mcmc::update_shrinkage(1, partition_distribution, *reference, w, hyperparameters.shrinkage.shape, hyperparameters.shrinkage.rate, &state.clustering, rng);
-                        shrinkage_to_r(&partition_distribution.shrinkage, shrinkage_bucket);
+                        shrinkage_to_r(&partition_distribution.shrinkage, &mut shrinkage_bucket);
                     }
                 }
                 if let Some(w) = mcmc_tuning.grit_slice_step_size {
                     dahl_randompartition::mcmc::update_grit(1, partition_distribution, w, hyperparameters.grit.shape1, hyperparameters.grit.shape2, &state.clustering, rng);
-                    grit_to_r(&partition_distribution.grit, grit_bucket);
+                    grit_to_r(&partition_distribution.grit, &mut grit_bucket);
                 }
             }
         }};
@@ -1172,15 +1198,19 @@ fn fit(
 
 #[roxido]
 fn log_likelihood_contributions(state: RObject, data: RObject) -> RObject {
-    let state: &State = state.as_external_ptr().stop().decode_as_ref();
-    let data = data.as_external_ptr().stop().decode_as_ref();
+    let state = state.as_external_ptr().stop();
+    let state: &State = state.decode_as_ref();
+    let data = data.as_external_ptr().stop();
+    let data = data.decode_as_ref();
     state.log_likelihood_contributions(data).iter().to_r(pc)
 }
 
 #[roxido]
 fn log_likelihood_contributions_of_missing(state: RObject, data: RObject) -> RObject {
-    let state: &State = state.as_external_ptr().stop().decode_as_ref();
-    let data = data.as_external_ptr().stop().decode_as_ref();
+    let state = state.as_external_ptr().stop();
+    let state: &State = state.decode_as_ref();
+    let data = data.as_external_ptr().stop();
+    let data = data.decode_as_ref();
     state
         .log_likelihood_contributions_of_missing(data)
         .iter()
@@ -1189,10 +1219,15 @@ fn log_likelihood_contributions_of_missing(state: RObject, data: RObject) -> ROb
 
 #[roxido]
 fn log_likelihood_of(state: RObject, data: RObject, items: RObject) -> RObject {
-    let state: &State = state.as_external_ptr().stop().decode_as_ref();
-    let data = data.as_external_ptr().stop().decode_as_ref();
-    let items = items.as_vector().stop().to_mode_integer(pc).slice();
+    let state = state.as_external_ptr().stop();
+    let state: &State = state.decode_as_ref();
+    let data = data.as_external_ptr().stop();
+    let data = data.decode_as_ref();
     let items: Vec<_> = items
+        .as_vector()
+        .stop()
+        .to_mode_integer(pc)
+        .slice()
         .iter()
         .map(|x| usize::try_from(*x - 1).unwrap())
         .collect();
@@ -1201,32 +1236,35 @@ fn log_likelihood_of(state: RObject, data: RObject, items: RObject) -> RObject {
 
 #[roxido]
 fn log_likelihood(state: RObject, data: RObject) -> RObject {
-    let state: &State = state.as_external_ptr().stop().decode_as_ref();
-    let data = data.as_external_ptr().stop().decode_as_ref();
+    let state = state.as_external_ptr().stop();
+    let state: &State = state.decode_as_ref();
+    let data = data.as_external_ptr().stop();
+    let data = data.decode_as_ref();
     state.log_likelihood(data)
 }
 
 #[roxido]
 fn sample_multivariate_normal(n_samples: RObject, mean: RObject, precision: RObject) -> RObject {
     let n_samples = n_samples.as_usize().stop();
-    let mean = mean.as_vector().stop().to_mode_double(pc).slice();
+    let mean = mean.as_vector().stop().to_mode_double(pc);
+    let mean = mean.slice();
     let n = mean.len();
     let mean = DVector::from_iterator(n, mean.iter().cloned());
-    let precision = precision.as_matrix().stop().to_mode_double(pc).slice();
-    let precision = DMatrix::from_iterator(n, n, precision.iter().cloned());
-    let rval = R::new_matrix_double(n, n_samples, pc);
-    let slice = rval.slice();
+    let precision = precision.as_matrix().stop().to_mode_double(pc);
+    let precision = DMatrix::from_iterator(n, n, precision.slice().iter().cloned());
+    let mut rval = R::new_matrix_double(n, n_samples, pc);
+    let slice = rval.slice_mut();
     let mut rng = Pcg64Mcg::from_seed(R::random_bytes::<16>());
     let x = sample_multivariate_normal_repeatedly(n_samples, mean, precision, &mut rng).unwrap();
     slice.clone_from_slice(x.as_slice());
     rval.transpose(pc)
 }
 
-fn validate_list(
-    x: RObject,
+fn validate_list<RType, RMode, RMutability>(
+    x: RObject<RType, RMode, RMutability>,
     expected_names: &[&str],
     arg_name: &str,
-) -> RObject<roxido::r::Vector, roxido::r::List> {
+) -> RObject<roxido::r::Vector, roxido::r::List, RMutability> {
     let list = x
         .as_list()
         .stop_closure(|| format!("'{}' should be a list or NULL.", arg_name));

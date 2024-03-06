@@ -457,8 +457,8 @@ impl State {
 }
 
 impl ToR1<roxido::r::Vector, roxido::r::List> for State {
-    fn to_r(&self, pc: &mut Pc) -> RObject<roxido::r::Vector, roxido::r::List> {
-        let result = R::new_list(4, pc);
+    fn to_r(&self, pc: &mut Pc) -> RObject<roxido::r::Vector, roxido::r::List, roxido::r::Mutable> {
+        let mut result = R::new_list(4, pc);
         result.set(0, self.precision_response.to_r(pc)).stop();
         result
             .set(1, self.global_coefficients.as_slice().to_r(pc))
@@ -470,7 +470,7 @@ impl ToR1<roxido::r::Vector, roxido::r::List> for State {
             .map(|&label| i32::try_from(label + 1).unwrap())
             .collect();
         result.set(2, (&x[..]).to_r(pc)).stop();
-        let rval = R::new_list(self.clustered_coefficients.len(), pc);
+        let mut rval = R::new_list(self.clustered_coefficients.len(), pc);
         for (i, coef) in self.clustered_coefficients.iter().enumerate() {
             rval.set(i, coef.as_slice().to_r(pc)).unwrap();
         }
@@ -479,8 +479,8 @@ impl ToR1<roxido::r::Vector, roxido::r::List> for State {
     }
 }
 
-impl FromR for State {
-    fn from_r(state: RObject, pc: &mut Pc) -> Result<Self, String> {
+impl<RType, RMode, RMutability> FromR<RType, RMode, RMutability> for State {
+    fn from_r(state: RObject<RType, RMode, RMutability>, pc: &mut Pc) -> Result<Self, String> {
         let list = validate_list(
             state,
             &[
@@ -496,22 +496,22 @@ impl FromR for State {
             .stop()
             .as_f64()
             .stop_str("Precision of response should be a numeric");
-        let global_coefficients_slice = list
+        let global_coefficients = list
             .get(1)
             .stop()
             .as_vector()
             .stop_str("Global coefficients should be a vector")
-            .to_mode_double(pc)
-            .slice();
+            .to_mode_double(pc);
+        let global_coefficients_slice = global_coefficients.slice();
         let global_coefficients = DVector::from_column_slice(global_coefficients_slice);
         let clustering = {
-            let clustering_slice = list
+            let clustering = list
                 .get(2)
                 .stop()
                 .as_vector()
                 .stop_str("'clustering' should be a vector")
-                .to_mode_integer(pc)
-                .slice();
+                .to_mode_integer(pc);
+            let clustering_slice = clustering.slice();
             let clust: Vec<_> = clustering_slice.iter().map(|&x| (x as usize) - 1).collect();
             Clustering::from_vector(clust)
         };
@@ -530,8 +530,9 @@ impl FromR for State {
                 .get(i)
                 .unwrap()
                 .as_vector()
-                .stop_str("Elements of 'clustered coefficients' should be vectors");
-            let slice = element.to_mode_double(pc).slice();
+                .stop_str("Elements of 'clustered coefficients' should be vectors")
+                .to_mode_double(pc);
+            let slice = element.slice();
             match n_clustered_coefficients {
                 None => n_clustered_coefficients = Some(slice.len()),
                 Some(n) => {
@@ -563,8 +564,8 @@ pub struct McmcTuning {
     pub grit_slice_step_size: Option<f64>,
 }
 
-impl FromR for McmcTuning {
-    fn from_r(x: RObject, _pc: &mut Pc) -> Result<Self, String> {
+impl<RType, RMode, RMutability> FromR<RType, RMode, RMutability> for McmcTuning {
+    fn from_r(x: RObject<RType, RMode, RMutability>, _pc: &mut Pc) -> Result<Self, String> {
         let x = x.as_list()?;
         let mut map = x.make_map();
         let result = McmcTuning {
