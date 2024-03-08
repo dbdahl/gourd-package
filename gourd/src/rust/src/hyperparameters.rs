@@ -24,14 +24,24 @@ pub struct ShrinkageHyperparameters {
     pub rate: Rate,
 }
 
-impl<RType, RMode, RMutability> FromR<RType, RMode, RMutability> for ShrinkageHyperparameters {
-    fn from_r(x: RObject<RType, RMode, RMutability>, _pc: &mut Pc) -> Result<Self, String> {
-        let x = x.as_list()?;
+impl<RType, RMode> FromR<RType, RMode, String> for ShrinkageHyperparameters {
+    fn from_r(x: RObject<RType, RMode>, _pc: &mut Pc) -> Result<Self, String> {
+        let x = x.list().map_err(|_| "Not a list")?;
         let mut map = x.make_map();
         let result = Self {
-            reference: map.get("reference")?.as_usize().ok(),
-            shape: Shape::new(map.get("shape")?.as_f64()?).ok_or("Invalid shape")?,
-            rate: Rate::new(map.get("rate")?.as_f64()?).ok_or("Invalid rate")?,
+            reference: map.get("reference")?.usize().ok(),
+            shape: Shape::new(
+                map.get("shape")?
+                    .f64()
+                    .map_err(|_| "'shape' is not a double")?,
+            )
+            .ok_or("Invalid shape")?,
+            rate: Rate::new(
+                map.get("rate")?
+                    .f64()
+                    .map_err(|_| "'rate' is not a double")?,
+            )
+            .ok_or("Invalid rate")?,
         };
         map.exhaustive()?;
         Ok(result)
@@ -44,33 +54,48 @@ pub struct GritHyperparameters {
     pub shape2: Shape,
 }
 
-impl<RType, RMode, RMutability> FromR<RType, RMode, RMutability> for GritHyperparameters {
-    fn from_r(x: RObject<RType, RMode, RMutability>, _pc: &mut Pc) -> Result<Self, String> {
-        let x = x.as_list()?;
+impl<RType, RMode> FromR<RType, RMode, String> for GritHyperparameters {
+    fn from_r(x: RObject<RType, RMode>, _pc: &mut Pc) -> Result<Self, String> {
+        let x = x.list().map_err(|_| "Not a list")?;
         let mut map = x.make_map();
         let result = Self {
-            shape1: Shape::new(map.get("shape1")?.as_f64()?).ok_or("Invalid shape1")?,
-            shape2: Shape::new(map.get("shape2")?.as_f64()?).ok_or("Invalid shape2")?,
+            shape1: Shape::new(
+                map.get("shape1")?
+                    .f64()
+                    .map_err(|_| "'shape1' is not a double")?,
+            )
+            .ok_or("'shape1' is invalid")?,
+            shape2: Shape::new(
+                map.get("shape2")?
+                    .f64()
+                    .map_err(|_| "'shape2' is not a double")?,
+            )
+            .ok_or("'shape2' is invalid")?,
         };
         map.exhaustive()?;
         Ok(result)
     }
 }
 
-fn helper_mean_precision<RMutability>(
-    map: &mut roxido::r::RListMap<RMutability>,
+fn helper_mean_precision(
+    map: &mut roxido::r::RListMap,
     vector_name: &str,
     matrix_name: &str,
     pc: &mut Pc,
 ) -> Result<(DVector<f64>, DMatrix<f64>), String> {
     let r1 = DVector::from_column_slice(
         map.get(vector_name)?
-            .as_vector()?
-            .to_mode_double(pc)
+            .vector()
+            .map_err(|_| "Not a vector")?
+            .to_double(pc)
             .slice(),
     );
     let n = r1.len();
-    let x = map.get(matrix_name)?.as_matrix()?.to_mode_double(pc);
+    let x = map
+        .get(matrix_name)?
+        .matrix()
+        .map_err(|_| "Not a matrix")?
+        .to_double(pc);
     if x.nrow() != n || x.ncol() != n {
         return Err(format!(
             "To match '{}', '{}' is expected to be a {}-by-{} square matrix",
@@ -81,9 +106,9 @@ fn helper_mean_precision<RMutability>(
     Ok((r1, r2))
 }
 
-impl<RType, RMode, RMutability> FromR<RType, RMode, RMutability> for Hyperparameters {
-    fn from_r(x: RObject<RType, RMode, RMutability>, pc: &mut Pc) -> Result<Self, String> {
-        let x = x.as_list()?;
+impl<RType, RMode> FromR<RType, RMode, String> for Hyperparameters {
+    fn from_r(x: RObject<RType, RMode>, pc: &mut Pc) -> Result<Self, String> {
+        let x = x.list().map_err(|_| "Not a list")?;
         let mut map = x.make_map();
         let (global_coefficients_mean, global_coefficients_precision) = helper_mean_precision(
             &mut map,
@@ -108,10 +133,18 @@ impl<RType, RMode, RMutability> FromR<RType, RMode, RMutability> for Hyperparame
                 None => return Err("Cannot decompose clustered coefficients precision".to_owned()),
             };
         let result = Self {
-            precision_response_shape: Shape::new(map.get("precision_response_shape")?.as_f64()?)
-                .ok_or("Invalid shape for response precision")?,
-            precision_response_rate: Rate::new(map.get("precision_response_rate")?.as_f64()?)
-                .ok_or("Invalid rate for response precision")?,
+            precision_response_shape: Shape::new(
+                map.get("precision_response_shape")?
+                    .f64()
+                    .map_err(|_| "'precision_response_shape' is not a double")?,
+            )
+            .ok_or("Invalid shape for response precision")?,
+            precision_response_rate: Rate::new(
+                map.get("precision_response_rate")?
+                    .f64()
+                    .map_err(|_| "'precision_response_rate' is not a double")?,
+            )
+            .ok_or("Invalid rate for response precision")?,
             global_coefficients_mean,
             global_coefficients_precision,
             clustered_coefficients_mean,

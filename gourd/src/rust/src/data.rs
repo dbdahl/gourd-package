@@ -131,31 +131,41 @@ impl Data {
     }
 }
 
-impl<RType, RMode, RMutability> FromR<RType, RMode, RMutability> for Data {
-    fn from_r(x: RObject<RType, RMode, RMutability>, pc: &mut Pc) -> Result<Self, String> {
-        let x = x.as_list()?;
+impl<RType, RMode> FromR<RType, RMode, String> for Data {
+    fn from_r(x: RObject<RType, RMode>, pc: &mut Pc) -> Result<Self, String> {
+        let x = x.list().map_err(|_| "Not a list")?;
         let mut map = x.make_map();
-        let response = map.get("response")?.as_vector()?.to_mode_double(pc);
+        let response = map
+            .get("response")?
+            .vector()
+            .map_err(|_| "'response' is not a vector")?
+            .to_double(pc);
         let response_slice = response.slice();
         let n_items = response_slice.len();
         let response = DVector::from_column_slice(response_slice);
         let global_covariates_rval = map
             .get("global_covariates")?
-            .as_matrix()?
-            .to_mode_double(pc);
+            .matrix()
+            .map_err(|_| "'global_covariates' is not a matrix")?
+            .to_double(pc);
         let global_covariates_slice = global_covariates_rval.slice();
         let n_global_covariates = global_covariates_rval.ncol();
         let global_covariates =
             DMatrix::from_column_slice(n_items, n_global_covariates, global_covariates_slice);
         let clustered_covariates_rval = map
             .get("clustered_covariates")?
-            .as_matrix()?
-            .to_mode_double(pc);
+            .matrix()
+            .map_err(|_| "'clustered_covariates' is not a matrix")?
+            .to_double(pc);
         let clustered_covariates_slice = clustered_covariates_rval.slice();
         let n_clustered_covariates = clustered_covariates_rval.ncol();
         let clustered_covariates =
             DMatrix::from_column_slice(n_items, n_clustered_covariates, clustered_covariates_slice);
-        let item_sizes = map.get("item_sizes")?.as_vector()?.to_mode_integer(pc);
+        let item_sizes = map
+            .get("item_sizes")?
+            .vector()
+            .map_err(|_| "'item_sizes' is not a vector")?
+            .to_integer(pc);
         let item_sizes_slice = item_sizes.slice();
         let item_sizes: Vec<_> = item_sizes_slice
             .iter()

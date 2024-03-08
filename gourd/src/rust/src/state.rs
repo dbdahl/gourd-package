@@ -457,11 +457,11 @@ impl State {
 }
 
 impl ToR1<roxido::r::Vector, roxido::r::List> for State {
-    fn to_r(&self, pc: &mut Pc) -> RObject<roxido::r::Vector, roxido::r::List, roxido::r::Mutable> {
+    fn to_r(&self, pc: &mut Pc) -> RObject<roxido::r::Vector, roxido::r::List> {
         let mut result = R::new_list(4, pc);
-        result.set(0, self.precision_response.to_r(pc)).stop();
+        result.set(0, &self.precision_response.to_r(pc)).stop();
         result
-            .set(1, self.global_coefficients.as_slice().to_r(pc))
+            .set(1, &self.global_coefficients.as_slice().to_r(pc))
             .stop();
         let x: Vec<_> = self
             .clustering
@@ -469,18 +469,18 @@ impl ToR1<roxido::r::Vector, roxido::r::List> for State {
             .iter()
             .map(|&label| i32::try_from(label + 1).unwrap())
             .collect();
-        result.set(2, (&x[..]).to_r(pc)).stop();
+        result.set(2, &(&x[..]).to_r(pc)).stop();
         let mut rval = R::new_list(self.clustered_coefficients.len(), pc);
         for (i, coef) in self.clustered_coefficients.iter().enumerate() {
-            rval.set(i, coef.as_slice().to_r(pc)).unwrap();
+            rval.set(i, &coef.as_slice().to_r(pc)).unwrap();
         }
-        result.set(3, rval).stop();
+        result.set(3, &rval).stop();
         result
     }
 }
 
-impl<RType, RMode, RMutability> FromR<RType, RMode, RMutability> for State {
-    fn from_r(state: RObject<RType, RMode, RMutability>, pc: &mut Pc) -> Result<Self, String> {
+impl<RType, RMode> FromR<RType, RMode, String> for State {
+    fn from_r(state: RObject<RType, RMode>, pc: &mut Pc) -> Result<Self, String> {
         let list = validate_list(
             state,
             &[
@@ -494,23 +494,23 @@ impl<RType, RMode, RMutability> FromR<RType, RMode, RMutability> for State {
         let precision_response = list
             .get(0)
             .stop()
-            .as_f64()
-            .stop_str("Precision of response should be a numeric");
+            .f64()
+            .map_err(|_| "Precision of response should be a numeric")?;
         let global_coefficients = list
             .get(1)
             .stop()
-            .as_vector()
-            .stop_str("Global coefficients should be a vector")
-            .to_mode_double(pc);
+            .vector()
+            .map_err(|_| "Global coefficients should be a vector")?
+            .to_double(pc);
         let global_coefficients_slice = global_coefficients.slice();
         let global_coefficients = DVector::from_column_slice(global_coefficients_slice);
         let clustering = {
             let clustering = list
                 .get(2)
                 .stop()
-                .as_vector()
-                .stop_str("'clustering' should be a vector")
-                .to_mode_integer(pc);
+                .vector()
+                .map_err(|_| "'clustering' should be a vector")?
+                .to_integer(pc);
             let clustering_slice = clustering.slice();
             let clust: Vec<_> = clustering_slice.iter().map(|&x| (x as usize) - 1).collect();
             Clustering::from_vector(clust)
@@ -521,7 +521,7 @@ impl<RType, RMode, RMutability> FromR<RType, RMode, RMutability> for State {
         let clustered_coefficients_rval = list
             .get(3)
             .stop()
-            .as_list()
+            .list()
             .stop_str("'clustered_coefficients' should be a list");
         let mut clustered_coefficients = Vec::with_capacity(clustered_coefficients_rval.len());
         let mut n_clustered_coefficients = None;
@@ -529,9 +529,9 @@ impl<RType, RMode, RMutability> FromR<RType, RMode, RMutability> for State {
             let element = clustered_coefficients_rval
                 .get(i)
                 .unwrap()
-                .as_vector()
+                .vector()
                 .stop_str("Elements of 'clustered coefficients' should be vectors")
-                .to_mode_double(pc);
+                .to_double(pc);
             let slice = element.slice();
             match n_clustered_coefficients {
                 None => n_clustered_coefficients = Some(slice.len()),
@@ -564,27 +564,38 @@ pub struct McmcTuning {
     pub grit_slice_step_size: Option<f64>,
 }
 
-impl<RType, RMode, RMutability> FromR<RType, RMode, RMutability> for McmcTuning {
-    fn from_r(x: RObject<RType, RMode, RMutability>, _pc: &mut Pc) -> Result<Self, String> {
-        let x = x.as_list()?;
+impl<RType, RMode> FromR<RType, RMode, String> for McmcTuning {
+    fn from_r(x: RObject<RType, RMode>, _pc: &mut Pc) -> Result<Self, String> {
+        let x = x.list().map_err_msg()?;
         let mut map = x.make_map();
         let result = McmcTuning {
-            update_precision_response: map.get("update_precision_response")?.as_bool()?,
-            update_global_coefficients: map.get("update_global_coefficients")?.as_bool()?,
-            update_clustering: map.get("update_clustering")?.as_bool()?,
-            update_clustered_coefficients: map.get("update_clustered_coefficients")?.as_bool()?,
+            update_precision_response: map.get("update_precision_response")?.bool()?,
+            update_global_coefficients: map
+                .get("update_global_coefficients")?
+                .bool()
+                .map_err(|_| "'update_global_coefficients' is not a logical")?,
+            update_clustering: map
+                .get("update_clustering")?
+                .bool()
+                .map_err(|_| "'update_clustering' is not a logical")?,
+            update_clustered_coefficients: map
+                .get("update_clustered_coefficients")?
+                .bool()
+                .map_err(|_| "'update_clustered_coefficients' is not a logical")?,
             n_permutation_updates_per_scan: map
                 .get("n_permutation_updates_per_scan")?
-                .as_usize()?,
+                .usize()
+                .map_err(|_| "'n_permutation_updates_per_scan' a usize")?,
             n_items_per_permutation_update: map
                 .get("n_items_per_permutation_update")?
-                .as_usize()?,
+                .usize()
+                .map_err(|_| "'n_items_per_permutation_update' a usize")?,
             shrinkage_slice_step_size: match map.get("shrinkage_slice_step_size")?.option() {
-                Some(x) => Some(x.as_f64()?),
+                Some(x) => Some(x.f64()?),
                 None => None,
             },
             grit_slice_step_size: match map.get("grit_slice_step_size")?.option() {
-                Some(x) => Some(x.as_f64()?),
+                Some(x) => Some(x.f64()?),
                 None => None,
             },
         };
