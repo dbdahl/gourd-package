@@ -132,7 +132,7 @@ impl Data {
 }
 
 impl<RType, RMode> FromR<RType, RMode, String> for Data {
-    fn from_r(x: RObject<RType, RMode>, pc: &mut Pc) -> Result<Self, String> {
+    fn from_r(x: &RObject<RType, RMode>, pc: &Pc) -> Result<Self, String> {
         let x = x.list().map_err(|_| "Not a list")?;
         let mut map = x.make_map();
         let response = map

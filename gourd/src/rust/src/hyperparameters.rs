@@ -25,7 +25,7 @@ pub struct ShrinkageHyperparameters {
 }
 
 impl<RType, RMode> FromR<RType, RMode, String> for ShrinkageHyperparameters {
-    fn from_r(x: RObject<RType, RMode>, _pc: &mut Pc) -> Result<Self, String> {
+    fn from_r(x: &RObject<RType, RMode>, _pc: &Pc) -> Result<Self, String> {
         let x = x.list().map_err(|_| "Not a list")?;
         let mut map = x.make_map();
         let result = Self {
@@ -55,7 +55,7 @@ pub struct GritHyperparameters {
 }
 
 impl<RType, RMode> FromR<RType, RMode, String> for GritHyperparameters {
-    fn from_r(x: RObject<RType, RMode>, _pc: &mut Pc) -> Result<Self, String> {
+    fn from_r(x: &RObject<RType, RMode>, _pc: &Pc) -> Result<Self, String> {
         let x = x.list().map_err(|_| "Not a list")?;
         let mut map = x.make_map();
         let result = Self {
@@ -81,7 +81,7 @@ fn helper_mean_precision(
     map: &mut roxido::r::RListMap,
     vector_name: &str,
     matrix_name: &str,
-    pc: &mut Pc,
+    pc: &Pc,
 ) -> Result<(DVector<f64>, DMatrix<f64>), String> {
     let r1 = DVector::from_column_slice(
         map.get(vector_name)?
@@ -107,7 +107,7 @@ fn helper_mean_precision(
 }
 
 impl<RType, RMode> FromR<RType, RMode, String> for Hyperparameters {
-    fn from_r(x: RObject<RType, RMode>, pc: &mut Pc) -> Result<Self, String> {
+    fn from_r(x: &RObject<RType, RMode>, pc: &Pc) -> Result<Self, String> {
         let x = x.list().map_err(|_| "Not a list")?;
         let mut map = x.make_map();
         let (global_coefficients_mean, global_coefficients_precision) = helper_mean_precision(
