@@ -194,7 +194,6 @@ fn samplePartition(
     let chunk_size = np_per_core * ni;
     let matrix_rval = pc.new_matrix_integer(ni, np);
     let mut stick = matrix_rval.slice_mut();
-    let randomize_permutation = randomize_permutation;
     let randomize_shrinkage = match randomize_shrinkage {
         "fixed" => RandomizeShrinkage::Fixed,
         "common" => RandomizeShrinkage::Common,
