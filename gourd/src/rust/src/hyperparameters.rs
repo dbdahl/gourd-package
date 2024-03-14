@@ -29,19 +29,9 @@ impl<RType, RMode> FromR<RType, RMode, String> for ShrinkageHyperparameters {
         let x = x.list().map_err(|_| "Not a list")?;
         let mut map = x.make_map();
         let result = Self {
-            reference: map.get("reference")?.usize().ok(),
-            shape: Shape::new(
-                map.get("shape")?
-                    .f64()
-                    .map_err(|_| "'shape' is not a double")?,
-            )
-            .ok_or("Invalid shape")?,
-            rate: Rate::new(
-                map.get("rate")?
-                    .f64()
-                    .map_err(|_| "'rate' is not a double")?,
-            )
-            .ok_or("Invalid rate")?,
+            reference: map.get("reference")?.scalar()?.usize().ok(),
+            shape: Shape::new(map.get("shape")?.scalar()?.f64()).ok_or("Invalid shape")?,
+            rate: Rate::new(map.get("rate")?.scalar()?.f64()).ok_or("Invalid rate")?,
         };
         map.exhaustive()?;
         Ok(result)
@@ -59,18 +49,8 @@ impl<RType, RMode> FromR<RType, RMode, String> for GritHyperparameters {
         let x = x.list().map_err(|_| "Not a list")?;
         let mut map = x.make_map();
         let result = Self {
-            shape1: Shape::new(
-                map.get("shape1")?
-                    .f64()
-                    .map_err(|_| "'shape1' is not a double")?,
-            )
-            .ok_or("'shape1' is invalid")?,
-            shape2: Shape::new(
-                map.get("shape2")?
-                    .f64()
-                    .map_err(|_| "'shape2' is not a double")?,
-            )
-            .ok_or("'shape2' is invalid")?,
+            shape1: Shape::new(map.get("shape1")?.scalar()?.f64()).ok_or("'shape1' is invalid")?,
+            shape2: Shape::new(map.get("shape2")?.scalar()?.f64()).ok_or("'shape2' is invalid")?,
         };
         map.exhaustive()?;
         Ok(result)
@@ -134,17 +114,11 @@ impl<RType, RMode> FromR<RType, RMode, String> for Hyperparameters {
             };
         let result = Self {
             precision_response_shape: Shape::new(
-                map.get("precision_response_shape")?
-                    .f64()
-                    .map_err(|_| "'precision_response_shape' is not a double")?,
+                map.get("precision_response_shape")?.scalar()?.f64(),
             )
             .ok_or("Invalid shape for response precision")?,
-            precision_response_rate: Rate::new(
-                map.get("precision_response_rate")?
-                    .f64()
-                    .map_err(|_| "'precision_response_rate' is not a double")?,
-            )
-            .ok_or("Invalid rate for response precision")?,
+            precision_response_rate: Rate::new(map.get("precision_response_rate")?.scalar()?.f64())
+                .ok_or("Invalid rate for response precision")?,
             global_coefficients_mean,
             global_coefficients_precision,
             clustered_coefficients_mean,

@@ -456,8 +456,8 @@ impl State {
     }
 }
 
-impl<'a> ToR1<'a, roxido::r::Vector, roxido::r::List> for State {
-    fn to_r(&self, pc: &'a Pc) -> &'a mut RObject<roxido::r::Vector, roxido::r::List> {
+impl<'a> ToR1<'a, RVector, RList> for State {
+    fn to_r(&self, pc: &'a Pc) -> &'a mut RObject<RVector, RList> {
         let result = pc.new_list(4);
         result.set(0, self.precision_response.to_r(pc)).stop();
         result
@@ -491,17 +491,8 @@ impl<RType, RMode> FromR<RType, RMode, String> for State {
             ],
             "state",
         );
-        let precision_response = list
-            .get(0)
-            .stop()
-            .f64()
-            .map_err(|_| "Precision of response should be a numeric")?;
-        let global_coefficients = list
-            .get(1)
-            .stop()
-            .vector()
-            .map_err(|_| "Global coefficients should be a vector")?
-            .to_double(pc);
+        let precision_response = list.get(0)?.scalar()?.f64();
+        let global_coefficients = list.get(1)?.vector()?.to_double(pc);
         let global_coefficients_slice = global_coefficients.slice();
         let global_coefficients = DVector::from_column_slice(global_coefficients_slice);
         let clustering = {
@@ -569,33 +560,38 @@ impl<RType, RMode> FromR<RType, RMode, String> for McmcTuning {
         let x = x.list()?;
         let mut map = x.make_map();
         let result = McmcTuning {
-            update_precision_response: map.get("update_precision_response")?.bool()?,
+            update_precision_response: map.get("update_precision_response")?.scalar()?.bool()?,
             update_global_coefficients: map
                 .get("update_global_coefficients")?
+                .scalar()?
                 .bool()
                 .map_err(|_| "'update_global_coefficients' is not a logical")?,
             update_clustering: map
                 .get("update_clustering")?
+                .scalar()?
                 .bool()
                 .map_err(|_| "'update_clustering' is not a logical")?,
             update_clustered_coefficients: map
                 .get("update_clustered_coefficients")?
+                .scalar()?
                 .bool()
                 .map_err(|_| "'update_clustered_coefficients' is not a logical")?,
             n_permutation_updates_per_scan: map
                 .get("n_permutation_updates_per_scan")?
+                .scalar()?
                 .usize()
                 .map_err(|_| "'n_permutation_updates_per_scan' a usize")?,
             n_items_per_permutation_update: map
                 .get("n_items_per_permutation_update")?
+                .scalar()?
                 .usize()
                 .map_err(|_| "'n_items_per_permutation_update' a usize")?,
             shrinkage_slice_step_size: match map.get("shrinkage_slice_step_size")?.option() {
-                Some(x) => Some(x.f64()?),
+                Some(x) => Some(x.scalar()?.f64()),
                 None => None,
             },
             grit_slice_step_size: match map.get("grit_slice_step_size")?.option() {
-                Some(x) => Some(x.f64()?),
+                Some(x) => Some(x.scalar()?.f64()),
                 None => None,
             },
         };

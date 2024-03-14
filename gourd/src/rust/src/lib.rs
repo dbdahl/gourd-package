@@ -43,26 +43,24 @@ use std::ptr::NonNull;
 use walltime::TicToc;
 
 #[roxido]
-fn new_UpParameters(n_items: &RObject) -> &RObject {
-    let p = UpParameters::new(n_items.usize().stop());
+fn new_UpParameters(n_items: usize) -> &RObject {
+    let p = UpParameters::new(n_items);
     pc.encode(p, "up".to_r(pc), true)
 }
 
 #[roxido]
-fn new_JlpParameters(concentration: &RObject, permutation: &RObject) -> &RObject {
+fn new_JlpParameters(concentration: f64, permutation: &RObject) -> &RObject {
     let permutation = mk_permutation(permutation, pc);
-    let concentration = Concentration::new(concentration.f64().stop())
-        .unwrap_or_else(|| stop!("Invalid concentration value"));
+    let concentration =
+        Concentration::new(concentration).unwrap_or_else(|| stop!("Invalid concentration value"));
     let p = JlpParameters::new(permutation.n_items(), concentration, permutation).unwrap();
     pc.encode(p, "jlp".to_r(pc), true)
 }
 
 #[roxido]
-fn new_CrpParameters(n_items: &RObject, concentration: &RObject, discount: &RObject) -> &RObject {
-    let n_items = n_items.usize().stop();
-    let discount =
-        Discount::new(discount.f64().stop()).unwrap_or_else(|| stop!("Invalid discount value"));
-    let concentration = Concentration::new_with_discount(concentration.f64().stop(), discount)
+fn new_CrpParameters(n_items: usize, concentration: f64, discount: f64) -> &RObject {
+    let discount = Discount::new(discount).unwrap_or_else(|| stop!("Invalid discount value"));
+    let concentration = Concentration::new_with_discount(concentration, discount)
         .unwrap_or_else(|| stop!("Invalid concentration value"));
     let p = CrpParameters::new_with_discount(n_items, concentration, discount).unwrap();
     pc.encode(p, "crp".to_r(pc), true)
@@ -74,13 +72,12 @@ fn new_SpParameters(
     shrinkage: &RObject,
     permutation: &RObject,
     grit: &RObject,
-    baseline: &RObject,
+    baseline: &RObject<RExternalPtr>,
 ) -> &RObject {
     let anchor = mk_clustering(anchor, pc);
     let shrinkage = mk_shrinkage(shrinkage, pc);
     let permutation = mk_permutation(permutation, pc);
     let grit = mk_grit(grit);
-    let baseline = baseline.external_ptr().stop();
     macro_rules! distr_macro {
         ($tipe:ty, $label:literal) => {{
             let p = NonNull::new(baseline.address() as *mut $tipe).unwrap();
@@ -92,7 +89,7 @@ fn new_SpParameters(
             )
         }};
     }
-    let tag = baseline.tag();
+    let tag = baseline.tag().scalar().stop();
     let name = tag.to_str(pc).stop();
     match name {
         "up" => distr_macro!(UpParameters, "sp-up"),
@@ -120,7 +117,7 @@ fn mk_permutation(permutation: &RObject, pc: &Pc) -> Permutation {
 }
 
 fn mk_grit(grit: &RObject) -> Grit {
-    let b = grit.f64().stop();
+    let b = grit.scalar().stop().f64();
     match Grit::new(b) {
         Some(grit) => grit,
         None => stop!("Out of range."),
@@ -136,17 +133,13 @@ enum RandomizeShrinkage {
 }
 
 #[roxido]
-fn prPartition(partition: &RObject, prior: &RObject) -> &RObject {
-    let partition = partition
-        .matrix()
-        .stop_str("'partition' should be a matrix.")
-        .to_integer(pc);
+fn prPartition(partition: &RObject<RMatrix>, prior: &RObject<RExternalPtr>) -> &RObject {
+    let partition = partition.to_integer(pc);
     let matrix = partition.slice();
     let np = partition.nrow();
     let ni = partition.ncol();
     let log_probs_rval = pc.new_vector_double(np);
     let log_probs_slice = log_probs_rval.slice_mut();
-    let prior = prior.external_ptr().stop();
     macro_rules! distr_macro {
         ($tipe:ty) => {{
             let p = prior.address() as *mut $tipe;
@@ -161,7 +154,7 @@ fn prPartition(partition: &RObject, prior: &RObject) -> &RObject {
             }
         }};
     }
-    let tag = prior.tag();
+    let tag = prior.tag().scalar().stop();
     let name = tag.to_str(pc).stop();
     match name {
         "crp" => distr_macro!(CrpParameters),
@@ -177,56 +170,41 @@ fn prPartition(partition: &RObject, prior: &RObject) -> &RObject {
 
 #[roxido]
 fn samplePartition(
-    n_samples: &RObject,
-    n_items: &RObject,
-    prior: &RObject,
-    randomize_permutation: &RObject,
-    randomize_shrinkage: &RObject,
-    max: &RObject,
-    shape1: &RObject,
-    shape2: &RObject,
-    n_cores: &RObject,
+    n_samples: usize,
+    n_items: usize,
+    prior: &RObject<RExternalPtr>,
+    randomize_permutation: bool,
+    randomize_shrinkage: &str,
+    max: f64,
+    shape1: f64,
+    shape2: f64,
+    n_cores: usize,
 ) -> &RObject {
     let n_cores = {
-        let x = n_cores
-            .usize()
-            .stop_str("'nCores' should be a scalar integer");
-        if x == 0 {
+        if n_cores == 0 {
             num_cpus::get()
         } else {
-            x
+            n_cores
         }
     };
-    let np = n_samples
-        .usize()
-        .map(|x| x.max(1))
-        .stop_str("'nSamples' should be a scalar integer");
+    let np = n_samples.max(1);
     let np_per_core = np / n_cores;
     let np_extra = np % n_cores;
-    let ni = n_items
-        .usize()
-        .map(|x| x.max(1))
-        .stop_str("'nItems' should be a scalar integer");
+    let ni = n_items.max(1);
     let chunk_size = np_per_core * ni;
     let matrix_rval = pc.new_matrix_integer(ni, np);
     let mut stick = matrix_rval.slice_mut();
-    let randomize_permutation = randomize_permutation
-        .bool()
-        .stop_str("'randomizePermutation' should be a scalar logical");
-    let randomize_shrinkage = match randomize_shrinkage.to_str(pc) {
-        Ok("fixed") => RandomizeShrinkage::Fixed,
-        Ok("common") => RandomizeShrinkage::Common,
-        Ok("cluster") => RandomizeShrinkage::Cluster,
-        Ok("idiosyncratic") => RandomizeShrinkage::Idiosyncratic,
+    let randomize_permutation = randomize_permutation;
+    let randomize_shrinkage = match randomize_shrinkage {
+        "fixed" => RandomizeShrinkage::Fixed,
+        "common" => RandomizeShrinkage::Common,
+        "cluster" => RandomizeShrinkage::Cluster,
+        "idiosyncratic" => RandomizeShrinkage::Idiosyncratic,
         _ => stop!("Unrecognized randomize_shrinkage value"),
     };
-    let max = ScalarShrinkage::new(max.f64().stop_str("'max' should be a scalar double"))
-        .unwrap_or_else(|| stop!("'max' should be non-negative"));
-    let shape1 = Shape::new(shape1.f64().stop_str("'shape1' should be a scalar double"))
-        .unwrap_or_else(|| stop!("'shape1' should be greater than 0"));
-    let shape2 = Shape::new(shape2.f64().stop_str("'shape2' should be a scalar double"))
-        .unwrap_or_else(|| stop!("'shape2' should be greater than 0"));
-    let prior = prior.external_ptr().stop();
+    let max = ScalarShrinkage::new(max).unwrap_or_else(|| stop!("'max' should be non-negative"));
+    let shape1 = Shape::new(shape1).unwrap_or_else(|| stop!("'shape1' should be greater than 0"));
+    let shape2 = Shape::new(shape2).unwrap_or_else(|| stop!("'shape2' should be greater than 0"));
     macro_rules! distr_macro {
         ($tipe: ty, $callback: tt) => {{
             let _ = crossbeam::scope(|s| {
@@ -245,6 +223,7 @@ fn samplePartition(
                     s.spawn(move |_| {
                         let mut rng = Pcg64Mcg::new(p.2);
                         for j in 0..p.0.len() / ni {
+                            #[allow(clippy::redundant_closure_call)]
                             ($callback)(&mut p.1, &mut rng);
                             let clust = p.1.sample(&mut rng).standardize();
                             let labels = clust.allocation();
@@ -286,7 +265,7 @@ fn samplePartition(
             };
         }
     }
-    let tag = prior.tag();
+    let tag = prior.tag().scalar().stop();
     let name = tag.to_str(pc).stop();
     match name {
         "up" => distr_macro!(
@@ -371,17 +350,12 @@ fn monitor_new() -> &RObject {
 }
 
 #[roxido]
-fn monitor_rate(monitor: &RObject) -> &RObject {
-    monitor
-        .external_ptr()
-        .stop()
-        .decode_ref::<Monitor<u32>>()
-        .rate()
+fn monitor_rate(monitor: &RObject<RExternalPtr>) -> &RObject {
+    monitor.decode_ref::<Monitor<u32>>().rate()
 }
 
 #[roxido]
-fn monitor_reset(monitor: &mut RObject) {
-    let monitor = monitor.external_ptr_mut().stop();
+fn monitor_reset(monitor: &mut RObject<RExternalPtr>) {
     monitor.decode_mut::<Monitor<u32>>().reset();
 }
 
@@ -392,9 +366,9 @@ fn hyperparameters_encode(hyperparameters: &RObject) -> &RObject {
 }
 
 #[roxido]
-fn data_encode(data: &RObject, missing_items: &RObject) -> &RObject {
+fn data_encode(data: &RObject, missing_items: &RObject<RVector>) -> &RObject {
     let mut data = Data::from_r(data, pc).stop();
-    let missing_items = missing_items.vector().stop().to_integer(pc);
+    let missing_items = missing_items.to_integer(pc);
     let missing_items: Vec<_> = missing_items
         .slice()
         .iter()
@@ -404,23 +378,23 @@ fn data_encode(data: &RObject, missing_items: &RObject) -> &RObject {
     pc.encode(data, "data".to_r(pc), true)
 }
 
-fn permutation_to_r(permutation: &Permutation, rval: &mut RObject<roxido::r::Vector, i32>) {
+fn permutation_to_r(permutation: &Permutation, rval: &mut RObject<RVector, i32>) {
     for (x, y) in permutation.as_slice().iter().zip(rval.slice_mut()) {
         *y = i32::try_from(*x).unwrap() + 1;
     }
 }
 
-fn scalar_shrinkage_to_r(shrinkage: &ScalarShrinkage, rval: &mut RObject<roxido::r::Vector, f64>) {
+fn scalar_shrinkage_to_r(shrinkage: &ScalarShrinkage, rval: &mut RObject<RVector, f64>) {
     rval.slice_mut()[0] = shrinkage.get();
 }
 
-fn shrinkage_to_r(shrinkage: &Shrinkage, rval: &mut RObject<roxido::r::Vector, f64>) {
+fn shrinkage_to_r(shrinkage: &Shrinkage, rval: &mut RObject<RVector, f64>) {
     for (x, y) in rval.slice_mut().iter_mut().zip(shrinkage.as_slice()) {
         *x = y.get()
     }
 }
 
-fn grit_to_r(grit: &Grit, rval: &mut RObject<roxido::r::Vector, f64>) {
+fn grit_to_r(grit: &Grit, rval: &mut RObject<RVector, f64>) {
     rval.slice_mut()[0] = grit.get();
 }
 
@@ -436,8 +410,7 @@ struct All {
 }
 
 #[roxido]
-fn all(all: &RObject) -> &RObject {
-    let all = all.list().stop();
+fn all(all: &RObject<RVector, RList>) -> &RObject {
     let mut vec = Vec::with_capacity(all.len());
     let mut n_items = None;
     for i in 0..all.len() {
@@ -493,10 +466,10 @@ impl<RType, RMode> FromR<RType, RMode, String> for GlobalMcmcTuning {
         let x = x.list()?;
         let mut map = x.make_map();
         let result = Self {
-            n_iterations: map.get("n_iterations")?.usize()?,
-            burnin: map.get("burnin")?.usize()?,
-            thinning: map.get("thinning")?.usize()?,
-            update_anchor: map.get("update_anchor")?.bool()?,
+            n_iterations: map.get("n_iterations")?.scalar()?.usize()?,
+            burnin: map.get("burnin")?.scalar()?.usize()?,
+            thinning: map.get("thinning")?.scalar()?.usize()?,
+            update_anchor: map.get("update_anchor")?.scalar()?.bool()?,
         };
         map.exhaustive()?;
         Ok(result)
@@ -527,7 +500,7 @@ struct Timers {
 }
 
 struct Results<'a> {
-    rval: &'a mut RObject<roxido::r::Vector, roxido::r::List>,
+    rval: &'a mut RObject<RVector, RList>,
     counter: usize,
     n_items: usize,
     unit_partitions: Vec<&'a mut [i32]>,
@@ -656,16 +629,16 @@ impl<'a> Results<'a> {
 
 #[roxido]
 fn fit_dependent(
-    model_id: &RObject,
+    model_id: &str,
     all_ptr: &mut RObject,
-    anchor_concentration: &RObject,
-    baseline_concentration: &RObject,
+    anchor_concentration: f64,
+    baseline_concentration: f64,
     hyperparameters: &RObject,
     unit_mcmc_tuning: &RObject,
     global_mcmc_tuning: &RObject,
     validation_data: &RObject,
 ) -> &RObject {
-    let do_hierarchical_model = match model_id.to_str(pc).stop() {
+    let do_hierarchical_model = match model_id {
         "hierarchical" => true,
         "temporal" => false,
         model_id => stop!("Unsupported model {}", model_id),
@@ -710,12 +683,10 @@ fn fit_dependent(
     let permutation = Permutation::random(all.n_items, &mut rng);
     let baseline_distribution = CrpParameters::new(
         all.n_items,
-        Concentration::new(baseline_concentration.f64().stop()).stop(),
+        Concentration::new(baseline_concentration).stop(),
     );
-    let anchor_distribution = CrpParameters::new(
-        all.n_items,
-        Concentration::new(anchor_concentration.f64().stop()).stop(),
-    );
+    let anchor_distribution =
+        CrpParameters::new(all.n_items, Concentration::new(anchor_concentration).stop());
     let anchor_update_permutation = Permutation::natural_and_fixed(all.n_items);
     let mut partition_distribution = SpParameters::new(
         anchor,
@@ -1030,7 +1001,7 @@ fn fit_dependent(
 
 #[roxido]
 fn fit(
-    n_updates: &RObject,
+    n_updates: usize,
     data: &mut RObject,
     state: &mut RObject,
     hyperparameters: &RObject,
@@ -1042,7 +1013,7 @@ fn fit(
     grit_bucket: &mut RObject,        // This is used to communicating temporary results back to R
     rngs: &mut RObject,
 ) -> &RObject {
-    let n_updates: u32 = n_updates.i32().stop().try_into().unwrap();
+    let n_updates: u32 = n_updates.try_into().unwrap();
     let data = data.external_ptr_mut().stop();
     let data: &mut Data = data.decode_mut();
     let state = state.external_ptr_mut().stop();
@@ -1074,7 +1045,7 @@ fn fit(
     let rng2 = rngs.get_mut(1).stop().external_ptr_mut().stop();
     let rng2 = rng2.decode_mut::<Pcg64Mcg>();
     let partition_distribution = partition_distribution.external_ptr_mut().stop();
-    let tag = partition_distribution.tag();
+    let tag = partition_distribution.tag().scalar().stop();
     let prior_name = tag.to_str(pc).stop();
     #[rustfmt::skip]
     macro_rules! mcmc_update { // (_, HAS_PERMUTATION, HAS_SCALAR_SHRINKAGE, HAS_VECTOR_SHRINKAGE, HAS_GRIT)
@@ -1190,12 +1161,11 @@ fn log_likelihood(state: &RObject, data: &RObject) -> &RObject {
 
 #[roxido]
 fn sample_multivariate_normal(
-    n_samples: &RObject,
-    mean: &RObject,
+    n_samples: usize,
+    mean: &RObject<RVector>,
     precision: &RObject,
 ) -> &RObject {
-    let n_samples = n_samples.usize().stop();
-    let mean = mean.vector().stop().to_double(pc);
+    let mean = mean.to_double(pc);
     let mean = mean.slice();
     let n = mean.len();
     let mean = DVector::from_iterator(n, mean.iter().cloned());
@@ -1213,7 +1183,7 @@ fn validate_list<'a, RType, RMode>(
     x: &'a RObject<RType, RMode>,
     expected_names: &[&str],
     arg_name: &str,
-) -> &'a RObject<roxido::r::Vector, roxido::r::List> {
+) -> &'a RObject<RVector, RList> {
     let list = x
         .list()
         .stop_closure(|| format!("'{}' should be a list or NULL.", arg_name));
