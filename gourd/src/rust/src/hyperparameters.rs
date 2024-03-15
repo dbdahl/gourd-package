@@ -58,18 +58,12 @@ impl<RType, RMode> FromR<RType, RMode, String> for GritHyperparameters {
 }
 
 fn helper_mean_precision(
-    map: &mut roxido::r::RListMap,
+    map: &mut roxido::r::RListMap<RUnknown>,
     vector_name: &str,
     matrix_name: &str,
     pc: &Pc,
 ) -> Result<(DVector<f64>, DMatrix<f64>), String> {
-    let r1 = DVector::from_column_slice(
-        map.get(vector_name)?
-            .vector()
-            .map_err(|_| "Not a vector")?
-            .to_double(pc)
-            .slice(),
-    );
+    let r1 = DVector::from_column_slice(map.get(vector_name)?.vector()?.to_double(pc).slice());
     let n = r1.len();
     let x = map
         .get(matrix_name)?

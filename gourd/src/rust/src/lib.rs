@@ -409,7 +409,7 @@ struct All {
 }
 
 #[roxido]
-fn all(all: &RObject<RVector, RList>) -> &RObject {
+fn all(all: &RObject<RList>) -> &RObject {
     let mut vec = Vec::with_capacity(all.len());
     let mut n_items = None;
     for i in 0..all.len() {
@@ -499,7 +499,7 @@ struct Timers {
 }
 
 struct Results<'a> {
-    rval: &'a mut RObject<RVector, RList>,
+    rval: &'a mut RObject<RList>,
     counter: usize,
     n_items: usize,
     unit_partitions: Vec<&'a mut [i32]>,
@@ -1182,7 +1182,7 @@ fn validate_list<'a, RType, RMode>(
     x: &'a RObject<RType, RMode>,
     expected_names: &[&str],
     arg_name: &str,
-) -> &'a RObject<RVector, RList> {
+) -> &'a RObject<RList> {
     let list = x
         .list()
         .stop_closure(|| format!("'{}' should be a list or NULL.", arg_name));

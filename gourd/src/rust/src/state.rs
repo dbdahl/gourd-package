@@ -456,8 +456,8 @@ impl State {
     }
 }
 
-impl<'a> ToR1<'a, RVector, RList> for State {
-    fn to_r(&self, pc: &'a Pc) -> &'a mut RObject<RVector, RList> {
+impl<'a> ToR1<'a, RList, RUnknown> for State {
+    fn to_r(&self, pc: &'a Pc) -> &'a mut RObject<RList> {
         let result = pc.new_list(4);
         result.set(0, self.precision_response.to_r(pc)).stop();
         result
@@ -496,12 +496,7 @@ impl<RType, RMode> FromR<RType, RMode, String> for State {
         let global_coefficients_slice = global_coefficients.slice();
         let global_coefficients = DVector::from_column_slice(global_coefficients_slice);
         let clustering = {
-            let clustering = list
-                .get(2)
-                .stop()
-                .vector()
-                .map_err(|_| "'clustering' should be a vector")?
-                .to_integer(pc);
+            let clustering = list.get(2)?.vector()?.to_integer(pc);
             let clustering_slice = clustering.slice();
             let clust: Vec<_> = clustering_slice.iter().map(|&x| (x as usize) - 1).collect();
             Clustering::from_vector(clust)
@@ -517,12 +512,7 @@ impl<RType, RMode> FromR<RType, RMode, String> for State {
         let mut clustered_coefficients = Vec::with_capacity(clustered_coefficients_rval.len());
         let mut n_clustered_coefficients = None;
         for i in 0..clustered_coefficients.capacity() {
-            let element = clustered_coefficients_rval
-                .get(i)
-                .unwrap()
-                .vector()
-                .stop_str("Elements of 'clustered coefficients' should be vectors")
-                .to_double(pc);
+            let element = clustered_coefficients_rval.get(i)?.vector()?.to_double(pc);
             let slice = element.slice();
             match n_clustered_coefficients {
                 None => n_clustered_coefficients = Some(slice.len()),
