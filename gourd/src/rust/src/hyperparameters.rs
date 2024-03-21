@@ -24,10 +24,9 @@ pub struct ShrinkageHyperparameters {
     pub rate: Rate,
 }
 
-impl<RType, RMode> FromR<RType, RMode, String> for ShrinkageHyperparameters {
-    fn from_r(x: &RObject<RType, RMode>, _pc: &Pc) -> Result<Self, String> {
-        let x = x.list().map_err(|_| "Not a list")?;
-        let mut map = x.make_map();
+impl FromR<RAnyType, RUnknown, String> for ShrinkageHyperparameters {
+    fn from_r(x: &RObject, _pc: &Pc) -> Result<Self, String> {
+        let mut map = x.list()?.make_map();
         let result = Self {
             reference: map.get("reference")?.scalar()?.usize().ok(),
             shape: Shape::new(map.get("shape")?.scalar()?.f64()).ok_or("Invalid shape")?,
@@ -46,8 +45,7 @@ pub struct GritHyperparameters {
 
 impl<RType, RMode> FromR<RType, RMode, String> for GritHyperparameters {
     fn from_r(x: &RObject<RType, RMode>, _pc: &Pc) -> Result<Self, String> {
-        let x = x.list().map_err(|_| "Not a list")?;
-        let mut map = x.make_map();
+        let mut map = x.list()?.make_map();
         let result = Self {
             shape1: Shape::new(map.get("shape1")?.scalar()?.f64()).ok_or("'shape1' is invalid")?,
             shape2: Shape::new(map.get("shape2")?.scalar()?.f64()).ok_or("'shape2' is invalid")?,
@@ -65,11 +63,7 @@ fn helper_mean_precision(
 ) -> Result<(DVector<f64>, DMatrix<f64>), String> {
     let r1 = DVector::from_column_slice(map.get(vector_name)?.vector()?.to_double(pc).slice());
     let n = r1.len();
-    let x = map
-        .get(matrix_name)?
-        .matrix()
-        .map_err(|_| "Not a matrix")?
-        .to_double(pc);
+    let x = map.get(matrix_name)?.matrix()?.to_double(pc);
     if x.nrow() != n || x.ncol() != n {
         return Err(format!(
             "To match '{}', '{}' is expected to be a {}-by-{} square matrix",
@@ -82,7 +76,7 @@ fn helper_mean_precision(
 
 impl<RType, RMode> FromR<RType, RMode, String> for Hyperparameters {
     fn from_r(x: &RObject<RType, RMode>, pc: &Pc) -> Result<Self, String> {
-        let x = x.list().map_err(|_| "Not a list")?;
+        let x = x.list()?;
         let mut map = x.make_map();
         let (global_coefficients_mean, global_coefficients_precision) = helper_mean_precision(
             &mut map,
