@@ -45,7 +45,7 @@ use walltime::TicToc;
 #[roxido]
 fn new_UpParameters(n_items: usize) {
     let p = UpParameters::new(n_items);
-    pc.encode(p, "up")
+    RObject::<RExternalPtr>::encode(p, "up", pc)
 }
 
 #[roxido]
@@ -54,7 +54,7 @@ fn new_JlpParameters(concentration: f64, permutation: &RObject<RVector>) {
     let concentration = Concentration::new(concentration).stop_str("Invalid concentration value");
     let p = JlpParameters::new(permutation.n_items(), concentration, permutation)
         .stop_str("Invalid Jensen Liu parametrization");
-    pc.encode(p, "jlp")
+    RObject::<RExternalPtr>::encode(p, "jlp", pc)
 }
 
 #[roxido]
@@ -64,7 +64,7 @@ fn new_CrpParameters(n_items: usize, concentration: f64, discount: f64) {
         .stop_str("Invalid concentration value");
     let p = CrpParameters::new_with_discount(n_items, concentration, discount)
         .stop_str("Invalid CRP parametrization");
-    pc.encode(p, "crp")
+    RObject::<RExternalPtr>::encode(p, "crp", pc)
 }
 
 #[roxido]
@@ -75,26 +75,27 @@ fn new_SpParameters(
     grit: f64,
     baseline: &RObject<RExternalPtr>,
 ) {
-    let anchor = Clustering::from_slice(anchor.to_integer(pc).slice());
-    let shrinkage = Shrinkage::from(shrinkage.to_double(pc).slice()).stop_str("Invalid shrinkage");
+    let anchor = Clustering::from_slice(anchor.to_i32(pc).slice());
+    let shrinkage = Shrinkage::from(shrinkage.to_f64(pc).slice()).stop_str("Invalid shrinkage");
     let permutation = mk_permutation(permutation, pc);
     let grit = match Grit::new(grit) {
         Some(grit) => grit,
-        None => stop!("Out of range."),
+        None => stop!("Grit value out of range"),
     };
     macro_rules! distr_macro {
         ($tipe:ty, $label:literal) => {{
             let p = NonNull::new(baseline.address() as *mut $tipe).unwrap();
             let baseline = unsafe { p.as_ref().clone() };
-            pc.encode(
+            RObject::<RExternalPtr>::encode(
                 SpParameters::new(anchor, shrinkage, permutation, grit, baseline)
                     .stop_str("Invalid shrinkage partition parametrization"),
                 $label,
+                pc,
             )
         }};
     }
     let tag = baseline.tag().scalar().stop();
-    let name = tag.to_str(pc).stop();
+    let name = tag.str(pc);
     match name {
         "up" => distr_macro!(UpParameters, "sp-up"),
         "jlp" => distr_macro!(JlpParameters, "sp-jlp"),
@@ -105,7 +106,7 @@ fn new_SpParameters(
 
 fn mk_permutation(permutation: &RObject<RVector>, pc: &Pc) -> Permutation {
     let vector = permutation
-        .to_integer(pc)
+        .to_i32(pc)
         .slice()
         .iter()
         .map(|x| *x as usize)
@@ -123,11 +124,11 @@ enum RandomizeShrinkage {
 
 #[roxido]
 fn prPartition(partition: &RObject<RMatrix>, prior: &RObject<RExternalPtr>) {
-    let partition = partition.to_integer(pc);
+    let partition = partition.to_i32(pc);
     let matrix = partition.slice();
     let np = partition.nrow();
     let ni = partition.ncol();
-    let log_probs_rval = pc.new_vector_double(np);
+    let log_probs_rval = RObject::<RVector, f64>::new(np, pc);
     let log_probs_slice = log_probs_rval.slice_mut();
     macro_rules! distr_macro {
         ($tipe:ty) => {{
@@ -144,7 +145,7 @@ fn prPartition(partition: &RObject<RMatrix>, prior: &RObject<RExternalPtr>) {
         }};
     }
     let tag = prior.tag().scalar().stop();
-    let name = tag.to_str(pc).stop();
+    let name = tag.str(pc);
     match name {
         "crp" => distr_macro!(CrpParameters),
         "up" => distr_macro!(UpParameters),
@@ -181,14 +182,14 @@ fn samplePartition(
     let np_extra = np % n_cores;
     let ni = n_items.max(1);
     let chunk_size = np_per_core * ni;
-    let matrix_rval = pc.new_matrix_integer(ni, np);
+    let matrix_rval = RObject::<RMatrix, i32>::new(ni, np, pc);
     let mut stick = matrix_rval.slice_mut();
     let randomize_shrinkage = match randomize_shrinkage {
         "fixed" => RandomizeShrinkage::Fixed,
         "common" => RandomizeShrinkage::Common,
         "cluster" => RandomizeShrinkage::Cluster,
         "idiosyncratic" => RandomizeShrinkage::Idiosyncratic,
-        _ => stop!("Unrecognized randomize_shrinkage value"),
+        _ => stop!("Unrecognized 'randomize_shrinkage' value"),
     };
     let max = ScalarShrinkage::new(max).unwrap_or_else(|| stop!("'max' should be non-negative"));
     let shape1 = Shape::new(shape1).unwrap_or_else(|| stop!("'shape1' should be greater than 0"));
@@ -199,7 +200,7 @@ fn samplePartition(
                 let mut nonnull = NonNull::new(prior.address() as *mut $tipe).unwrap();
                 let distr = unsafe { nonnull.as_mut() };
                 let mut plan = Vec::with_capacity(n_cores);
-                let mut rng = Pcg64Mcg::from_seed(Pc::random_bytes::<16>());
+                let mut rng = Pcg64Mcg::from_seed(R::random_bytes::<16>());
                 for k in 0..n_cores - 1 {
                     let (left, right) =
                         stick.split_at_mut(chunk_size + if k < np_extra { ni } else { 0 });
@@ -254,7 +255,7 @@ fn samplePartition(
         }
     }
     let tag = prior.tag().scalar().stop();
-    let name = tag.to_str(pc).stop();
+    let name = tag.str(pc);
     match name {
         "up" => distr_macro!(
             UpParameters,
@@ -311,20 +312,24 @@ fn samplePartition(
 
 #[roxido]
 fn rngs_new() {
-    let mut rng = Pcg64Mcg::from_seed(Pc::random_bytes::<16>());
+    let mut rng = Pcg64Mcg::from_seed(R::random_bytes::<16>());
     let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
     rng.fill(&mut seed);
     let rng2 = Pcg64Mcg::from_seed(seed);
-    let result = pc.new_list(2);
-    result.set(0, pc.encode(rng, "rng")).stop();
-    result.set(1, pc.encode(rng2, "rng")).stop();
+    let result = RObject::<RList>::new(2, pc);
+    result
+        .set(0, RObject::<RExternalPtr>::encode(rng, "rng", pc))
+        .stop();
+    result
+        .set(1, RObject::<RExternalPtr>::encode(rng2, "rng", pc))
+        .stop();
     result
 }
 
 #[roxido]
 fn state_encode(state: &RObject) {
     let state = State::from_r(state, pc).stop();
-    pc.encode(state, "state")
+    RObject::<RExternalPtr>::encode(state, "state", pc)
 }
 
 #[roxido]
@@ -334,7 +339,7 @@ fn state_decode(state: &RObject) {
 
 #[roxido]
 fn monitor_new() {
-    pc.encode(Monitor::<u32>::new(), "monitor")
+    RObject::<RExternalPtr>::encode(Monitor::<u32>::new(), "monitor", pc)
 }
 
 #[roxido]
@@ -350,20 +355,20 @@ fn monitor_reset(monitor: &mut RObject<RExternalPtr>) {
 #[roxido]
 fn hyperparameters_encode(hyperparameters: &RObject) {
     let hp = Hyperparameters::from_r(hyperparameters, pc).stop();
-    pc.encode(hp, "hyperparameters")
+    RObject::<RExternalPtr>::encode(hp, "hyperparameters", pc)
 }
 
 #[roxido]
 fn data_encode(data: &RObject, missing_items: &RObject<RVector>) {
     let mut data = Data::from_r(data, pc).stop();
-    let missing_items = missing_items.to_integer(pc);
+    let missing_items = missing_items.to_i32(pc);
     let missing_items: Vec<_> = missing_items
         .slice()
         .iter()
         .map(|x| usize::try_from(*x - 1).unwrap())
         .collect();
     data.declare_missing(missing_items);
-    pc.encode(data, "data")
+    RObject::<RExternalPtr>::encode(data, "data", pc)
 }
 
 fn permutation_to_r(permutation: &Permutation, rval: &mut RObject<RVector, i32>) {
@@ -432,7 +437,7 @@ fn all(all: &RObject<RList>) {
         units: vec,
         n_items: n_items.unwrap(),
     };
-    pc.encode(all, "all")
+    RObject::<RExternalPtr>::encode(all, "all", pc)
 }
 
 #[derive(Debug)]
@@ -503,35 +508,31 @@ struct Results<'a> {
 impl<'a> Results<'a> {
     pub fn new(tuning: &GlobalMcmcTuning, n_items: usize, n_units: usize, pc: &'a Pc) -> Self {
         let n_saves = tuning.n_saves();
-        let unit_partitions_rval = pc.new_list(n_units);
+        let unit_partitions_rval = RObject::<RList>::new(n_units, pc);
         let mut unit_partitions = Vec::with_capacity(n_units);
         for t in 0..n_units {
-            let rval = pc.new_matrix_integer(n_items, n_saves);
+            let rval = RObject::<RMatrix, i32>::new(n_items, n_saves, pc);
             unit_partitions_rval.set(t, rval).stop();
             unit_partitions.push(rval.slice_mut());
         }
-        let anchors_rval = pc.new_matrix_integer(n_items, n_saves);
-        let permutations_rval = pc.new_matrix_integer(n_items, n_saves);
-        let shrinkages_rval = pc.new_vector_double(n_saves);
-        let grits_rval = pc.new_vector_double(n_saves);
-        let log_likelihoods_rval = pc.new_vector_double(n_saves);
-        let rval = pc.new_list(10); // Extra 4 items for rates after looping.
-        rval.set_names(
-            [
-                "unit_partitions",
-                "anchor",
-                "permutation",
-                "shrinkage",
-                "grit",
-                "log_likelihood",
-                "permutation_acceptance_rate",
-                "shrinkage_slice_n_evaluations_rate",
-                "grit_slice_n_evaluations_rate",
-                "wall_times",
-            ]
-            .to_r(pc),
-        )
-        .stop();
+        let anchors_rval = RObject::<RMatrix, i32>::new(n_items, n_saves, pc);
+        let permutations_rval = RObject::<RMatrix, i32>::new(n_items, n_saves, pc);
+        let shrinkages_rval = RObject::<RVector, f64>::new(n_saves, pc);
+        let grits_rval = RObject::<RVector, f64>::new(n_saves, pc);
+        let log_likelihoods_rval = RObject::<RVector, f64>::new(n_saves, pc);
+        let names = [
+            "unit_partitions",
+            "anchor",
+            "permutation",
+            "shrinkage",
+            "grit",
+            "log_likelihood",
+            "permutation_acceptance_rate",
+            "shrinkage_slice_n_evaluations_rate",
+            "grit_slice_n_evaluations_rate",
+            "wall_times",
+        ];
+        let rval = RObject::<RList>::with_names(names, pc); // Extra 4 items for rates after looping.
         rval.set(0, unit_partitions_rval).stop();
         rval.set(1, anchors_rval).stop();
         rval.set(2, permutations_rval).stop();
@@ -638,7 +639,7 @@ fn fit_dependent(
     let global_mcmc_tuning = GlobalMcmcTuning::from_r(global_mcmc_tuning, pc).stop();
     let n_units = all.units.len();
     let mut results = Results::new(&global_mcmc_tuning, all.n_items, n_units, pc);
-    let mut rng = Pcg64Mcg::from_seed(Pc::random_bytes::<16>());
+    let mut rng = Pcg64Mcg::from_seed(R::random_bytes::<16>());
     let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
     rng.fill(&mut seed);
     let mut rng2 = Pcg64Mcg::from_seed(seed);
@@ -1023,9 +1024,9 @@ fn fit(
     if data.n_items() != state.clustering.n_items() {
         stop!("Inconsistent number of items.")
     }
-    let permutation_bucket = permutation_bucket.vector_mut().stop().integer_mut().stop();
-    let shrinkage_bucket = shrinkage_bucket.vector_mut().stop().double_mut().stop();
-    let grit_bucket = grit_bucket.vector_mut().stop().double_mut().stop();
+    let permutation_bucket = permutation_bucket.vector_mut().stop().as_i32_mut().stop();
+    let shrinkage_bucket = shrinkage_bucket.vector_mut().stop().as_f64_mut().stop();
+    let grit_bucket = grit_bucket.vector_mut().stop().as_f64_mut().stop();
     let rngs = rngs.list_mut().stop();
     let rng = rngs.get_mut(0).stop().external_ptr_mut().stop();
     let rng = rng.decode_mut::<Pcg64Mcg>();
@@ -1033,7 +1034,7 @@ fn fit(
     let rng2 = rng2.decode_mut::<Pcg64Mcg>();
     let partition_distribution = partition_distribution.external_ptr_mut().stop();
     let tag = partition_distribution.tag().scalar().stop();
-    let prior_name = tag.to_str(pc).stop();
+    let prior_name = tag.str(pc);
     #[rustfmt::skip]
     macro_rules! mcmc_update { // (_, HAS_PERMUTATION, HAS_SCALAR_SHRINKAGE, HAS_VECTOR_SHRINKAGE, HAS_GRIT)
         ($tipe:ty, false, false, false, false) => {{
@@ -1105,7 +1106,7 @@ fn log_likelihood_contributions(state: &RObject, data: &RObject) {
     let state: &State = state.decode_ref();
     let data = data.external_ptr().stop();
     let data = data.decode_ref();
-    state.log_likelihood_contributions(data).iter().to_r(pc)
+    state.log_likelihood_contributions(data).to_r(pc)
 }
 
 #[roxido]
@@ -1114,10 +1115,7 @@ fn log_likelihood_contributions_of_missing(state: &RObject, data: &RObject) {
     let state: &State = state.decode_ref();
     let data = data.external_ptr().stop();
     let data = data.decode_ref();
-    state
-        .log_likelihood_contributions_of_missing(data)
-        .iter()
-        .to_r(pc)
+    state.log_likelihood_contributions_of_missing(data).to_r(pc)
 }
 
 #[roxido]
@@ -1129,7 +1127,7 @@ fn log_likelihood_of(state: &RObject, data: &RObject, items: &RObject) {
     let items: Vec<_> = items
         .vector()
         .stop()
-        .to_integer(pc)
+        .to_i32(pc)
         .slice()
         .iter()
         .map(|x| usize::try_from(*x - 1).unwrap())
@@ -1148,15 +1146,15 @@ fn log_likelihood(state: &RObject, data: &RObject) {
 
 #[roxido]
 fn sample_multivariate_normal(n_samples: usize, mean: &RObject<RVector>, precision: &RObject) {
-    let mean = mean.to_double(pc);
+    let mean = mean.to_f64(pc);
     let mean = mean.slice();
     let n = mean.len();
     let mean = DVector::from_iterator(n, mean.iter().cloned());
-    let precision = precision.matrix().stop().to_double(pc);
+    let precision = precision.matrix().stop().to_f64(pc);
     let precision = DMatrix::from_iterator(n, n, precision.slice().iter().cloned());
-    let rval = pc.new_matrix_double(n, n_samples);
+    let rval = RObject::<RMatrix, f64>::new(n, n_samples, pc);
     let slice = rval.slice_mut();
-    let mut rng = Pcg64Mcg::from_seed(Pc::random_bytes::<16>());
+    let mut rng = Pcg64Mcg::from_seed(R::random_bytes::<16>());
     let x = sample_multivariate_normal_repeatedly(n_samples, mean, precision, &mut rng).unwrap();
     slice.clone_from_slice(x.as_slice());
     rval.transpose(pc)

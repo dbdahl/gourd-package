@@ -456,9 +456,9 @@ impl State {
     }
 }
 
-impl<'a> ToR1<'a, RList, RUnknown> for State {
+impl<'a> ToR<'a, RList, RUnknown> for State {
     fn to_r(&self, pc: &'a Pc) -> &'a mut RObject<RList> {
-        let result = pc.new_list(4);
+        let result = RObject::<RList>::new(4, pc);
         result.set(0, self.precision_response.to_r(pc)).stop();
         result
             .set(1, self.global_coefficients.as_slice().to_r(pc))
@@ -470,7 +470,7 @@ impl<'a> ToR1<'a, RList, RUnknown> for State {
             .map(|&label| i32::try_from(label + 1).unwrap())
             .collect();
         result.set(2, (&x[..]).to_r(pc)).stop();
-        let rval = pc.new_list(self.clustered_coefficients.len());
+        let rval = RObject::<RList>::new(self.clustered_coefficients.len(), pc);
         for (i, coef) in self.clustered_coefficients.iter().enumerate() {
             rval.set(i, coef.as_slice().to_r(pc)).unwrap();
         }
@@ -492,11 +492,11 @@ impl<RType, RMode> FromR<RType, RMode, String> for State {
             "state",
         );
         let precision_response = list.get(0)?.scalar()?.f64();
-        let global_coefficients = list.get(1)?.vector()?.to_double(pc);
+        let global_coefficients = list.get(1)?.vector()?.to_f64(pc);
         let global_coefficients_slice = global_coefficients.slice();
         let global_coefficients = DVector::from_column_slice(global_coefficients_slice);
         let clustering = {
-            let clustering = list.get(2)?.vector()?.to_integer(pc);
+            let clustering = list.get(2)?.vector()?.to_i32(pc);
             let clustering_slice = clustering.slice();
             let clust: Vec<_> = clustering_slice.iter().map(|&x| (x as usize) - 1).collect();
             Clustering::from_vector(clust)
@@ -512,7 +512,7 @@ impl<RType, RMode> FromR<RType, RMode, String> for State {
         let mut clustered_coefficients = Vec::with_capacity(clustered_coefficients_rval.len());
         let mut n_clustered_coefficients = None;
         for i in 0..clustered_coefficients.capacity() {
-            let element = clustered_coefficients_rval.get(i)?.vector()?.to_double(pc);
+            let element = clustered_coefficients_rval.get(i)?.vector()?.to_f64(pc);
             let slice = element.slice();
             match n_clustered_coefficients {
                 None => n_clustered_coefficients = Some(slice.len()),

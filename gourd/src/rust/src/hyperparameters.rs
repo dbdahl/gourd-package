@@ -61,9 +61,9 @@ fn helper_mean_precision(
     matrix_name: &str,
     pc: &Pc,
 ) -> Result<(DVector<f64>, DMatrix<f64>), String> {
-    let r1 = DVector::from_column_slice(map.get(vector_name)?.vector()?.to_double(pc).slice());
+    let r1 = DVector::from_column_slice(map.get(vector_name)?.vector()?.to_f64(pc).slice());
     let n = r1.len();
-    let x = map.get(matrix_name)?.matrix()?.to_double(pc);
+    let x = map.get(matrix_name)?.matrix()?.to_f64(pc);
     if x.nrow() != n || x.ncol() != n {
         return Err(format!(
             "To match '{}', '{}' is expected to be a {}-by-{} square matrix",

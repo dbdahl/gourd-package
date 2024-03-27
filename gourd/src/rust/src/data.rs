@@ -139,7 +139,7 @@ impl<RType, RMode> FromR<RType, RMode, String> for Data {
             .get("response")?
             .vector()
             .map_err(|_| "'response' is not a vector")?
-            .to_double(pc);
+            .to_f64(pc);
         let response_slice = response.slice();
         let n_items = response_slice.len();
         let response = DVector::from_column_slice(response_slice);
@@ -147,7 +147,7 @@ impl<RType, RMode> FromR<RType, RMode, String> for Data {
             .get("global_covariates")?
             .matrix()
             .map_err(|_| "'global_covariates' is not a matrix")?
-            .to_double(pc);
+            .to_f64(pc);
         let global_covariates_slice = global_covariates_rval.slice();
         let n_global_covariates = global_covariates_rval.ncol();
         let global_covariates =
@@ -156,7 +156,7 @@ impl<RType, RMode> FromR<RType, RMode, String> for Data {
             .get("clustered_covariates")?
             .matrix()
             .map_err(|_| "'clustered_covariates' is not a matrix")?
-            .to_double(pc);
+            .to_f64(pc);
         let clustered_covariates_slice = clustered_covariates_rval.slice();
         let n_clustered_covariates = clustered_covariates_rval.ncol();
         let clustered_covariates =
@@ -165,7 +165,7 @@ impl<RType, RMode> FromR<RType, RMode, String> for Data {
             .get("item_sizes")?
             .vector()
             .map_err(|_| "'item_sizes' is not a vector")?
-            .to_integer(pc);
+            .to_i32(pc);
         let item_sizes_slice = item_sizes.slice();
         let item_sizes: Vec<_> = item_sizes_slice
             .iter()
