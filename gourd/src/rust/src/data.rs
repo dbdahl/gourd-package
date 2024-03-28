@@ -133,11 +133,11 @@ impl Data {
 
 impl<RType, RMode> FromR<RType, RMode, String> for Data {
     fn from_r(x: &RObject<RType, RMode>, pc: &Pc) -> Result<Self, String> {
-        let x = x.list().map_err(|_| "Not a list")?;
+        let x = x.as_list().map_err(|_| "Not a list")?;
         let mut map = x.make_map();
         let response = map
             .get("response")?
-            .vector()
+            .as_vector()
             .map_err(|_| "'response' is not a vector")?
             .to_f64(pc);
         let response_slice = response.slice();
@@ -145,7 +145,7 @@ impl<RType, RMode> FromR<RType, RMode, String> for Data {
         let response = DVector::from_column_slice(response_slice);
         let global_covariates_rval = map
             .get("global_covariates")?
-            .matrix()
+            .as_matrix()
             .map_err(|_| "'global_covariates' is not a matrix")?
             .to_f64(pc);
         let global_covariates_slice = global_covariates_rval.slice();
@@ -154,7 +154,7 @@ impl<RType, RMode> FromR<RType, RMode, String> for Data {
             DMatrix::from_column_slice(n_items, n_global_covariates, global_covariates_slice);
         let clustered_covariates_rval = map
             .get("clustered_covariates")?
-            .matrix()
+            .as_matrix()
             .map_err(|_| "'clustered_covariates' is not a matrix")?
             .to_f64(pc);
         let clustered_covariates_slice = clustered_covariates_rval.slice();
@@ -163,7 +163,7 @@ impl<RType, RMode> FromR<RType, RMode, String> for Data {
             DMatrix::from_column_slice(n_items, n_clustered_covariates, clustered_covariates_slice);
         let item_sizes = map
             .get("item_sizes")?
-            .vector()
+            .as_vector()
             .map_err(|_| "'item_sizes' is not a vector")?
             .to_i32(pc);
         let item_sizes_slice = item_sizes.slice();

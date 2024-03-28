@@ -491,12 +491,12 @@ impl<RType, RMode> FromR<RType, RMode, String> for State {
             ],
             "state",
         );
-        let precision_response = list.get(0)?.scalar()?.f64();
-        let global_coefficients = list.get(1)?.vector()?.to_f64(pc);
+        let precision_response = list.get(0)?.as_scalar()?.f64();
+        let global_coefficients = list.get(1)?.as_vector()?.to_f64(pc);
         let global_coefficients_slice = global_coefficients.slice();
         let global_coefficients = DVector::from_column_slice(global_coefficients_slice);
         let clustering = {
-            let clustering = list.get(2)?.vector()?.to_i32(pc);
+            let clustering = list.get(2)?.as_vector()?.to_i32(pc);
             let clustering_slice = clustering.slice();
             let clust: Vec<_> = clustering_slice.iter().map(|&x| (x as usize) - 1).collect();
             Clustering::from_vector(clust)
@@ -507,12 +507,12 @@ impl<RType, RMode> FromR<RType, RMode, String> for State {
         let clustered_coefficients_rval = list
             .get(3)
             .stop()
-            .list()
+            .as_list()
             .stop_str("'clustered_coefficients' should be a list");
         let mut clustered_coefficients = Vec::with_capacity(clustered_coefficients_rval.len());
         let mut n_clustered_coefficients = None;
         for i in 0..clustered_coefficients.capacity() {
-            let element = clustered_coefficients_rval.get(i)?.vector()?.to_f64(pc);
+            let element = clustered_coefficients_rval.get(i)?.as_vector()?.to_f64(pc);
             let slice = element.slice();
             match n_clustered_coefficients {
                 None => n_clustered_coefficients = Some(slice.len()),
@@ -547,41 +547,41 @@ pub struct McmcTuning {
 
 impl<RType, RMode> FromR<RType, RMode, String> for McmcTuning {
     fn from_r(x: &RObject<RType, RMode>, _pc: &Pc) -> Result<Self, String> {
-        let x = x.list()?;
+        let x = x.as_list()?;
         let mut map = x.make_map();
         let result = McmcTuning {
-            update_precision_response: map.get("update_precision_response")?.scalar()?.bool()?,
+            update_precision_response: map.get("update_precision_response")?.as_scalar()?.bool()?,
             update_global_coefficients: map
                 .get("update_global_coefficients")?
-                .scalar()?
+                .as_scalar()?
                 .bool()
                 .map_err(|_| "'update_global_coefficients' is not a logical")?,
             update_clustering: map
                 .get("update_clustering")?
-                .scalar()?
+                .as_scalar()?
                 .bool()
                 .map_err(|_| "'update_clustering' is not a logical")?,
             update_clustered_coefficients: map
                 .get("update_clustered_coefficients")?
-                .scalar()?
+                .as_scalar()?
                 .bool()
                 .map_err(|_| "'update_clustered_coefficients' is not a logical")?,
             n_permutation_updates_per_scan: map
                 .get("n_permutation_updates_per_scan")?
-                .scalar()?
+                .as_scalar()?
                 .usize()
                 .map_err(|_| "'n_permutation_updates_per_scan' a usize")?,
             n_items_per_permutation_update: map
                 .get("n_items_per_permutation_update")?
-                .scalar()?
+                .as_scalar()?
                 .usize()
                 .map_err(|_| "'n_items_per_permutation_update' a usize")?,
-            shrinkage_slice_step_size: match map.get("shrinkage_slice_step_size")?.option() {
-                Some(x) => Some(x.scalar()?.f64()),
+            shrinkage_slice_step_size: match map.get("shrinkage_slice_step_size")?.as_option() {
+                Some(x) => Some(x.as_scalar()?.f64()),
                 None => None,
             },
-            grit_slice_step_size: match map.get("grit_slice_step_size")?.option() {
-                Some(x) => Some(x.scalar()?.f64()),
+            grit_slice_step_size: match map.get("grit_slice_step_size")?.as_option() {
+                Some(x) => Some(x.as_scalar()?.f64()),
                 None => None,
             },
         };

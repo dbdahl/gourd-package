@@ -26,11 +26,11 @@ pub struct ShrinkageHyperparameters {
 
 impl FromR<RAnyType, RUnknown, String> for ShrinkageHyperparameters {
     fn from_r(x: &RObject, _pc: &Pc) -> Result<Self, String> {
-        let mut map = x.list()?.make_map();
+        let mut map = x.as_list()?.make_map();
         let result = Self {
-            reference: map.get("reference")?.scalar()?.usize().ok(),
-            shape: Shape::new(map.get("shape")?.scalar()?.f64()).ok_or("Invalid shape")?,
-            rate: Rate::new(map.get("rate")?.scalar()?.f64()).ok_or("Invalid rate")?,
+            reference: map.get("reference")?.as_scalar()?.usize().ok(),
+            shape: Shape::new(map.get("shape")?.as_scalar()?.f64()).ok_or("Invalid shape")?,
+            rate: Rate::new(map.get("rate")?.as_scalar()?.f64()).ok_or("Invalid rate")?,
         };
         map.exhaustive()?;
         Ok(result)
@@ -45,10 +45,12 @@ pub struct GritHyperparameters {
 
 impl<RType, RMode> FromR<RType, RMode, String> for GritHyperparameters {
     fn from_r(x: &RObject<RType, RMode>, _pc: &Pc) -> Result<Self, String> {
-        let mut map = x.list()?.make_map();
+        let mut map = x.as_list()?.make_map();
         let result = Self {
-            shape1: Shape::new(map.get("shape1")?.scalar()?.f64()).ok_or("'shape1' is invalid")?,
-            shape2: Shape::new(map.get("shape2")?.scalar()?.f64()).ok_or("'shape2' is invalid")?,
+            shape1: Shape::new(map.get("shape1")?.as_scalar()?.f64())
+                .ok_or("'shape1' is invalid")?,
+            shape2: Shape::new(map.get("shape2")?.as_scalar()?.f64())
+                .ok_or("'shape2' is invalid")?,
         };
         map.exhaustive()?;
         Ok(result)
@@ -56,14 +58,14 @@ impl<RType, RMode> FromR<RType, RMode, String> for GritHyperparameters {
 }
 
 fn helper_mean_precision(
-    map: &mut roxido::r::RListMap<RUnknown>,
+    map: &mut roxido::RListMap<RUnknown>,
     vector_name: &str,
     matrix_name: &str,
     pc: &Pc,
 ) -> Result<(DVector<f64>, DMatrix<f64>), String> {
-    let r1 = DVector::from_column_slice(map.get(vector_name)?.vector()?.to_f64(pc).slice());
+    let r1 = DVector::from_column_slice(map.get(vector_name)?.as_vector()?.to_f64(pc).slice());
     let n = r1.len();
-    let x = map.get(matrix_name)?.matrix()?.to_f64(pc);
+    let x = map.get(matrix_name)?.as_matrix()?.to_f64(pc);
     if x.nrow() != n || x.ncol() != n {
         return Err(format!(
             "To match '{}', '{}' is expected to be a {}-by-{} square matrix",
@@ -76,7 +78,7 @@ fn helper_mean_precision(
 
 impl<RType, RMode> FromR<RType, RMode, String> for Hyperparameters {
     fn from_r(x: &RObject<RType, RMode>, pc: &Pc) -> Result<Self, String> {
-        let x = x.list()?;
+        let x = x.as_list()?;
         let mut map = x.make_map();
         let (global_coefficients_mean, global_coefficients_precision) = helper_mean_precision(
             &mut map,
@@ -102,11 +104,13 @@ impl<RType, RMode> FromR<RType, RMode, String> for Hyperparameters {
             };
         let result = Self {
             precision_response_shape: Shape::new(
-                map.get("precision_response_shape")?.scalar()?.f64(),
+                map.get("precision_response_shape")?.as_scalar()?.f64(),
             )
             .ok_or("Invalid shape for response precision")?,
-            precision_response_rate: Rate::new(map.get("precision_response_rate")?.scalar()?.f64())
-                .ok_or("Invalid rate for response precision")?,
+            precision_response_rate: Rate::new(
+                map.get("precision_response_rate")?.as_scalar()?.f64(),
+            )
+            .ok_or("Invalid rate for response precision")?,
             global_coefficients_mean,
             global_coefficients_precision,
             clustered_coefficients_mean,

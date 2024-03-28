@@ -94,7 +94,7 @@ fn new_SpParameters(
             )
         }};
     }
-    let tag = baseline.tag().scalar().stop();
+    let tag = baseline.tag().as_scalar().stop();
     let name = tag.str(pc);
     match name {
         "up" => distr_macro!(UpParameters, "sp-up"),
@@ -144,7 +144,7 @@ fn prPartition(partition: &RObject<RMatrix>, prior: &RObject<RExternalPtr>) {
             }
         }};
     }
-    let tag = prior.tag().scalar().stop();
+    let tag = prior.tag().as_scalar().stop();
     let name = tag.str(pc);
     match name {
         "crp" => distr_macro!(CrpParameters),
@@ -254,7 +254,7 @@ fn samplePartition(
             };
         }
     }
-    let tag = prior.tag().scalar().stop();
+    let tag = prior.tag().as_scalar().stop();
     let name = tag.str(pc);
     match name {
         "up" => distr_macro!(
@@ -334,7 +334,11 @@ fn state_encode(state: &RObject) {
 
 #[roxido]
 fn state_decode(state: &RObject) {
-    state.external_ptr().stop().decode_ref::<State>().to_r(pc)
+    state
+        .as_external_ptr()
+        .stop()
+        .decode_ref::<State>()
+        .to_r(pc)
 }
 
 #[roxido]
@@ -407,7 +411,7 @@ fn all(all: &RObject<RList>) {
     let mut vec = Vec::with_capacity(all.len());
     let mut n_items = None;
     for i in 0..all.len() {
-        let list = all.get(i).stop().list().stop();
+        let list = all.get(i).stop().as_list().stop();
         let (data, state, hyperparameters) =
             (list.get(0).stop(), list.get(1).stop(), list.get(2).stop());
         let data = Data::from_r(data, pc).stop();
@@ -456,13 +460,13 @@ impl GlobalMcmcTuning {
 
 impl<RType, RMode> FromR<RType, RMode, String> for GlobalMcmcTuning {
     fn from_r(x: &RObject<RType, RMode>, _pc: &Pc) -> Result<Self, String> {
-        let x = x.list()?;
+        let x = x.as_list()?;
         let mut map = x.make_map();
         let result = Self {
-            n_iterations: map.get("n_iterations")?.scalar()?.usize()?,
-            burnin: map.get("burnin")?.scalar()?.usize()?,
-            thinning: map.get("thinning")?.scalar()?.usize()?,
-            update_anchor: map.get("update_anchor")?.scalar()?.bool()?,
+            n_iterations: map.get("n_iterations")?.as_scalar()?.usize()?,
+            burnin: map.get("burnin")?.as_scalar()?.usize()?,
+            thinning: map.get("thinning")?.as_scalar()?.usize()?,
+            update_anchor: map.get("update_anchor")?.as_scalar()?.bool()?,
         };
         map.exhaustive()?;
         Ok(result)
@@ -470,9 +474,9 @@ impl<RType, RMode> FromR<RType, RMode, String> for GlobalMcmcTuning {
 }
 
 fn validation_data_from_r(validation_data: &RObject, pc: &Pc) -> Result<Option<Vec<Data>>, String> {
-    match validation_data.option() {
+    match validation_data.as_option() {
         Some(x) => {
-            let x = x.list().stop();
+            let x = x.as_list().stop();
             let n_units = x.len();
             let mut vd = Vec::with_capacity(n_units);
             for k in 0..n_units {
@@ -1002,13 +1006,13 @@ fn fit(
     rngs: &mut RObject,
 ) {
     let n_updates: u32 = n_updates.try_into().unwrap();
-    let data = data.external_ptr_mut().stop();
+    let data = data.as_external_ptr_mut().stop();
     let data: &mut Data = data.decode_mut();
-    let state = state.external_ptr_mut().stop();
+    let state = state.as_external_ptr_mut().stop();
     let state: &mut State = state.decode_mut();
-    let hyperparameters = hyperparameters.external_ptr().stop();
+    let hyperparameters = hyperparameters.as_external_ptr().stop();
     let hyperparameters: &Hyperparameters = hyperparameters.decode_ref();
-    let monitor = monitor.external_ptr_mut().stop();
+    let monitor = monitor.as_external_ptr_mut().stop();
     let monitor = monitor.decode_mut::<Monitor<u32>>();
     let mcmc_tuning = McmcTuning::from_r(mcmc_tuning, pc).stop();
     if data.n_global_covariates() != state.n_global_covariates()
@@ -1024,16 +1028,20 @@ fn fit(
     if data.n_items() != state.clustering.n_items() {
         stop!("Inconsistent number of items.")
     }
-    let permutation_bucket = permutation_bucket.vector_mut().stop().as_i32_mut().stop();
-    let shrinkage_bucket = shrinkage_bucket.vector_mut().stop().as_f64_mut().stop();
-    let grit_bucket = grit_bucket.vector_mut().stop().as_f64_mut().stop();
-    let rngs = rngs.list_mut().stop();
-    let rng = rngs.get_mut(0).stop().external_ptr_mut().stop();
+    let permutation_bucket = permutation_bucket
+        .as_vector_mut()
+        .stop()
+        .as_i32_mut()
+        .stop();
+    let shrinkage_bucket = shrinkage_bucket.as_vector_mut().stop().as_f64_mut().stop();
+    let grit_bucket = grit_bucket.as_vector_mut().stop().as_f64_mut().stop();
+    let rngs = rngs.as_list_mut().stop();
+    let rng = rngs.get_mut(0).stop().as_external_ptr_mut().stop();
     let rng = rng.decode_mut::<Pcg64Mcg>();
-    let rng2 = rngs.get_mut(1).stop().external_ptr_mut().stop();
+    let rng2 = rngs.get_mut(1).stop().as_external_ptr_mut().stop();
     let rng2 = rng2.decode_mut::<Pcg64Mcg>();
-    let partition_distribution = partition_distribution.external_ptr_mut().stop();
-    let tag = partition_distribution.tag().scalar().stop();
+    let partition_distribution = partition_distribution.as_external_ptr_mut().stop();
+    let tag = partition_distribution.tag().as_scalar().stop();
     let prior_name = tag.str(pc);
     #[rustfmt::skip]
     macro_rules! mcmc_update { // (_, HAS_PERMUTATION, HAS_SCALAR_SHRINKAGE, HAS_VECTOR_SHRINKAGE, HAS_GRIT)
@@ -1102,30 +1110,30 @@ fn fit(
 
 #[roxido]
 fn log_likelihood_contributions(state: &RObject, data: &RObject) {
-    let state = state.external_ptr().stop();
+    let state = state.as_external_ptr().stop();
     let state: &State = state.decode_ref();
-    let data = data.external_ptr().stop();
+    let data = data.as_external_ptr().stop();
     let data = data.decode_ref();
     state.log_likelihood_contributions(data).to_r(pc)
 }
 
 #[roxido]
 fn log_likelihood_contributions_of_missing(state: &RObject, data: &RObject) {
-    let state = state.external_ptr().stop();
+    let state = state.as_external_ptr().stop();
     let state: &State = state.decode_ref();
-    let data = data.external_ptr().stop();
+    let data = data.as_external_ptr().stop();
     let data = data.decode_ref();
     state.log_likelihood_contributions_of_missing(data).to_r(pc)
 }
 
 #[roxido]
 fn log_likelihood_of(state: &RObject, data: &RObject, items: &RObject) {
-    let state = state.external_ptr().stop();
+    let state = state.as_external_ptr().stop();
     let state: &State = state.decode_ref();
-    let data = data.external_ptr().stop();
+    let data = data.as_external_ptr().stop();
     let data = data.decode_ref();
     let items: Vec<_> = items
-        .vector()
+        .as_vector()
         .stop()
         .to_i32(pc)
         .slice()
@@ -1137,9 +1145,9 @@ fn log_likelihood_of(state: &RObject, data: &RObject, items: &RObject) {
 
 #[roxido]
 fn log_likelihood(state: &RObject, data: &RObject) {
-    let state = state.external_ptr().stop();
+    let state = state.as_external_ptr().stop();
     let state: &State = state.decode_ref();
-    let data = data.external_ptr().stop();
+    let data = data.as_external_ptr().stop();
     let data = data.decode_ref();
     state.log_likelihood(data)
 }
@@ -1150,7 +1158,7 @@ fn sample_multivariate_normal(n_samples: usize, mean: &RObject<RVector>, precisi
     let mean = mean.slice();
     let n = mean.len();
     let mean = DVector::from_iterator(n, mean.iter().cloned());
-    let precision = precision.matrix().stop().to_f64(pc);
+    let precision = precision.as_matrix().stop().to_f64(pc);
     let precision = DMatrix::from_iterator(n, n, precision.slice().iter().cloned());
     let rval = RObject::<RMatrix, f64>::new(n, n_samples, pc);
     let slice = rval.slice_mut();
@@ -1166,7 +1174,7 @@ fn validate_list<'a, RType, RMode>(
     arg_name: &str,
 ) -> &'a RObject<RList> {
     let list = x
-        .list()
+        .as_list()
         .stop_closure(|| format!("'{}' should be a list or NULL.", arg_name));
     if list.len() != expected_names.len() {
         stop!("'{}' must be of length {}", arg_name, expected_names.len());
