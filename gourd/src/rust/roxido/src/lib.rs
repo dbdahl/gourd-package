@@ -1227,11 +1227,11 @@ impl<RMode> RObject<RScalar, RMode> {
 }
 
 macro_rules! rscalar {
-    ($tipe:ty, $tipe2:ty, $code1:expr, $code2:expr, $code3:expr) => {
+    ($tipe:ty, $tipe2:ty, $code:expr, $code2:expr, $code3:expr) => {
         impl RObject<RScalar, $tipe> {
             #[allow(clippy::mut_from_ref)]
             pub fn from_value(value: $tipe2, pc: &Pc) -> &mut Self {
-                pc.transmute_sexp_mut(pc.protect(unsafe { $code1(value) }))
+                pc.transmute_sexp_mut(pc.protect(unsafe { $code(value) }))
             }
 
             /// Get the value at a certain index in an $tipe RVector.
@@ -1355,10 +1355,10 @@ impl<RType: ROneDimensional + RHasLength, RMode> RObject<RType, RMode> {
 }
 
 macro_rules! rvector {
-    ($tipe:ty, $tipe2:ty, $code1:expr, $code2:expr, $code3:expr) => {
+    ($tipe:ty, $tipe2:ty, $code:expr, $code2:expr, $code3:expr) => {
         impl RObject<RVector, $tipe> {
             pub fn new(length: usize, pc: &Pc) -> &mut Self {
-                Self::new_engine($code1, length, pc)
+                Self::new_engine($code, length, pc)
             }
 
             pub fn from_value(value: $tipe2, length: usize, pc: &Pc) -> &mut Self {
