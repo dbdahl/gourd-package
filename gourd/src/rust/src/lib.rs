@@ -45,16 +45,16 @@ use walltime::TicToc;
 #[roxido]
 fn new_UpParameters(n_items: usize) {
     let p = UpParameters::new(n_items);
-    RObject::<RExternalPtr>::encode(p, "up", pc)
+    RExternalPtr::encode(p, "up", pc)
 }
 
 #[roxido]
-fn new_JlpParameters(concentration: f64, permutation: &RObject<RVector>) {
+fn new_JlpParameters(concentration: f64, permutation: &RVector) {
     let permutation = mk_permutation(permutation, pc);
     let concentration = Concentration::new(concentration).stop_str("Invalid concentration value");
     let p = JlpParameters::new(permutation.n_items(), concentration, permutation)
         .stop_str("Invalid Jensen Liu parametrization");
-    RObject::<RExternalPtr>::encode(p, "jlp", pc)
+    RExternalPtr::encode(p, "jlp", pc)
 }
 
 #[roxido]
@@ -64,16 +64,16 @@ fn new_CrpParameters(n_items: usize, concentration: f64, discount: f64) {
         .stop_str("Invalid concentration value");
     let p = CrpParameters::new_with_discount(n_items, concentration, discount)
         .stop_str("Invalid CRP parametrization");
-    RObject::<RExternalPtr>::encode(p, "crp", pc)
+    RExternalPtr::encode(p, "crp", pc)
 }
 
 #[roxido]
 fn new_SpParameters(
-    anchor: &RObject<RVector>,
-    shrinkage: &RObject<RVector>,
-    permutation: &RObject<RVector>,
+    anchor: &RVector,
+    shrinkage: &RVector,
+    permutation: &RVector,
     grit: f64,
-    baseline: &RObject<RExternalPtr>,
+    baseline: &RExternalPtr,
 ) {
     let anchor = Clustering::from_slice(anchor.to_i32(pc).slice());
     let shrinkage = Shrinkage::from(shrinkage.to_f64(pc).slice()).stop_str("Invalid shrinkage");
@@ -86,7 +86,7 @@ fn new_SpParameters(
         ($tipe:ty, $label:literal) => {{
             let p = NonNull::new(baseline.address() as *mut $tipe).unwrap();
             let baseline = unsafe { p.as_ref().clone() };
-            RObject::<RExternalPtr>::encode(
+            RExternalPtr::encode(
                 SpParameters::new(anchor, shrinkage, permutation, grit, baseline)
                     .stop_str("Invalid shrinkage partition parametrization"),
                 $label,
@@ -104,7 +104,7 @@ fn new_SpParameters(
     }
 }
 
-fn mk_permutation(permutation: &RObject<RVector>, pc: &Pc) -> Permutation {
+fn mk_permutation(permutation: &RVector, pc: &Pc) -> Permutation {
     let vector = permutation
         .to_i32(pc)
         .slice()
@@ -123,12 +123,12 @@ enum RandomizeShrinkage {
 }
 
 #[roxido]
-fn prPartition(partition: &RObject<RMatrix>, prior: &RObject<RExternalPtr>) {
+fn prPartition(partition: &RMatrix, prior: &RExternalPtr) {
     let partition = partition.to_i32(pc);
     let matrix = partition.slice();
     let np = partition.nrow();
     let ni = partition.ncol();
-    let log_probs_rval = RObject::<RVector, f64>::new(np, pc);
+    let log_probs_rval = RVector::new(np, pc);
     let log_probs_slice = log_probs_rval.slice_mut();
     macro_rules! distr_macro {
         ($tipe:ty) => {{
@@ -162,7 +162,7 @@ fn prPartition(partition: &RObject<RMatrix>, prior: &RObject<RExternalPtr>) {
 fn samplePartition(
     n_samples: usize,
     n_items: usize,
-    prior: &RObject<RExternalPtr>,
+    prior: &RExternalPtr,
     randomize_permutation: bool,
     randomize_shrinkage: &str,
     max: f64,
@@ -182,7 +182,7 @@ fn samplePartition(
     let np_extra = np % n_cores;
     let ni = n_items.max(1);
     let chunk_size = np_per_core * ni;
-    let matrix_rval = RObject::<RMatrix, i32>::new(ni, np, pc);
+    let matrix_rval = RMatrix::<i32>::new(ni, np, pc);
     let mut stick = matrix_rval.slice_mut();
     let randomize_shrinkage = match randomize_shrinkage {
         "fixed" => RandomizeShrinkage::Fixed,
@@ -316,54 +316,46 @@ fn rngs_new() {
     let mut seed: <Pcg64Mcg as SeedableRng>::Seed = Default::default();
     rng.fill(&mut seed);
     let rng2 = Pcg64Mcg::from_seed(seed);
-    let result = RObject::<RList>::new(2, pc);
-    result
-        .set(0, RObject::<RExternalPtr>::encode(rng, "rng", pc))
-        .stop();
-    result
-        .set(1, RObject::<RExternalPtr>::encode(rng2, "rng", pc))
-        .stop();
+    let result = RList::new(2, pc);
+    result.set(0, RExternalPtr::encode(rng, "rng", pc)).stop();
+    result.set(1, RExternalPtr::encode(rng2, "rng", pc)).stop();
     result
 }
 
 #[roxido]
-fn state_encode(state: &RObject) {
+fn state_encode(state: &RList) {
     let state = State::from_r(state, pc).stop();
-    RObject::<RExternalPtr>::encode(state, "state", pc)
+    RExternalPtr::encode(state, "state", pc)
 }
 
 #[roxido]
-fn state_decode(state: &RObject) {
-    state
-        .as_external_ptr()
-        .stop()
-        .decode_ref::<State>()
-        .to_r(pc)
+fn state_decode(state: &RExternalPtr) {
+    state.decode_ref::<State>().to_r(pc)
 }
 
 #[roxido]
 fn monitor_new() {
-    RObject::<RExternalPtr>::encode(Monitor::<u32>::new(), "monitor", pc)
+    RExternalPtr::encode(Monitor::<u32>::new(), "monitor", pc)
 }
 
 #[roxido]
-fn monitor_rate(monitor: &RObject<RExternalPtr>) {
+fn monitor_rate(monitor: &RExternalPtr) {
     monitor.decode_ref::<Monitor<u32>>().rate()
 }
 
 #[roxido]
-fn monitor_reset(monitor: &mut RObject<RExternalPtr>) {
+fn monitor_reset(monitor: &mut RExternalPtr) {
     monitor.decode_mut::<Monitor<u32>>().reset();
 }
 
 #[roxido]
-fn hyperparameters_encode(hyperparameters: &RObject) {
+fn hyperparameters_encode(hyperparameters: &RList) {
     let hp = Hyperparameters::from_r(hyperparameters, pc).stop();
-    RObject::<RExternalPtr>::encode(hp, "hyperparameters", pc)
+    RExternalPtr::encode(hp, "hyperparameters", pc)
 }
 
 #[roxido]
-fn data_encode(data: &RObject, missing_items: &RObject<RVector>) {
+fn data_encode(data: &RList, missing_items: &RVector) {
     let mut data = Data::from_r(data, pc).stop();
     let missing_items = missing_items.to_i32(pc);
     let missing_items: Vec<_> = missing_items
@@ -372,26 +364,26 @@ fn data_encode(data: &RObject, missing_items: &RObject<RVector>) {
         .map(|x| usize::try_from(*x - 1).unwrap())
         .collect();
     data.declare_missing(missing_items);
-    RObject::<RExternalPtr>::encode(data, "data", pc)
+    RExternalPtr::encode(data, "data", pc)
 }
 
-fn permutation_to_r(permutation: &Permutation, rval: &mut RObject<RVector, i32>) {
+fn permutation_to_r(permutation: &Permutation, rval: &mut RVector<i32>) {
     for (x, y) in permutation.as_slice().iter().zip(rval.slice_mut()) {
         *y = i32::try_from(*x).unwrap() + 1;
     }
 }
 
-fn scalar_shrinkage_to_r(shrinkage: &ScalarShrinkage, rval: &mut RObject<RVector, f64>) {
+fn scalar_shrinkage_to_r(shrinkage: &ScalarShrinkage, rval: &mut RVector<f64>) {
     rval.slice_mut()[0] = shrinkage.get();
 }
 
-fn shrinkage_to_r(shrinkage: &Shrinkage, rval: &mut RObject<RVector, f64>) {
+fn shrinkage_to_r(shrinkage: &Shrinkage, rval: &mut RVector<f64>) {
     for (x, y) in rval.slice_mut().iter_mut().zip(shrinkage.as_slice()) {
         *x = y.get()
     }
 }
 
-fn grit_to_r(grit: &Grit, rval: &mut RObject<RVector, f64>) {
+fn grit_to_r(grit: &Grit, rval: &mut RVector<f64>) {
     rval.slice_mut()[0] = grit.get();
 }
 
@@ -407,13 +399,16 @@ struct All {
 }
 
 #[roxido]
-fn all(all: &RObject<RList>) {
+fn all(all: &RList) {
     let mut vec = Vec::with_capacity(all.len());
     let mut n_items = None;
     for i in 0..all.len() {
         let list = all.get(i).stop().as_list().stop();
-        let (data, state, hyperparameters) =
-            (list.get(0).stop(), list.get(1).stop(), list.get(2).stop());
+        let (data, state, hyperparameters) = (
+            list.get(0).stop().as_list().stop(),
+            list.get(1).stop().as_list().stop(),
+            list.get(2).stop().as_list().stop(),
+        );
         let data = Data::from_r(data, pc).stop();
         let state = State::from_r(state, pc).stop();
         let hyperparameters = Hyperparameters::from_r(hyperparameters, pc).stop();
@@ -441,7 +436,7 @@ fn all(all: &RObject<RList>) {
         units: vec,
         n_items: n_items.unwrap(),
     };
-    RObject::<RExternalPtr>::encode(all, "all", pc)
+    RExternalPtr::encode(all, "all", pc)
 }
 
 #[derive(Debug)]
@@ -458,8 +453,8 @@ impl GlobalMcmcTuning {
     }
 }
 
-impl<RType, RMode> FromR<RType, RMode, String> for GlobalMcmcTuning {
-    fn from_r(x: &RObject<RType, RMode>, _pc: &Pc) -> Result<Self, String> {
+impl FromR<RObject, String> for GlobalMcmcTuning {
+    fn from_r(x: &RObject, _pc: &Pc) -> Result<Self, String> {
         let x = x.as_list()?;
         let mut map = x.make_map();
         let result = Self {
@@ -480,7 +475,7 @@ fn validation_data_from_r(validation_data: &RObject, pc: &Pc) -> Result<Option<V
             let n_units = x.len();
             let mut vd = Vec::with_capacity(n_units);
             for k in 0..n_units {
-                vd.push(Data::from_r(x.get(k).stop(), pc)?);
+                vd.push(Data::from_r(x.get(k).stop().as_list().stop(), pc)?);
             }
             Ok(Some(vd))
         }
@@ -497,7 +492,7 @@ struct Timers {
 }
 
 struct Results<'a> {
-    rval: &'a mut RObject<RList>,
+    rval: &'a mut RList,
     counter: usize,
     n_items: usize,
     unit_partitions: Vec<&'a mut [i32]>,
@@ -512,19 +507,19 @@ struct Results<'a> {
 impl<'a> Results<'a> {
     pub fn new(tuning: &GlobalMcmcTuning, n_items: usize, n_units: usize, pc: &'a Pc) -> Self {
         let n_saves = tuning.n_saves();
-        let unit_partitions_rval = RObject::<RList>::new(n_units, pc);
+        let unit_partitions_rval = RList::new(n_units, pc);
         let mut unit_partitions = Vec::with_capacity(n_units);
         for t in 0..n_units {
-            let rval = RObject::<RMatrix, i32>::new(n_items, n_saves, pc);
+            let rval = RMatrix::<i32>::new(n_items, n_saves, pc);
             unit_partitions_rval.set(t, rval).stop();
             unit_partitions.push(rval.slice_mut());
         }
-        let anchors_rval = RObject::<RMatrix, i32>::new(n_items, n_saves, pc);
-        let permutations_rval = RObject::<RMatrix, i32>::new(n_items, n_saves, pc);
-        let shrinkages_rval = RObject::<RVector, f64>::new(n_saves, pc);
-        let grits_rval = RObject::<RVector, f64>::new(n_saves, pc);
-        let log_likelihoods_rval = RObject::<RVector, f64>::new(n_saves, pc);
-        let names = [
+        let anchors_rval = RMatrix::<i32>::new(n_items, n_saves, pc);
+        let permutations_rval = RMatrix::<i32>::new(n_items, n_saves, pc);
+        let shrinkages_rval = RVector::<f64>::new(n_saves, pc);
+        let grits_rval = RVector::<f64>::new(n_saves, pc);
+        let log_likelihoods_rval = RVector::<f64>::new(n_saves, pc);
+        let names = &[
             "unit_partitions",
             "anchor",
             "permutation",
@@ -536,7 +531,7 @@ impl<'a> Results<'a> {
             "grit_slice_n_evaluations_rate",
             "wall_times",
         ];
-        let rval = RObject::<RList>::with_names(names, pc); // Extra 4 items for rates after looping.
+        let rval = RList::with_names(names, pc); // Extra 4 items for rates after looping.
         rval.set(0, unit_partitions_rval).stop();
         rval.set(1, anchors_rval).stop();
         rval.set(2, permutations_rval).stop();
@@ -613,9 +608,8 @@ impl<'a> Results<'a> {
             self.timers.grit.as_secs_f64(),
         ]
         .to_r(pc);
-        wall_times
-            .set_names(["units", "anchor", "permutation", "shrinkage", "grit"].to_r(pc))
-            .stop();
+        let names = ["units", "anchor", "permutation", "shrinkage", "grit"].to_r(pc);
+        wall_times.set_names(names).stop();
         self.rval.set(9, wall_times).stop();
     }
 }
@@ -623,11 +617,11 @@ impl<'a> Results<'a> {
 #[roxido]
 fn fit_dependent(
     model_id: &str,
-    all: &mut RObject<RExternalPtr>,
+    all: &mut RExternalPtr,
     anchor_concentration: f64,
     baseline_concentration: f64,
-    hyperparameters: &RObject,
-    unit_mcmc_tuning: &RObject,
+    hyperparameters: &RList,
+    unit_mcmc_tuning: &RList,
     global_mcmc_tuning: &RObject,
     validation_data: &RObject,
 ) {
@@ -999,7 +993,7 @@ fn fit(
     hyperparameters: &RObject,
     monitor: &mut RObject,
     partition_distribution: &mut RObject,
-    mcmc_tuning: &RObject,
+    mcmc_tuning: &RList,
     permutation_bucket: &mut RObject, // This is used to communicating temporary results back to R
     shrinkage_bucket: &mut RObject,   // This is used to communicating temporary results back to R
     grit_bucket: &mut RObject,        // This is used to communicating temporary results back to R
@@ -1153,14 +1147,14 @@ fn log_likelihood(state: &RObject, data: &RObject) {
 }
 
 #[roxido]
-fn sample_multivariate_normal(n_samples: usize, mean: &RObject<RVector>, precision: &RObject) {
+fn sample_multivariate_normal(n_samples: usize, mean: &RVector, precision: &RObject) {
     let mean = mean.to_f64(pc);
     let mean = mean.slice();
     let n = mean.len();
     let mean = DVector::from_iterator(n, mean.iter().cloned());
     let precision = precision.as_matrix().stop().to_f64(pc);
     let precision = DMatrix::from_iterator(n, n, precision.slice().iter().cloned());
-    let rval = RObject::<RMatrix, f64>::new(n, n_samples, pc);
+    let rval = RMatrix::<f64>::new(n, n_samples, pc);
     let slice = rval.slice_mut();
     let mut rng = Pcg64Mcg::from_seed(R::random_bytes::<16>());
     let x = sample_multivariate_normal_repeatedly(n_samples, mean, precision, &mut rng).unwrap();
@@ -1168,14 +1162,7 @@ fn sample_multivariate_normal(n_samples: usize, mean: &RObject<RVector>, precisi
     rval.transpose(pc)
 }
 
-fn validate_list<'a, RType, RMode>(
-    x: &'a RObject<RType, RMode>,
-    expected_names: &[&str],
-    arg_name: &str,
-) -> &'a RObject<RList> {
-    let list = x
-        .as_list()
-        .stop_closure(|| format!("'{}' should be a list or NULL.", arg_name));
+fn validate_list<'a>(list: &'a RList, expected_names: &[&str], arg_name: &str) -> &'a RList {
     if list.len() != expected_names.len() {
         stop!("'{}' must be of length {}", arg_name, expected_names.len());
     }

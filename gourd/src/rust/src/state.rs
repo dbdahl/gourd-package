@@ -456,9 +456,9 @@ impl State {
     }
 }
 
-impl<'a> ToR<'a, RList, RUnknown> for State {
-    fn to_r(&self, pc: &'a Pc) -> &'a mut RObject<RList> {
-        let result = RObject::<RList>::new(4, pc);
+impl ToRObject2Mut2 for State {
+    fn to_r<'a>(&self, pc: &'a Pc) -> &'a mut impl IsRObject {
+        let result = RList::new(4, pc);
         result.set(0, self.precision_response.to_r(pc)).stop();
         result
             .set(1, self.global_coefficients.as_slice().to_r(pc))
@@ -470,7 +470,7 @@ impl<'a> ToR<'a, RList, RUnknown> for State {
             .map(|&label| i32::try_from(label + 1).unwrap())
             .collect();
         result.set(2, (&x[..]).to_r(pc)).stop();
-        let rval = RObject::<RList>::new(self.clustered_coefficients.len(), pc);
+        let rval = RList::new(self.clustered_coefficients.len(), pc);
         for (i, coef) in self.clustered_coefficients.iter().enumerate() {
             rval.set(i, coef.as_slice().to_r(pc)).unwrap();
         }
@@ -479,8 +479,8 @@ impl<'a> ToR<'a, RList, RUnknown> for State {
     }
 }
 
-impl<RType, RMode> FromR<RType, RMode, String> for State {
-    fn from_r(state: &RObject<RType, RMode>, pc: &Pc) -> Result<Self, String> {
+impl FromR<RList, String> for State {
+    fn from_r(state: &RList, pc: &Pc) -> Result<Self, String> {
         let list = validate_list(
             state,
             &[
@@ -545,9 +545,8 @@ pub struct McmcTuning {
     pub grit_slice_step_size: Option<f64>,
 }
 
-impl<RType, RMode> FromR<RType, RMode, String> for McmcTuning {
-    fn from_r(x: &RObject<RType, RMode>, _pc: &Pc) -> Result<Self, String> {
-        let x = x.as_list()?;
+impl FromR<RList, String> for McmcTuning {
+    fn from_r(x: &RList, _pc: &Pc) -> Result<Self, String> {
         let mut map = x.make_map();
         let result = McmcTuning {
             update_precision_response: map.get("update_precision_response")?.as_scalar()?.bool()?,

@@ -24,9 +24,9 @@ pub struct ShrinkageHyperparameters {
     pub rate: Rate,
 }
 
-impl FromR<RAnyType, RUnknown, String> for ShrinkageHyperparameters {
-    fn from_r(x: &RObject, _pc: &Pc) -> Result<Self, String> {
-        let mut map = x.as_list()?.make_map();
+impl FromR<RList, String> for ShrinkageHyperparameters {
+    fn from_r(x: &RList, _pc: &Pc) -> Result<Self, String> {
+        let mut map = x.make_map();
         let result = Self {
             reference: map.get("reference")?.as_scalar()?.usize().ok(),
             shape: Shape::new(map.get("shape")?.as_scalar()?.f64()).ok_or("Invalid shape")?,
@@ -43,9 +43,9 @@ pub struct GritHyperparameters {
     pub shape2: Shape,
 }
 
-impl<RType, RMode> FromR<RType, RMode, String> for GritHyperparameters {
-    fn from_r(x: &RObject<RType, RMode>, _pc: &Pc) -> Result<Self, String> {
-        let mut map = x.as_list()?.make_map();
+impl FromR<RList, String> for GritHyperparameters {
+    fn from_r(x: &RList, _pc: &Pc) -> Result<Self, String> {
+        let mut map = x.make_map();
         let result = Self {
             shape1: Shape::new(map.get("shape1")?.as_scalar()?.f64())
                 .ok_or("'shape1' is invalid")?,
@@ -58,7 +58,7 @@ impl<RType, RMode> FromR<RType, RMode, String> for GritHyperparameters {
 }
 
 fn helper_mean_precision(
-    map: &mut roxido::RListMap<RUnknown>,
+    map: &mut roxido::R2ListMap2,
     vector_name: &str,
     matrix_name: &str,
     pc: &Pc,
@@ -76,9 +76,8 @@ fn helper_mean_precision(
     Ok((r1, r2))
 }
 
-impl<RType, RMode> FromR<RType, RMode, String> for Hyperparameters {
-    fn from_r(x: &RObject<RType, RMode>, pc: &Pc) -> Result<Self, String> {
-        let x = x.as_list()?;
+impl FromR<RList, String> for Hyperparameters {
+    fn from_r(x: &RList, pc: &Pc) -> Result<Self, String> {
         let mut map = x.make_map();
         let (global_coefficients_mean, global_coefficients_precision) = helper_mean_precision(
             &mut map,
@@ -118,8 +117,8 @@ impl<RType, RMode> FromR<RType, RMode, String> for Hyperparameters {
             global_coefficients_precision_times_mean,
             clustered_coefficients_precision_times_mean,
             clustered_coefficients_precision_l_inv_transpose,
-            shrinkage: ShrinkageHyperparameters::from_r(map.get("shrinkage")?, pc)?,
-            grit: GritHyperparameters::from_r(map.get("grit")?, pc)?,
+            shrinkage: ShrinkageHyperparameters::from_r(map.get("shrinkage")?.as_list()?, pc)?,
+            grit: GritHyperparameters::from_r(map.get("grit")?.as_list()?, pc)?,
         };
         map.exhaustive()?;
         Ok(result)
