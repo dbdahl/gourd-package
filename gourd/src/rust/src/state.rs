@@ -456,8 +456,8 @@ impl State {
     }
 }
 
-impl ToRObject2Mut2 for State {
-    fn to_r<'a>(&self, pc: &'a Pc) -> &'a mut impl IsRObject {
+impl ToR4<RList> for State {
+    fn to_r<'a>(&self, pc: &'a Pc) -> &'a mut RList {
         let result = RList::new(4, pc);
         result.set(0, self.precision_response.to_r(pc)).stop();
         result
