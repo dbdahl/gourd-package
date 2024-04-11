@@ -1,6 +1,5 @@
-mod registration {
-    include!(concat!(env!("OUT_DIR"), "/registration.rs"));
-}
+roxido_registration!();
+use roxido::*;
 
 mod data;
 mod hyperparameters;
@@ -36,7 +35,6 @@ use rand::Rng;
 use rand::SeedableRng;
 use rand_pcg::Pcg64Mcg;
 use rayon::prelude::*;
-use roxido::*;
 use slice_sampler::univariate::stepping_out;
 use statrs::distribution::{Beta, Continuous, Gamma};
 use std::ptr::NonNull;
