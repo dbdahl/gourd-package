@@ -451,9 +451,8 @@ impl GlobalMcmcTuning {
     }
 }
 
-impl FromR<RObject, String> for GlobalMcmcTuning {
-    fn from_r(x: &RObject, _pc: &Pc) -> Result<Self, String> {
-        let x = x.as_list()?;
+impl FromR<RList, String> for GlobalMcmcTuning {
+    fn from_r(x: &RList, _pc: &Pc) -> Result<Self, String> {
         let mut map = x.make_map();
         let result = Self {
             n_iterations: map.get("n_iterations")?.as_scalar()?.usize()?,
@@ -466,10 +465,12 @@ impl FromR<RObject, String> for GlobalMcmcTuning {
     }
 }
 
-fn validation_data_from_r(validation_data: &RObject, pc: &Pc) -> Result<Option<Vec<Data>>, String> {
-    match validation_data.as_option() {
+fn validation_data_from_r(
+    validation_data: Option<&RList>,
+    pc: &Pc,
+) -> Result<Option<Vec<Data>>, String> {
+    match validation_data {
         Some(x) => {
-            let x = x.as_list().stop();
             let n_units = x.len();
             let mut vd = Vec::with_capacity(n_units);
             for k in 0..n_units {
@@ -620,7 +621,7 @@ fn fit_dependent(
     baseline_concentration: f64,
     hyperparameters: &RList,
     unit_mcmc_tuning: &RList,
-    global_mcmc_tuning: &RObject,
+    global_mcmc_tuning: &RList,
     validation_data: &RObject,
 ) {
     let do_hierarchical_model = match model_id {
@@ -629,7 +630,14 @@ fn fit_dependent(
         model_id => stop!("Unsupported model {}", model_id),
     };
     let all: &mut All = all.decode_mut();
-    let validation_data = validation_data_from_r(validation_data, pc).stop();
+    let validation_data = validation_data_from_r(
+        validation_data.as_option().map(|x| {
+            x.as_list()
+                .stop_str("'validation_data' should be NULL or a list.")
+        }),
+        pc,
+    )
+    .stop();
     let unit_mcmc_tuning = McmcTuning::from_r(unit_mcmc_tuning, pc).stop();
     let hyperparameters = Hyperparameters::from_r(hyperparameters, pc).stop();
     let global_mcmc_tuning = GlobalMcmcTuning::from_r(global_mcmc_tuning, pc).stop();
@@ -986,25 +994,21 @@ fn fit_dependent(
 #[roxido]
 fn fit(
     n_updates: usize,
-    data: &mut RObject,
-    state: &mut RObject,
-    hyperparameters: &RObject,
-    monitor: &mut RObject,
-    partition_distribution: &mut RObject,
+    data: &mut RExternalPtr,
+    state: &mut RExternalPtr,
+    hyperparameters: &RExternalPtr,
+    monitor: &mut RExternalPtr,
+    partition_distribution: &mut RExternalPtr,
     mcmc_tuning: &RList,
-    permutation_bucket: &mut RObject, // This is used to communicating temporary results back to R
-    shrinkage_bucket: &mut RObject,   // This is used to communicating temporary results back to R
-    grit_bucket: &mut RObject,        // This is used to communicating temporary results back to R
-    rngs: &mut RObject,
+    permutation_bucket: &mut RVector<i32>, // This is used to communicating temporary results back to R
+    shrinkage_bucket: &mut RVector<f64>, // This is used to communicating temporary results back to R
+    grit_bucket: &mut RVector<f64>, // This is used to communicating temporary results back to R
+    rngs: &mut RList,
 ) {
     let n_updates: u32 = n_updates.try_into().unwrap();
-    let data = data.as_external_ptr_mut().stop();
     let data: &mut Data = data.decode_mut();
-    let state = state.as_external_ptr_mut().stop();
     let state: &mut State = state.decode_mut();
-    let hyperparameters = hyperparameters.as_external_ptr().stop();
     let hyperparameters: &Hyperparameters = hyperparameters.decode_ref();
-    let monitor = monitor.as_external_ptr_mut().stop();
     let monitor = monitor.decode_mut::<Monitor<u32>>();
     let mcmc_tuning = McmcTuning::from_r(mcmc_tuning, pc).stop();
     if data.n_global_covariates() != state.n_global_covariates()
@@ -1020,19 +1024,10 @@ fn fit(
     if data.n_items() != state.clustering.n_items() {
         stop!("Inconsistent number of items.")
     }
-    let permutation_bucket = permutation_bucket
-        .as_vector_mut()
-        .stop()
-        .as_i32_mut()
-        .stop();
-    let shrinkage_bucket = shrinkage_bucket.as_vector_mut().stop().as_f64_mut().stop();
-    let grit_bucket = grit_bucket.as_vector_mut().stop().as_f64_mut().stop();
-    let rngs = rngs.as_list_mut().stop();
     let rng = rngs.get_mut(0).stop().as_external_ptr_mut().stop();
     let rng = rng.decode_mut::<Pcg64Mcg>();
     let rng2 = rngs.get_mut(1).stop().as_external_ptr_mut().stop();
     let rng2 = rng2.decode_mut::<Pcg64Mcg>();
-    let partition_distribution = partition_distribution.as_external_ptr_mut().stop();
     let tag = partition_distribution.tag().as_scalar().stop();
     let prior_name = tag.str(pc);
     #[rustfmt::skip]
@@ -1101,32 +1096,24 @@ fn fit(
 }
 
 #[roxido]
-fn log_likelihood_contributions(state: &RObject, data: &RObject) {
-    let state = state.as_external_ptr().stop();
+fn log_likelihood_contributions(state: &RExternalPtr, data: &RExternalPtr) {
     let state: &State = state.decode_ref();
-    let data = data.as_external_ptr().stop();
     let data = data.decode_ref();
     state.log_likelihood_contributions(data).to_r(pc)
 }
 
 #[roxido]
-fn log_likelihood_contributions_of_missing(state: &RObject, data: &RObject) {
-    let state = state.as_external_ptr().stop();
+fn log_likelihood_contributions_of_missing(state: &RExternalPtr, data: &RExternalPtr) {
     let state: &State = state.decode_ref();
-    let data = data.as_external_ptr().stop();
     let data = data.decode_ref();
     state.log_likelihood_contributions_of_missing(data).to_r(pc)
 }
 
 #[roxido]
-fn log_likelihood_of(state: &RObject, data: &RObject, items: &RObject) {
-    let state = state.as_external_ptr().stop();
+fn log_likelihood_of(state: &RExternalPtr, data: &RExternalPtr, items: &RVector) {
     let state: &State = state.decode_ref();
-    let data = data.as_external_ptr().stop();
     let data = data.decode_ref();
     let items: Vec<_> = items
-        .as_vector()
-        .stop()
         .to_i32(pc)
         .slice()
         .iter()
@@ -1136,21 +1123,19 @@ fn log_likelihood_of(state: &RObject, data: &RObject, items: &RObject) {
 }
 
 #[roxido]
-fn log_likelihood(state: &RObject, data: &RObject) {
-    let state = state.as_external_ptr().stop();
+fn log_likelihood(state: &RExternalPtr, data: &RExternalPtr) {
     let state: &State = state.decode_ref();
-    let data = data.as_external_ptr().stop();
     let data = data.decode_ref();
     state.log_likelihood(data)
 }
 
 #[roxido]
-fn sample_multivariate_normal(n_samples: usize, mean: &RVector, precision: &RObject) {
+fn sample_multivariate_normal(n_samples: usize, mean: &RVector, precision: &RMatrix) {
     let mean = mean.to_f64(pc);
     let mean = mean.slice();
     let n = mean.len();
     let mean = DVector::from_iterator(n, mean.iter().cloned());
-    let precision = precision.as_matrix().stop().to_f64(pc);
+    let precision = precision.to_f64(pc);
     let precision = DMatrix::from_iterator(n, n, precision.slice().iter().cloned());
     let rval = RMatrix::<f64>::new(n, n_samples, pc);
     let slice = rval.slice_mut();
