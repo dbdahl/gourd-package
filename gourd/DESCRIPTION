@@ -4,11 +4,33 @@ Version: 0.2.4
 Authors@R: c(person(given="David B.",family="Dahl",role=c("aut","cre"),email="dahl@stat.byu.edu",comment=c(ORCID="0000-0002-8173-1547")),
              person(given="Richard L.",family="Warr",role=c("aut"),email="warr@stat.byu.edu",comment=c(ORCID="0000-0001-8508-3105")),
              person(given="Tomas P.",family="Jensen",role=c("aut"),email="tompjensen@gmail.com",comment=c(ORCID="0009-0000-0015-3881")),
-    person(given = "David B.", family = "Dahl", email = "dahl@stat.byu.edu", role = "cph", comment = "Rust crates: roxido, roxido_macro."),
-    person(given = "Alex", family = "Crichton", email = "alex@alexcrichton.com", role = "cph", comment = "Rust crate: proc-macro2."),
-    person(given = "David", family = "Tolnay", email = "dtolnay@gmail.com", role = "cph", comment = "Rust crates: syn, proc-macro2, quote, unicode-ident."),
-    person(given = "Unicode, Inc.", role = "cph", comment = "Rust crate: unicode-ident.")
-    )
+    person(given = "Alex", family = "Crichton", email = "alex@alexcrichton.com", role = "ctb", comment = c("Rust crates: cfg-if, proc-macro2")),
+    person(given = "Andre", family = "Bogus", email = "bogusandre@gmail.com", role = "ctb", comment = c("Rust crate: typenum")),
+    person(given = "Andreas", family = "Longva", role = "ctb", comment = c("Rust crate: nalgebra-macros")),
+    person(given = "Brendan", family = "Zabarauskas", email = "bjzaba@yahoo.com.au", role = "ctb", comment = c("Rust crate: approx")),
+    person(given = "David B.", family = "Dahl", email = "dahl@stat.byu.edu", role = "ctb", comment = c("Rust crates: dahl-bellnumber, dahl-partition, dahl-randompartition, dahl-salso, roxido, roxido_macro")),
+    person(given = "David", family = "Tolnay", email = "dtolnay@gmail.com", role = "ctb", comment = c("Rust crates: paste, proc-macro2, quote, syn, unicode-ident")),
+    person(given = "Jim", family = "Turner", role = "ctb", comment = c("Rust crate: ndarray")),
+    person(given = "Jorge", family = "Aparicio", email = "jorge@japaric.io", role = "ctb", comment = c("Rust crate: libm")),
+    person(given = "Josh", family = "Stone", email = "cuviper@gmail.com", role = "ctb", comment = c("Rust crates: autocfg, rayon, rayon-core")),
+    person(given = "Lokathor", email = "zefria@gmail.com", role = "ctb", comment = c("Rust crates: bytemuck, safe_arch, wide")),
+    person(given = "Marvin", family = "Löbel", email = "loebel.marvin@gmail.com", role = "ctb", comment = c("Rust crate: lazy_static")),
+    person(given = "Michael", family = "Ma", role = "ctb", comment = c("Rust crate: statrs")),
+    person(given = "Niko", family = "Matsakis", email = "niko@alum.mit.edu", role = "ctb", comment = c("Rust crates: rayon, rayon-core")),
+    person(given = "Paho", family = "Lurie-Gregg", email = "paho@paholg.com", role = "ctb", comment = c("Rust crate: typenum")),
+    person(given = "R. Janis", family = "Goldschmidt", role = "ctb", comment = c("Rust crate: matrixmultiply")),
+    person(given = "Sean", family = "McArthur", email = "sean@seanmonstar.com", role = "ctb", comment = c("Rust crate: num_cpus")),
+    person(given = "Stefan", family = "Lankes", role = "ctb", comment = c("Rust crate: hermit-abi")),
+    person(given = "Stjepan", family = "Glavina", email = "stjepang@gmail.com", role = "ctb", comment = c("Rust crate: fastrand")),
+    person(given = "Sébastien", family = "Crozet", email = "developer@crozet.re", role = "ctb", comment = c("Rust crates: nalgebra, nalgebra-macros")),
+    person(given = "The Cranelift Project Developers", role = "ctb", comment = c("Rust crate: wasi")),
+    person(given = "The CryptoCorrosion Contributors", role = "ctb", comment = c("Rust crates: ppv-lite86, rand_chacha")),
+    person(given = "The Rand Project Developers", role = "ctb", comment = c("Rust crates: getrandom, rand, rand_chacha, rand_core, rand_distr, rand_pcg")),
+    person(given = "The Rust Project Developers", role = "ctb", comment = c("Rust crates: libc, num-bigint, num-complex, num-integer, num-rational, num-traits, rand, rand_chacha, rand_core")),
+    person(given = "Ulrik Sverdrup", family = "\"bluss\"", role = "ctb", comment = c("Rust crate: ndarray")),
+    person(given = "bluss", role = "ctb", comment = c("Rust crates: either, matrixmultiply, rawpointer")),
+    person(given = "sebcrozet", email = "developer@crozet.re", role = "ctb", comment = c("Rust crate: simba")),
+    person())
 Description: Implementation of the distribution introduced in our paper "Dependent Random Partitions by Shrinking Toward an Anchor".
 License: MIT + file LICENSE | Apache License 2.0
 Depends: R (>= 4.2.0)
