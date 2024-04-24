@@ -588,3 +588,14 @@ impl FromR<RList, String> for McmcTuning {
         Ok(result)
     }
 }
+
+#[roxido(module = state)]
+fn state_encode(state: &RList) {
+    let state = State::from_r(state, pc).stop();
+    RExternalPtr::encode(state, "state", pc)
+}
+
+#[roxido(module = state)]
+fn state_decode(state: &RExternalPtr) {
+    state.decode_ref::<State>().to_r(pc)
+}

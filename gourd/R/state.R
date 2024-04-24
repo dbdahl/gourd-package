@@ -29,7 +29,7 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
     if ( ( length(missingItems) > 0 ) && ( ! is.numeric(missingItems) || min(missingItems) < 1 || max(missingItems) > n_items ) ) {
       stop("Elements of 'missing' are out of range.")
     }
-    list(obj = .Call(.data_encode, data, missingItems), n_items = n_items, n_global_coefficients = ncol(data$global_covariates), n_clustered_coefficients = ncol(data$clustered_covariates))
+    list(obj = .Call(.data__data_encode, data, missingItems), n_items = n_items, n_global_coefficients = ncol(data$global_covariates), n_clustered_coefficients = ncol(data$clustered_covariates))
   }
   dataList <- verifyData(data)
   if (!is.null(validationData)) {
@@ -83,9 +83,9 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
       stop("Inconsistent number of clustered covariates.")
     }
   }
-  state <- .Call(.state_encode, state)
-  hyperparameters <- .Call(.hyperparameters_encode, hyperparameters)
-  monitor <- .Call(.monitor_new)
+  state <- .Call(.state__state_encode, state)
+  hyperparameters <- .Call(.hyperparameters__hyperparameters_encode, hyperparameters)
+  monitor <- .Call(.monitor__monitor_new)
   partitionDistribution <- mkDistrPtr(partitionDistribution)
   rngs <- .Call(.rngs_new)
   # Run MCMC
@@ -94,7 +94,7 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
   shrinkage_bucket <- numeric(n_items)
   grit_bucket <- numeric(1L)
   .Call(.fit, burnin, data, state, hyperparameters, monitor, partitionDistribution, mcmcTuning, permutation_bucket, shrinkage_bucket, grit_bucket, rngs)
-  .Call(.monitor_reset, monitor);
+  .Call(.monitor__monitor_reset, monitor);
   if ( progress ) cat("\r")
   nSamples <- floor((nIterations-burnin)/thin)
   if ( save$samples ) {
@@ -133,7 +133,7 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
       }
     }
     if ( save$samples ) {
-      tmp <- .Call(.state_decode, state)
+      tmp <- .Call(.state__state_decode, state)
       samples$precision_response[i] <- tmp[[1]]
       samples$global_coefficients[i,] <- tmp[[2]]
       samples$clustered_coefficients[[i]] <- tmp[[4]]
@@ -145,7 +145,7 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
     if ( progress ) setTxtProgressBar(pb, i)
   }
   if ( progress ) close(pb)
-  result <- list(rates = c(permutation_acceptance_rate = .Call(.monitor_rate, monitor)))
+  result <- list(rates = c(permutation_acceptance_rate = .Call(.monitor__monitor_rate, monitor)))
   if ( save$samples ) {
     result <- c(result, list(samples=samples))
   }

@@ -166,3 +166,9 @@ impl Hyperparameters {
         &self.clustered_coefficients_precision_l_inv_transpose
     }
 }
+
+#[roxido(module = hyperparameters)]
+fn hyperparameters_encode(hyperparameters: &RList) {
+    let hp = Hyperparameters::from_r(hyperparameters, pc).stop();
+    RExternalPtr::encode(hp, "hyperparameters", pc)
+}

@@ -320,51 +320,6 @@ fn rngs_new() {
     result
 }
 
-#[roxido]
-fn state_encode(state: &RList) {
-    let state = State::from_r(state, pc).stop();
-    RExternalPtr::encode(state, "state", pc)
-}
-
-#[roxido]
-fn state_decode(state: &RExternalPtr) {
-    state.decode_ref::<State>().to_r(pc)
-}
-
-#[roxido]
-fn monitor_new() {
-    RExternalPtr::encode(Monitor::<u32>::new(), "monitor", pc)
-}
-
-#[roxido]
-fn monitor_rate(monitor: &RExternalPtr) {
-    monitor.decode_ref::<Monitor<u32>>().rate()
-}
-
-#[roxido]
-fn monitor_reset(monitor: &mut RExternalPtr) {
-    monitor.decode_mut::<Monitor<u32>>().reset();
-}
-
-#[roxido]
-fn hyperparameters_encode(hyperparameters: &RList) {
-    let hp = Hyperparameters::from_r(hyperparameters, pc).stop();
-    RExternalPtr::encode(hp, "hyperparameters", pc)
-}
-
-#[roxido]
-fn data_encode(data: &RList, missing_items: &RVector) {
-    let mut data = Data::from_r(data, pc).stop();
-    let missing_items = missing_items.to_i32(pc);
-    let missing_items: Vec<_> = missing_items
-        .slice()
-        .iter()
-        .map(|x| usize::try_from(*x - 1).unwrap())
-        .collect();
-    data.declare_missing(missing_items);
-    RExternalPtr::encode(data, "data", pc)
-}
-
 fn permutation_to_r(permutation: &Permutation, rval: &mut RVector<i32>) {
     for (x, y) in permutation.as_slice().iter().zip(rval.slice_mut()) {
         *y = i32::try_from(*x).unwrap() + 1;

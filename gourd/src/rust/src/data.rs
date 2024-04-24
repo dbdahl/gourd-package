@@ -179,3 +179,16 @@ impl FromR<RList, String> for Data {
         )
     }
 }
+
+#[roxido(module = data)]
+fn data_encode(data: &RList, missing_items: &RVector) {
+    let mut data = Data::from_r(data, pc).stop();
+    let missing_items = missing_items.to_i32(pc);
+    let missing_items: Vec<_> = missing_items
+        .slice()
+        .iter()
+        .map(|x| usize::try_from(*x - 1).unwrap())
+        .collect();
+    data.declare_missing(missing_items);
+    RExternalPtr::encode(data, "data", pc)
+}

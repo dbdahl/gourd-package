@@ -2,6 +2,7 @@ use num_traits::cast::AsPrimitive;
 use num_traits::int::PrimInt;
 use num_traits::Zero;
 use rand_distr::num_traits;
+use roxido::*;
 use std::ops::AddAssign;
 
 #[derive(Debug)]
@@ -33,4 +34,19 @@ impl<A: PrimInt + AddAssign + AsPrimitive<f64>> Monitor<A> {
         self.acceptance_counter = Zero::zero();
         self.attempts_counter = Zero::zero();
     }
+}
+
+#[roxido(module = monitor)]
+fn monitor_new() {
+    RExternalPtr::encode(Monitor::<u32>::new(), "monitor", pc)
+}
+
+#[roxido(module = monitor)]
+fn monitor_rate(monitor: &RExternalPtr) {
+    monitor.decode_ref::<Monitor<u32>>().rate()
+}
+
+#[roxido(module = monitor)]
+fn monitor_reset(monitor: &mut RExternalPtr) {
+    monitor.decode_mut::<Monitor<u32>>().reset();
 }
