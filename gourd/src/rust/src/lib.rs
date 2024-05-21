@@ -283,18 +283,50 @@ fn mk_summary(
     result
 }
 
+#[roxido]
+fn rand_index_for_r(labels_truth: &RVector, labels_estimate: &RVector, a: f64) {
+    rand_index(
+        labels_truth.to_i32(pc).slice(),
+        labels_estimate.to_i32(pc).slice(),
+        Some(a),
+    )
+    .stop()
+}
+
 fn rand_index<A: AsUsize + Debug>(
     labels_truth: &[A],
     labels_estimate: &[A],
-    a: f64,
+    a: Option<f64>,
 ) -> Result<f64, &'static str> {
     if labels_truth.len() != labels_estimate.len() {
         return Err("Inconsistent lengths.");
     }
-    if a < 0.0 || a > 2.0 {
-        return Err("Parameter 'a' must be in [0.0, 2.0].");
-    }
+    let a = match a {
+        Some(a) => {
+            if a < 0.0 || a > 2.0 {
+                return Err("Parameter 'a' must be in [0.0, 2.0].");
+            }
+            a
+        }
+        None => 1.0,
+    };
     Ok(rand_index_engine(labels_truth, labels_estimate, a))
+}
+
+trait AsUsize {
+    fn as_usize(&self) -> usize;
+}
+
+impl AsUsize for i32 {
+    fn as_usize(&self) -> usize {
+        (*self).try_into().unwrap()
+    }
+}
+
+impl AsUsize for usize {
+    fn as_usize(&self) -> usize {
+        *self
+    }
 }
 
 fn rand_index_engine<A: AsUsize + Debug>(labels_truth: &[A], labels_estimate: &[A], a: f64) -> f64 {
@@ -331,32 +363,6 @@ fn rand_index_engine<A: AsUsize + Debug>(labels_truth: &[A], labels_estimate: &[
         - 2.0 * summarize(&counts_joint);
     let n = labels_truth.len() as f64;
     1.0 - numerator / (n * (n - 1.0))
-}
-
-trait AsUsize {
-    fn as_usize(&self) -> usize;
-}
-
-impl AsUsize for i32 {
-    fn as_usize(&self) -> usize {
-        (*self).try_into().unwrap()
-    }
-}
-
-impl AsUsize for usize {
-    fn as_usize(&self) -> usize {
-        *self
-    }
-}
-
-#[roxido]
-fn rand_index_for_r(labels_truth: &RVector, labels_estimate: &RVector, a: f64) {
-    rand_index(
-        labels_truth.to_i32(pc).slice(),
-        labels_estimate.to_i32(pc).slice(),
-        a,
-    )
-    .stop()
 }
 
 #[roxido]
