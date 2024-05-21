@@ -296,13 +296,15 @@ fn summarize_prior_on_shrinkage_and_grit(
     )
     .unwrap();
     let n_mc_samples_f64 = n_mc_samples as f64;
-    for (i, shrinkage) in shrinkage_slice.iter_mut().enumerate() {
-        *shrinkage = shrinkage_min + (i as f64) * shrinkage_width;
-        let shrinkage_density = gamma_dist.ln_pdf(*shrinkage);
-        for (j, grit) in grit_slice.iter_mut().enumerate() {
-            *grit = grit_min + (j as f64) * grit_width;
-            let beta_density = beta_dist.ln_pdf(*grit);
-            let index = grit_n * i + j;
+    let counts_truth = marginal_counter(partition_distribution.anchor.allocation());
+    let summarize_truth = summarize_counts_from_rand_index(&counts_truth);
+    for (j, grit) in grit_slice.iter_mut().enumerate() {
+        *grit = grit_min + (j as f64) * grit_width;
+        let beta_density = beta_dist.ln_pdf(*grit);
+        let mut index = shrinkage_n * j;
+        for (i, shrinkage) in shrinkage_slice.iter_mut().enumerate() {
+            *shrinkage = shrinkage_min + (i as f64) * shrinkage_width;
+            let shrinkage_density = gamma_dist.ln_pdf(*shrinkage);
             log_density_slice[index] = shrinkage_density + beta_density;
             partition_distribution
                 .shrinkage
@@ -314,17 +316,20 @@ fn summarize_prior_on_shrinkage_and_grit(
                 partition_distribution.permutation.shuffle(&mut rng);
                 let sample = partition_distribution.sample(&mut rng);
                 let allocation = sample.allocation();
-                let result = rand_index_engine(
+                let result = rand_index_core(
                     partition_distribution.anchor.allocation(),
                     allocation,
                     1.0,
                     true,
+                    &counts_truth,
+                    summarize_truth,
                 );
                 sum_rand_index += result.0;
                 sum_entropy += result.1.unwrap();
             });
             expected_rand_index_slice[index] = sum_rand_index / n_mc_samples_f64;
             expected_entropy_slice[index] = sum_entropy / n_mc_samples_f64;
+            index += 1;
         }
     }
     result
@@ -376,24 +381,53 @@ impl AsUsize for usize {
     }
 }
 
+fn marginal_counter<B: AsUsize>(labels: &[B]) -> Vec<u32> {
+    let mut counts = Vec::new();
+    for label in labels {
+        let label = label.as_usize();
+        if label >= counts.len() {
+            counts.resize(label + 1, 0);
+        }
+        counts[label] += 1;
+    }
+    counts
+}
+
+fn summarize_counts_from_rand_index(counts: &[u32]) -> f64 {
+    counts
+        .into_iter()
+        .filter(|&&zz| zz > 0)
+        .map(|&zz| zz as f64)
+        .map(|x| x * x)
+        .sum::<f64>()
+}
+
 fn rand_index_engine<A: AsUsize + Debug>(
     labels_truth: &[A],
     labels_estimate: &[A],
     a: f64,
     with_entropy: bool,
 ) -> (f64, Option<f64>) {
-    fn marginal_counter<B: AsUsize>(labels: &[B]) -> Vec<u32> {
-        let mut counts = Vec::new();
-        for label in labels {
-            let label = label.as_usize();
-            if label >= counts.len() {
-                counts.resize(label + 1, 0);
-            }
-            counts[label] += 1;
-        }
-        counts
-    }
     let counts_truth = marginal_counter(labels_truth);
+    let summarize_truth = summarize_counts_from_rand_index(&counts_truth);
+    rand_index_core(
+        labels_truth,
+        labels_estimate,
+        a,
+        with_entropy,
+        &counts_truth,
+        summarize_truth,
+    )
+}
+
+fn rand_index_core<A: AsUsize + Debug>(
+    labels_truth: &[A],
+    labels_estimate: &[A],
+    a: f64,
+    with_entropy: bool,
+    counts_truth: &[u32],
+    summarize_truth: f64,
+) -> (f64, Option<f64>) {
     let counts_estimate = marginal_counter(labels_estimate);
     let n_clusters_truth = counts_truth.len();
     let n_clusters_estimate = counts_estimate.len();
@@ -402,14 +436,6 @@ fn rand_index_engine<A: AsUsize + Debug>(
         let label_truth = label_truth.as_usize();
         let label_estimate = label_estimate.as_usize();
         counts_joint[n_clusters_truth * label_estimate + label_truth] += 1;
-    }
-    fn summarize(counts: &[u32]) -> f64 {
-        counts
-            .into_iter()
-            .filter(|&&zz| zz > 0)
-            .map(|&zz| zz as f64)
-            .map(|x| x * x)
-            .sum::<f64>()
     }
     fn entropy(counts: &[u32], n: f64) -> f64 {
         -counts
@@ -420,9 +446,10 @@ fn rand_index_engine<A: AsUsize + Debug>(
             .map(|p| p * p.ln())
             .sum::<f64>()
     }
-    let numerator = a * summarize(&counts_truth) + (2.0 - a) * summarize(&counts_estimate)
-        - 2.0 * summarize(&counts_joint);
-    let n = labels_truth.len() as f64;
+    let numerator = a * summarize_truth
+        + (2.0 - a) * summarize_counts_from_rand_index(&counts_estimate)
+        - 2.0 * summarize_counts_from_rand_index(&counts_joint);
+    let n = labels_estimate.len() as f64;
     let rand_index = 1.0 - numerator / (n * (n - 1.0));
     let entropy_option = if with_entropy {
         Some(entropy(&counts_estimate, n))
