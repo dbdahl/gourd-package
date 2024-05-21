@@ -275,7 +275,7 @@ fn mk_summary(
     }
     let anchor = Clustering::one_cluster(51);
     let a = anchor.allocation();
-    rand_index_engine(a, a);
+    rand_index_engine(a, a, 1.0);
     // let n_items = anchor.n_items();
     // let mut permutation = Permutation::natural(n_items);
     // permutation.shuffle(&mut rng);
@@ -283,14 +283,21 @@ fn mk_summary(
     result
 }
 
-fn rand_index<A: AsUsize + Debug>(labels_x: &[A], labels_y: &[A]) -> f64 {
-    if labels_x.len() != labels_y.len() {
-        panic!("Inconsistent lengths.");
+fn rand_index<A: AsUsize + Debug>(
+    labels_truth: &[A],
+    labels_estimate: &[A],
+    a: f64,
+) -> Result<f64, &'static str> {
+    if labels_truth.len() != labels_estimate.len() {
+        return Err("Inconsistent lengths.");
     }
-    rand_index_engine(labels_x, labels_y)
+    if a < 0.0 || a > 2.0 {
+        return Err("Parameter 'a' must be in [0.0, 2.0].");
+    }
+    Ok(rand_index_engine(labels_truth, labels_estimate, a))
 }
 
-fn rand_index_engine<A: AsUsize + Debug>(labels_x: &[A], labels_y: &[A]) -> f64 {
+fn rand_index_engine<A: AsUsize + Debug>(labels_truth: &[A], labels_estimate: &[A], a: f64) -> f64 {
     fn marginal_counter<B: AsUsize>(labels: &[B]) -> Vec<u32> {
         let mut counts = Vec::new();
         for label in labels {
@@ -302,15 +309,15 @@ fn rand_index_engine<A: AsUsize + Debug>(labels_x: &[A], labels_y: &[A]) -> f64 
         }
         counts
     }
-    let counts_x = marginal_counter(labels_x);
-    let counts_y = marginal_counter(labels_y);
-    let n_clusters_x = counts_x.len();
-    let n_clusters_y = counts_y.len();
-    let mut counts_xy = vec![0; n_clusters_x * n_clusters_y];
-    for (label_x, label_y) in labels_x.iter().zip(labels_y.iter()) {
-        let label_x = label_x.as_usize();
-        let label_y = label_y.as_usize();
-        counts_xy[n_clusters_x * label_y + label_x] += 1;
+    let counts_truth = marginal_counter(labels_truth);
+    let counts_estimate = marginal_counter(labels_estimate);
+    let n_clusters_truth = counts_truth.len();
+    let n_clusters_estimate = counts_estimate.len();
+    let mut counts_joint = vec![0; n_clusters_truth * n_clusters_estimate];
+    for (label_truth, label_estimate) in labels_truth.iter().zip(labels_estimate.iter()) {
+        let label_truth = label_truth.as_usize();
+        let label_estimate = label_estimate.as_usize();
+        counts_joint[n_clusters_truth * label_estimate + label_truth] += 1;
     }
     fn summarize(counts: &[u32]) -> f64 {
         counts
@@ -320,8 +327,9 @@ fn rand_index_engine<A: AsUsize + Debug>(labels_x: &[A], labels_y: &[A]) -> f64 
             .map(|p| p * p)
             .sum::<f64>()
     }
-    let numerator = summarize(&counts_x) + summarize(&counts_y) - 2.0 * summarize(&counts_xy);
-    let n = labels_x.len() as f64;
+    let numerator = a * summarize(&counts_truth) + (2.0 - a) * summarize(&counts_estimate)
+        - 2.0 * summarize(&counts_joint);
+    let n = labels_truth.len() as f64;
     1.0 - numerator / (n * (n - 1.0))
 }
 
@@ -342,11 +350,13 @@ impl AsUsize for usize {
 }
 
 #[roxido]
-fn rand_index_for_r(labels_x: &RVector, labels_y: &RVector) {
-    if labels_x.len() != labels_y.len() {
-        stop!("Inconsistent lengths.");
-    }
-    rand_index(labels_x.to_i32(pc).slice(), labels_y.to_i32(pc).slice())
+fn rand_index_for_r(labels_truth: &RVector, labels_estimate: &RVector, a: f64) {
+    rand_index(
+        labels_truth.to_i32(pc).slice(),
+        labels_estimate.to_i32(pc).slice(),
+        a,
+    )
+    .stop()
 }
 
 #[roxido]
