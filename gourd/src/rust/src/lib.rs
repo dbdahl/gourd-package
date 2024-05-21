@@ -282,12 +282,28 @@ fn summarize_prior_on_shrinkage_and_grit(
     let Ok(beta_dist) = BetaPDF::new(grit_shape1, grit_shape2) else {
         stop!("Cannot construct beta distribution for grit.");
     };
+    let log_density_shrinkage: Vec<_> = shrinkage_slice
+        .iter_mut()
+        .enumerate()
+        .map(|(i, shrinkage)| {
+            *shrinkage = shrinkage_min + (i as f64) * shrinkage_width;
+            gamma_dist.ln_pdf(*shrinkage)
+        })
+        .collect();
+    let log_density_grit: Vec<_> = grit_slice
+        .iter_mut()
+        .enumerate()
+        .map(|(j, grit)| {
+            *grit = grit_min + (j as f64) * grit_width;
+            beta_dist.ln_pdf(*grit)
+        })
+        .collect();
     let anchor = Clustering::from_slice(anchor);
     let n_items = anchor.n_items();
     let concentration = Concentration::new(concentration).unwrap();
     let baseline_ppf = CrpParameters::new(n_items, concentration);
     let permutation = Permutation::natural(n_items);
-    let mut partition_distribution = SpParameters::new(
+    let partition_distribution = SpParameters::new(
         anchor,
         Shrinkage::zero(n_items),
         permutation,
@@ -298,40 +314,61 @@ fn summarize_prior_on_shrinkage_and_grit(
     let n_mc_samples_f64 = n_mc_samples as f64;
     let counts_truth = marginal_counter(partition_distribution.anchor.allocation());
     let summarize_truth = summarize_counts_from_rand_index(&counts_truth);
-    for (j, grit) in grit_slice.iter_mut().enumerate() {
-        *grit = grit_min + (j as f64) * grit_width;
-        let beta_density = beta_dist.ln_pdf(*grit);
-        let mut index = shrinkage_n * j;
-        for (i, shrinkage) in shrinkage_slice.iter_mut().enumerate() {
-            *shrinkage = shrinkage_min + (i as f64) * shrinkage_width;
-            let shrinkage_density = gamma_dist.ln_pdf(*shrinkage);
-            log_density_slice[index] = shrinkage_density + beta_density;
-            partition_distribution
-                .shrinkage
-                .set_constant(ScalarShrinkage::new(*shrinkage).unwrap());
-            partition_distribution.grit.set(*grit);
-            let mut sum_rand_index = 0.0;
-            let mut sum_entropy = 0.0;
-            (0..n_mc_samples).for_each(|_| {
-                partition_distribution.permutation.shuffle(&mut rng);
-                let sample = partition_distribution.sample(&mut rng);
-                let allocation = sample.allocation();
-                let result = rand_index_core(
-                    partition_distribution.anchor.allocation(),
-                    allocation,
-                    1.0,
-                    true,
-                    &counts_truth,
-                    summarize_truth,
-                );
-                sum_rand_index += result.0;
-                sum_entropy += result.1.unwrap();
-            });
-            expected_rand_index_slice[index] = sum_rand_index / n_mc_samples_f64;
-            expected_entropy_slice[index] = sum_entropy / n_mc_samples_f64;
-            index += 1;
-        }
-    }
+    let indices: Vec<_> = (0..shrinkage_n * grit_n).collect();
+    let n_cores = std::thread::available_parallelism()
+        .map(|x| x.get())
+        .unwrap_or(1);
+    indices
+        .chunks(n_cores)
+        .map(|indices| (indices, rng.gen::<u128>()))
+        .par_bridge()
+        .map(|(indices, seed)| {
+            let mut partition_distribution = partition_distribution.clone();
+            let mut rng = Pcg64Mcg::new(seed);
+            let result = indices
+                .into_iter()
+                .map(|&index| {
+                    let i = index % shrinkage_n;
+                    let j = index / shrinkage_n;
+                    partition_distribution
+                        .shrinkage
+                        .set_constant(ScalarShrinkage::new(shrinkage_slice[i]).unwrap());
+                    partition_distribution.grit.set(grit_slice[j]);
+                    let mut sum_rand_index = 0.0;
+                    let mut sum_entropy = 0.0;
+                    (0..n_mc_samples).for_each(|_| {
+                        partition_distribution.permutation.shuffle(&mut rng);
+                        let sample = partition_distribution.sample(&mut rng);
+                        let allocation = sample.allocation();
+                        let result = rand_index_core(
+                            partition_distribution.anchor.allocation(),
+                            allocation,
+                            1.0,
+                            true,
+                            &counts_truth,
+                            summarize_truth,
+                        );
+                        sum_rand_index += result.0;
+                        sum_entropy += result.1.unwrap();
+                    });
+                    let log_density = log_density_shrinkage[i] + log_density_grit[j];
+                    let expected_rand_index = sum_rand_index / n_mc_samples_f64;
+                    let expected_entropy = sum_entropy / n_mc_samples_f64;
+                    (index, log_density, expected_rand_index, expected_entropy)
+                })
+                .collect::<Vec<_>>();
+            result
+        })
+        .flatten()
+        .collect::<Vec<_>>()
+        .iter()
+        .for_each(
+            |(index, log_density, expected_rand_index, expected_entropy)| {
+                log_density_slice[*index] = *log_density;
+                expected_rand_index_slice[*index] = *expected_rand_index;
+                expected_entropy_slice[*index] = *expected_entropy;
+            },
+        );
     result
 }
 
