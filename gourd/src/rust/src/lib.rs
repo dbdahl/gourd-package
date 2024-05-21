@@ -161,15 +161,16 @@ fn prPartition(partition: &RMatrix, prior: &RExternalPtr) {
 #[roxido]
 fn summarize_prior_on_shrinkage_and_grit(
     anchor: &[i32],
-    domain_specification: &RList,
     shrinkage_shape: f64,
     shrinkage_rate: f64,
-    shrinkage_n: usize,
     grit_shape1: f64,
     grit_shape2: f64,
-    grit_n: usize,
     concentration: f64,
+    shrinkage_n: usize,
+    grit_n: usize,
     n_mc_samples: i32,
+    domain_specification: &RList,
+    n_cores: i32,
 ) {
     if !(shrinkage_shape > 0.0) {
         stop!("'shrinkage_shape' should be strictly positive.");
@@ -191,20 +192,20 @@ fn summarize_prior_on_shrinkage_and_grit(
     }
     let mut rng = Pcg64Mcg::from_seed(R::random_bytes::<16>());
     let ((shrinkage_min, shrinkage_max), (grit_min, grit_max)) = match domain_specification
-        .get_by_key("n")
+        .get_by_key("n_mc_samples")
     {
-        Ok(n) => {
-            let Ok(n) = n.as_scalar() else {
-                stop!("Element 'n' in 'domain_specification' should be a scalar.");
+        Ok(n_mc_samples) => {
+            let Ok(n_mc_samples) = n_mc_samples.as_scalar() else {
+                stop!("Element 'n_mc_samples' in 'domain_specification' should be a scalar.");
             };
-            let Ok(n) = n.usize() else {
-                stop!("Element 'n' in 'domain_specification' cannot be interpreted as positive integer.");
+            let Ok(n_mc_samples) = n_mc_samples.usize() else {
+                stop!("Element 'n_mc_samples' in 'domain_specification' cannot be interpreted as positive integer.");
             };
-            if n <= 1 {
-                stop!("Element 'n' is 'domain_specification' must be at least 2.");
+            if n_mc_samples <= 1 {
+                stop!("Element 'n_mc_samples' is 'domain_specification' must be at least 2.");
             }
             let Ok(percentile) = domain_specification.get_by_key("percentile") else {
-                stop!("Element 'percentile' must be provided when 'n' is provided in 'domain_specification'.");
+                stop!("Element 'percentile' must be provided when 'n_mc_samples' is provided in 'domain_specification'.");
             };
             let Ok(percentile) = percentile.as_scalar() else {
                 stop!("Element 'percentile' in 'domain_specification' should be a scalar.");
@@ -219,13 +220,13 @@ fn summarize_prior_on_shrinkage_and_grit(
             let Ok(beta_dist) = BetaRNG::new(grit_shape1, grit_shape2) else {
                 stop!("Cannot construct beta distribution for grit.");
             };
-            let mut sample = vec![0.0; n];
+            let mut sample = vec![0.0; n_mc_samples];
             sample.fill_with(|| gamma_dist.sample(&mut rng));
             sample.sort_by(|a, b| a.partial_cmp(b).unwrap());
-            let shrinkage_max = sample[(percentile * (n as f64)).floor() as usize];
+            let shrinkage_max = sample[(percentile * (n_mc_samples as f64)).floor() as usize];
             sample.fill_with(|| beta_dist.sample(&mut rng));
             sample.sort_by(|a, b| a.partial_cmp(b).unwrap());
-            let beta_max = sample[(percentile * (n as f64)).floor() as usize];
+            let beta_max = sample[(percentile * (n_mc_samples as f64)).floor() as usize];
             ((0.0, shrinkage_max), (0.0, beta_max))
         }
         Err(_) => {
@@ -315,9 +316,13 @@ fn summarize_prior_on_shrinkage_and_grit(
     let counts_truth = marginal_counter(partition_distribution.anchor.allocation());
     let summarize_truth = summarize_counts_from_rand_index(&counts_truth);
     let indices: Vec<_> = (0..shrinkage_n * grit_n).collect();
-    let n_cores = std::thread::available_parallelism()
-        .map(|x| x.get())
-        .unwrap_or(1);
+    let n_cores = if n_cores == 0 {
+        std::thread::available_parallelism()
+            .map(|x| x.get())
+            .unwrap_or(1)
+    } else {
+        n_cores.max(1) as usize
+    };
     indices
         .chunks(n_cores)
         .map(|indices| (indices, rng.gen::<u128>()))

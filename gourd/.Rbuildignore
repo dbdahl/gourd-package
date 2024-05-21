@@ -10,3 +10,4 @@ authors-scratch.txt
 ^.*\.Rproj$
 ^[.]Rproj[.]user$
 ^tools/rename_package.R$
+^\.Rproj\.user$

@@ -34,6 +34,7 @@ Authors@R: c(person(given="David B.",family="Dahl",role=c("aut","cre"),email="da
 Description: Implementation of the distribution introduced in our paper "Dependent Random Partitions by Shrinking Toward an Anchor".
 License: MIT + file LICENSE | Apache License 2.0
 Depends: R (>= 4.2.0)
+Suggests: fields
 SystemRequirements: Cargo (Rust's package manager), rustc (>= 1.67.1)
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
