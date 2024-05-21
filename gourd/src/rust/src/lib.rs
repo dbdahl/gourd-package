@@ -159,7 +159,8 @@ fn prPartition(partition: &RMatrix, prior: &RExternalPtr) {
 }
 
 #[roxido]
-fn mk_summary(
+fn summarize_prior_on_shrinkage_and_grit(
+    anchor: &[i32],
     domain_specification: &RList,
     shrinkage_shape: f64,
     shrinkage_rate: f64,
@@ -167,6 +168,8 @@ fn mk_summary(
     grit_shape1: f64,
     grit_shape2: f64,
     grit_n: usize,
+    concentration: f64,
+    n_mc_samples: i32,
 ) {
     if !(shrinkage_shape > 0.0) {
         stop!("'shrinkage_shape' should be strictly positive.");
@@ -248,38 +251,82 @@ fn mk_summary(
     };
     let shrinkage_width = (shrinkage_max - shrinkage_min) / ((shrinkage_n - 1) as f64);
     let grit_width = (grit_max - grit_min) / ((grit_n - 1) as f64);
-    let result = RList::with_names(&["shrinakge", "grit", "log_density"], pc);
+    let result = RList::with_names(
+        &[
+            "shrinkage",
+            "grit",
+            "log_density",
+            "expected_rand_index",
+            "expected_entropy",
+        ],
+        pc,
+    );
     let shrinkage_rval = RVector::<f64>::new(shrinkage_n, pc);
     let _ = result.set(0, shrinkage_rval);
     let grit_rval = RVector::<f64>::new(grit_n, pc);
     let _ = result.set(1, grit_rval);
     let log_density_rval = RMatrix::<f64>::new(shrinkage_n, grit_n, pc);
     let _ = result.set(2, log_density_rval);
+    let expected_rand_index_rval = RMatrix::<f64>::new(shrinkage_n, grit_n, pc);
+    let _ = result.set(3, expected_rand_index_rval);
+    let expected_entropy_rval = RMatrix::<f64>::new(shrinkage_n, grit_n, pc);
+    let _ = result.set(4, expected_entropy_rval);
     let shrinkage_slice = shrinkage_rval.slice_mut();
     let grit_slice = grit_rval.slice_mut();
     let log_density_slice = log_density_rval.slice_mut();
+    let expected_rand_index_slice = expected_rand_index_rval.slice_mut();
+    let expected_entropy_slice = expected_entropy_rval.slice_mut();
     let Ok(gamma_dist) = GammaPDF::new(shrinkage_shape, shrinkage_rate) else {
         stop!("Cannot construct gamma distribution for shrinkage.");
     };
     let Ok(beta_dist) = BetaPDF::new(grit_shape1, grit_shape2) else {
         stop!("Cannot construct beta distribution for grit.");
     };
+    let anchor = Clustering::from_slice(anchor);
+    let n_items = anchor.n_items();
+    let concentration = Concentration::new(concentration).unwrap();
+    let baseline_ppf = CrpParameters::new(n_items, concentration);
+    let permutation = Permutation::natural(n_items);
+    let mut partition_distribution = SpParameters::new(
+        anchor,
+        Shrinkage::zero(n_items),
+        permutation,
+        Grit::one(),
+        baseline_ppf,
+    )
+    .unwrap();
+    let n_mc_samples_f64 = n_mc_samples as f64;
     for (i, shrinkage) in shrinkage_slice.iter_mut().enumerate() {
         *shrinkage = shrinkage_min + (i as f64) * shrinkage_width;
         let shrinkage_density = gamma_dist.ln_pdf(*shrinkage);
         for (j, grit) in grit_slice.iter_mut().enumerate() {
             *grit = grit_min + (j as f64) * grit_width;
             let beta_density = beta_dist.ln_pdf(*grit);
-            log_density_slice[grit_n * i + j] = shrinkage_density + beta_density;
+            let index = grit_n * i + j;
+            log_density_slice[index] = shrinkage_density + beta_density;
+            partition_distribution
+                .shrinkage
+                .set_constant(ScalarShrinkage::new(*shrinkage).unwrap());
+            partition_distribution.grit.set(*grit);
+            let mut sum_rand_index = 0.0;
+            let mut sum_entropy = 0.0;
+            (0..n_mc_samples).for_each(|_| {
+                partition_distribution.permutation.shuffle(&mut rng);
+                let sample = partition_distribution.sample(&mut rng);
+                let allocation = sample.allocation();
+                let result = rand_index_engine(
+                    partition_distribution.anchor.allocation(),
+                    allocation,
+                    1.0,
+                    true,
+                );
+                sum_rand_index += result.0;
+                sum_entropy += result.1.unwrap();
+            });
+            expected_rand_index_slice[index] = sum_rand_index / n_mc_samples_f64;
+            expected_entropy_slice[index] = sum_entropy / n_mc_samples_f64;
         }
     }
-    let anchor = Clustering::one_cluster(51);
-    let a = anchor.allocation();
-    rand_index_engine(a, a, 1.0);
-    // let n_items = anchor.n_items();
-    // let mut permutation = Permutation::natural(n_items);
-    // permutation.shuffle(&mut rng);
-    // let partition_distribution = SpParameters::new(anchor);
     result
 }
 
@@ -310,7 +357,7 @@ fn rand_index<A: AsUsize + Debug>(
         }
         None => 1.0,
     };
-    Ok(rand_index_engine(labels_truth, labels_estimate, a))
+    Ok(rand_index_engine(labels_truth, labels_estimate, a, false).0)
 }
 
 trait AsUsize {
@@ -329,7 +376,12 @@ impl AsUsize for usize {
     }
 }
 
-fn rand_index_engine<A: AsUsize + Debug>(labels_truth: &[A], labels_estimate: &[A], a: f64) -> f64 {
+fn rand_index_engine<A: AsUsize + Debug>(
+    labels_truth: &[A],
+    labels_estimate: &[A],
+    a: f64,
+    with_entropy: bool,
+) -> (f64, Option<f64>) {
     fn marginal_counter<B: AsUsize>(labels: &[B]) -> Vec<u32> {
         let mut counts = Vec::new();
         for label in labels {
@@ -356,13 +408,28 @@ fn rand_index_engine<A: AsUsize + Debug>(labels_truth: &[A], labels_estimate: &[
             .into_iter()
             .filter(|&&zz| zz > 0)
             .map(|&zz| zz as f64)
-            .map(|p| p * p)
+            .map(|x| x * x)
+            .sum::<f64>()
+    }
+    fn entropy(counts: &[u32], n: f64) -> f64 {
+        -counts
+            .into_iter()
+            .filter(|&&zz| zz > 0)
+            .map(|&zz| zz as f64)
+            .map(|x| x / n)
+            .map(|p| p * p.ln())
             .sum::<f64>()
     }
     let numerator = a * summarize(&counts_truth) + (2.0 - a) * summarize(&counts_estimate)
         - 2.0 * summarize(&counts_joint);
     let n = labels_truth.len() as f64;
-    1.0 - numerator / (n * (n - 1.0))
+    let rand_index = 1.0 - numerator / (n * (n - 1.0));
+    let entropy_option = if with_entropy {
+        Some(entropy(&counts_estimate, n))
+    } else {
+        None
+    };
+    (rand_index, entropy_option)
 }
 
 #[roxido]
