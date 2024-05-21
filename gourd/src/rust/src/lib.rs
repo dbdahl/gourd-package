@@ -33,10 +33,12 @@ use dahl_randompartition::up::UpParameters;
 use nalgebra::{DMatrix, DVector};
 use rand::Rng;
 use rand::SeedableRng;
+use rand_distr::{Beta as BetaRNG, Distribution, Gamma as GammaRNG};
 use rand_pcg::Pcg64Mcg;
 use rayon::prelude::*;
 use slice_sampler::univariate::stepping_out;
-use statrs::distribution::{Beta, Continuous, Gamma};
+use statrs::distribution::{Beta as BetaPDF, Continuous, Gamma as GammaPDF};
+use std::fmt::Debug;
 use std::ptr::NonNull;
 use walltime::TicToc;
 
@@ -154,6 +156,197 @@ fn prPartition(partition: &RMatrix, prior: &RExternalPtr) {
         _ => stop!("Unsupported distribution: {}", name),
     }
     log_probs_rval
+}
+
+#[roxido]
+fn mk_summary(
+    domain_specification: &RList,
+    shrinkage_shape: f64,
+    shrinkage_rate: f64,
+    shrinkage_n: usize,
+    grit_shape1: f64,
+    grit_shape2: f64,
+    grit_n: usize,
+) {
+    if !(shrinkage_shape > 0.0) {
+        stop!("'shrinkage_shape' should be strictly positive.");
+    };
+    if !(shrinkage_rate > 0.0) {
+        stop!("'shrinkage_rate' should be strictly positive.");
+    };
+    if shrinkage_n < 2 {
+        stop!("'shrinkage_n' must be at least two.");
+    }
+    if !(grit_shape1 > 0.0) {
+        stop!("'grit_shape1' should be strictly positive.");
+    };
+    if !(grit_shape2 > 0.0) {
+        stop!("'grit_shape2' should be strictly positive.");
+    };
+    if grit_n < 2 {
+        stop!("'grit_n' must be at least two.");
+    }
+    let mut rng = Pcg64Mcg::from_seed(R::random_bytes::<16>());
+    let ((shrinkage_min, shrinkage_max), (grit_min, grit_max)) = match domain_specification
+        .get_by_key("n")
+    {
+        Ok(n) => {
+            let Ok(n) = n.as_scalar() else {
+                stop!("Element 'n' in 'domain_specification' should be a scalar.");
+            };
+            let Ok(n) = n.usize() else {
+                stop!("Element 'n' in 'domain_specification' cannot be interpreted as positive integer.");
+            };
+            if n <= 1 {
+                stop!("Element 'n' is 'domain_specification' must be at least 2.");
+            }
+            let Ok(percentile) = domain_specification.get_by_key("percentile") else {
+                stop!("Element 'percentile' must be provided when 'n' is provided in 'domain_specification'.");
+            };
+            let Ok(percentile) = percentile.as_scalar() else {
+                stop!("Element 'percentile' in 'domain_specification' should be a scalar.");
+            };
+            let percentile = percentile.f64();
+            if percentile < 0.0 || percentile > 1.0 {
+                stop!("Element 'percentile' is 'domain_specification' must be in [0, 1].")
+            }
+            let Ok(gamma_dist) = GammaRNG::new(shrinkage_shape, 1.0 / shrinkage_rate) else {
+                stop!("Cannot construct gamma distribution for shrinkage.");
+            };
+            let Ok(beta_dist) = BetaRNG::new(grit_shape1, grit_shape2) else {
+                stop!("Cannot construct beta distribution for grit.");
+            };
+            let mut sample = vec![0.0; n];
+            sample.fill_with(|| gamma_dist.sample(&mut rng));
+            sample.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let shrinkage_max = sample[(percentile * (n as f64)).floor() as usize];
+            sample.fill_with(|| beta_dist.sample(&mut rng));
+            sample.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let beta_max = sample[(percentile * (n as f64)).floor() as usize];
+            ((0.0, shrinkage_max), (0.0, beta_max))
+        }
+        Err(_) => {
+            let checker = |x| {
+                let Ok(y) = domain_specification.get_by_key(x) else {
+                    stop!("Element '{x}' is not found in 'domain_specification'.");
+                };
+                let Ok(y) = y.as_vector() else {
+                    stop!("Element '{x}' in 'domain_specification' should be a vector.");
+                };
+                if y.len() != 2 {
+                    stop!("Element '{x}' in 'domain_specification' should be of length 2.");
+                };
+                let y = y.to_f64(pc);
+                let slice = y.slice();
+                if slice[0] >= slice[1] {
+                    stop!("The first element of '{x}' in 'domain_specification' should be less than the second element.");
+                }
+                (slice[0], slice[1])
+            };
+            (checker("shrinkage_lim"), checker("grit_lim"))
+        }
+    };
+    let shrinkage_width = (shrinkage_max - shrinkage_min) / ((shrinkage_n - 1) as f64);
+    let grit_width = (grit_max - grit_min) / ((grit_n - 1) as f64);
+    let result = RList::with_names(&["shrinakge", "grit", "log_density"], pc);
+    let shrinkage_rval = RVector::<f64>::new(shrinkage_n, pc);
+    let _ = result.set(0, shrinkage_rval);
+    let grit_rval = RVector::<f64>::new(grit_n, pc);
+    let _ = result.set(1, grit_rval);
+    let log_density_rval = RMatrix::<f64>::new(shrinkage_n, grit_n, pc);
+    let _ = result.set(2, log_density_rval);
+    let shrinkage_slice = shrinkage_rval.slice_mut();
+    let grit_slice = grit_rval.slice_mut();
+    let log_density_slice = log_density_rval.slice_mut();
+    let Ok(gamma_dist) = GammaPDF::new(shrinkage_shape, shrinkage_rate) else {
+        stop!("Cannot construct gamma distribution for shrinkage.");
+    };
+    let Ok(beta_dist) = BetaPDF::new(grit_shape1, grit_shape2) else {
+        stop!("Cannot construct beta distribution for grit.");
+    };
+    for (i, shrinkage) in shrinkage_slice.iter_mut().enumerate() {
+        *shrinkage = shrinkage_min + (i as f64) * shrinkage_width;
+        let shrinkage_density = gamma_dist.ln_pdf(*shrinkage);
+        for (j, grit) in grit_slice.iter_mut().enumerate() {
+            *grit = grit_min + (j as f64) * grit_width;
+            let beta_density = beta_dist.ln_pdf(*grit);
+            log_density_slice[grit_n * i + j] = shrinkage_density + beta_density;
+        }
+    }
+    let anchor = Clustering::one_cluster(51);
+    let a = anchor.allocation();
+    rand_index_engine(a, a);
+    // let n_items = anchor.n_items();
+    // let mut permutation = Permutation::natural(n_items);
+    // permutation.shuffle(&mut rng);
+    // let partition_distribution = SpParameters::new(anchor);
+    result
+}
+
+fn rand_index<A: AsUsize + Debug>(labels_x: &[A], labels_y: &[A]) -> f64 {
+    if labels_x.len() != labels_y.len() {
+        panic!("Inconsistent lengths.");
+    }
+    rand_index_engine(labels_x, labels_y)
+}
+
+fn rand_index_engine<A: AsUsize + Debug>(labels_x: &[A], labels_y: &[A]) -> f64 {
+    fn marginal_counter<B: AsUsize>(labels: &[B]) -> Vec<u32> {
+        let mut counts = Vec::new();
+        for label in labels {
+            let label = label.as_usize();
+            if label >= counts.len() {
+                counts.resize(label + 1, 0);
+            }
+            counts[label] += 1;
+        }
+        counts
+    }
+    let counts_x = marginal_counter(labels_x);
+    let counts_y = marginal_counter(labels_y);
+    let n_clusters_x = counts_x.len();
+    let n_clusters_y = counts_y.len();
+    let mut counts_xy = vec![0; n_clusters_x * n_clusters_y];
+    for (label_x, label_y) in labels_x.iter().zip(labels_y.iter()) {
+        let label_x = label_x.as_usize();
+        let label_y = label_y.as_usize();
+        counts_xy[n_clusters_x * label_y + label_x] += 1;
+    }
+    fn summarize(counts: &[u32]) -> f64 {
+        counts
+            .into_iter()
+            .filter(|&&zz| zz > 0)
+            .map(|&zz| zz as f64)
+            .map(|p| p * p)
+            .sum::<f64>()
+    }
+    let numerator = summarize(&counts_x) + summarize(&counts_y) - 2.0 * summarize(&counts_xy);
+    let n = labels_x.len() as f64;
+    1.0 - numerator / (n * (n - 1.0))
+}
+
+trait AsUsize {
+    fn as_usize(&self) -> usize;
+}
+
+impl AsUsize for i32 {
+    fn as_usize(&self) -> usize {
+        (*self).try_into().unwrap()
+    }
+}
+
+impl AsUsize for usize {
+    fn as_usize(&self) -> usize {
+        *self
+    }
+}
+
+#[roxido]
+fn rand_index_for_r(labels_x: &RVector, labels_y: &RVector) {
+    if labels_x.len() != labels_y.len() {
+        stop!("Inconsistent lengths.");
+    }
+    rand_index(labels_x.to_i32(pc).slice(), labels_y.to_i32(pc).slice())
 }
 
 #[roxido]
@@ -827,7 +1020,7 @@ fn fit_dependent(
             results.timers.shrinkage.tic();
             if let Some(w) = unit_mcmc_tuning.shrinkage_slice_step_size {
                 if let Some(reference) = hyperparameters.shrinkage.reference {
-                    let shrinkage_prior_distribution = Gamma::new(
+                    let shrinkage_prior_distribution = GammaPDF::new(
                         hyperparameters.shrinkage.shape.get(),
                         hyperparameters.shrinkage.rate.get(),
                     )
@@ -864,7 +1057,7 @@ fn fit_dependent(
             // Update grit
             results.timers.grit.tic();
             if let Some(w) = unit_mcmc_tuning.grit_slice_step_size {
-                let grit_prior_distribution = Beta::new(
+                let grit_prior_distribution = BetaPDF::new(
                     hyperparameters.grit.shape1.get(),
                     hyperparameters.grit.shape2.get(),
                 )

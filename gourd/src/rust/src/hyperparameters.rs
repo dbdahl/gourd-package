@@ -58,7 +58,7 @@ impl FromR<RList, String> for GritHyperparameters {
 }
 
 fn helper_mean_precision(
-    map: &mut roxido::R2ListMap2,
+    map: &mut roxido::RListMap,
     vector_name: &str,
     matrix_name: &str,
     pc: &Pc,
