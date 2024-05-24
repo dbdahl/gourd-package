@@ -743,6 +743,7 @@ struct GlobalMcmcTuning {
     burnin: usize,
     thinning: usize,
     update_anchor: bool,
+    temper: bool,
 }
 
 impl GlobalMcmcTuning {
@@ -759,6 +760,7 @@ impl FromR<RList, String> for GlobalMcmcTuning {
             burnin: map.get("burnin")?.as_scalar()?.usize()?,
             thinning: map.get("thinning")?.as_scalar()?.usize()?,
             update_anchor: map.get("update_anchor")?.as_scalar()?.bool()?,
+            temper: map.get("temper")?.as_scalar()?.bool()?,
         };
         map.exhaustive()?;
         Ok(result)
@@ -988,6 +990,9 @@ fn fit_dependent(
         baseline_distribution,
     )
     .unwrap();
+    let tempering_constant = global_mcmc_tuning.burnin as f64 / (all.units.len() as f64 - 1.0);
+    let tempering_constant_plus_one =
+        global_mcmc_tuning.burnin as f64 / (all.units.len() as f64 - 1.0) + 1.0;
     let mut permutation_n_acceptances: u64 = 0;
     let mut shrinkage_slice_n_evaluations: u64 = 0;
     let mut grit_slice_n_evaluations: u64 = 0;
@@ -1087,6 +1092,15 @@ fn fit_dependent(
             results.timers.units.toc();
             // Update anchor
             if do_hierarchical_model {
+                let t_inv = if !global_mcmc_tuning.temper
+                    || iteration_counter > global_mcmc_tuning.burnin
+                {
+                    1.0
+                } else {
+                    ((iteration_counter as f64 + 1.0) / global_mcmc_tuning.burnin as f64
+                        + tempering_constant)
+                        / tempering_constant_plus_one
+                };
                 results.timers.anchor.tic();
                 let mut pd = partition_distribution.clone();
                 let mut compute_log_likelihood = |item: usize, anchor: &Clustering| {
@@ -1094,7 +1108,7 @@ fn fit_dependent(
                     all.units
                         .par_iter()
                         .fold_with(0.0, |acc, x| {
-                            acc + pd.log_pmf_partial(item, &x.state.clustering)
+                            acc + t_inv * pd.log_pmf_partial(item, &x.state.clustering)
                         })
                         .sum::<f64>()
                 };
