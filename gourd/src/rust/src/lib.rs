@@ -990,9 +990,8 @@ fn fit_dependent(
         baseline_distribution,
     )
     .unwrap();
-    let tempering_constant = global_mcmc_tuning.burnin as f64 / (all.units.len() as f64 - 1.0);
-    let tempering_constant_plus_one =
-        global_mcmc_tuning.burnin as f64 / (all.units.len() as f64 - 1.0) + 1.0;
+    let tempering_constant = 1.0 / (2.0 * all.units.len() as f64 - 1.0);
+    let tempering_constant_plus_one = tempering_constant + 1.0;
     let mut permutation_n_acceptances: u64 = 0;
     let mut shrinkage_slice_n_evaluations: u64 = 0;
     let mut grit_slice_n_evaluations: u64 = 0;
@@ -1097,7 +1096,7 @@ fn fit_dependent(
                 {
                     1.0
                 } else {
-                    ((iteration_counter as f64 + 1.0) / global_mcmc_tuning.burnin as f64
+                    (iteration_counter as f64 / global_mcmc_tuning.burnin as f64
                         + tempering_constant)
                         / tempering_constant_plus_one
                 };
