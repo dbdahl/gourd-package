@@ -990,8 +990,21 @@ fn fit_dependent(
         baseline_distribution,
     )
     .unwrap();
-    let tempering_constant = 1.0 / (2.0 * all.units.len() as f64 - 1.0);
-    let tempering_constant_plus_one = tempering_constant + 1.0;
+    let (tempering_plateau_length, tempering_coefficient, tempering_offset) =
+        if do_hierarchical_model {
+            let tempering_height = 100.0 * all.units.len() as f64;
+            let tempering_plateau_length = 3.0;
+            let y = (global_mcmc_tuning.n_iterations as f64).powf(tempering_plateau_length);
+            let z = y / (tempering_height - 1.0);
+            let tempering_coefficient = 1.0 / (y + z);
+            (
+                tempering_plateau_length,
+                tempering_coefficient,
+                tempering_coefficient * z,
+            )
+        } else {
+            (0.0, 0.0, 0.0)
+        };
     let mut permutation_n_acceptances: u64 = 0;
     let mut shrinkage_slice_n_evaluations: u64 = 0;
     let mut grit_slice_n_evaluations: u64 = 0;
@@ -1089,17 +1102,22 @@ fn fit_dependent(
                 }
             }
             results.timers.units.toc();
-            // Update anchor
-            if do_hierarchical_model {
+            let t_inv = if do_hierarchical_model {
                 let t_inv = if !global_mcmc_tuning.temper
                     || iteration_counter > global_mcmc_tuning.burnin
                 {
                     1.0
                 } else {
-                    (iteration_counter as f64 / global_mcmc_tuning.burnin as f64
-                        + tempering_constant)
-                        / tempering_constant_plus_one
+                    tempering_coefficient
+                        * (iteration_counter as f64).powf(tempering_plateau_length)
+                        + tempering_offset
                 };
+                t_inv
+            } else {
+                1.0
+            };
+            // Update anchor
+            if do_hierarchical_model {
                 results.timers.anchor.tic();
                 let mut pd = partition_distribution.clone();
                 let mut compute_log_likelihood = |item: usize, anchor: &Clustering| {
@@ -1126,10 +1144,12 @@ fn fit_dependent(
             // Helper
             let compute_log_likelihood = |pd: &SpParameters<CrpParameters>| {
                 if do_hierarchical_model {
-                    all.units
-                        .par_iter()
-                        .fold_with(0.0, |acc, x| acc + pd.log_pmf(&x.state.clustering))
-                        .sum::<f64>()
+                    t_inv
+                        * all
+                            .units
+                            .par_iter()
+                            .fold_with(0.0, |acc, x| acc + pd.log_pmf(&x.state.clustering))
+                            .sum::<f64>()
                 } else {
                     let mut partition_distribution = pd.clone();
                     let mut shrinkage_value = partition_distribution.shrinkage[0];
