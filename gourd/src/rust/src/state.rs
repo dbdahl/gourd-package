@@ -8,6 +8,7 @@ use dahl_randompartition::distr::FullConditional;
 use dahl_randompartition::distr::ProbabilityMassFunction;
 use dahl_randompartition::mcmc::update_neal_algorithm8;
 use dahl_randompartition::perm::Permutation;
+use dahl_randompartition::prelude::ScalarShrinkage;
 use dahl_randompartition::sp::SpParameters;
 use nalgebra::{DMatrix, DVector};
 use rand::Rng;
@@ -354,7 +355,7 @@ impl State {
         data: &Data,
         hyperparameters: &Hyperparameters,
         partition_distribution: &SpParameters<CrpParameters>,
-        partition_next: Option<&Clustering>,
+        next_partition_and_shrinkage: Option<(&Clustering, &ScalarShrinkage)>,
         rng: &mut T,
         rng2: &mut T,
     ) {
@@ -396,6 +397,9 @@ impl State {
             };
         let mut partition_distribution_next = partition_distribution.clone();
         partition_distribution_next.anchor = clustering.clone();
+        if let Some((_, s)) = next_partition_and_shrinkage {
+            partition_distribution_next.shrinkage.set_constant(*s);
+        }
         let n_updates = 1;
         for _ in 0..n_updates {
             for i in 0..clustering.n_items() {
@@ -407,7 +411,7 @@ impl State {
                     .map(|(label, log_prior)| {
                         (
                             label,
-                            if let Some(c) = partition_next {
+                            if let Some((c, _)) = next_partition_and_shrinkage {
                                 partition_distribution_next.anchor.allocate(ii, label);
                                 partition_distribution_next.log_pmf(c)
                             } else {

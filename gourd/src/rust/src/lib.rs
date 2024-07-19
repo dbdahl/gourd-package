@@ -1047,7 +1047,10 @@ fn fit_dependent(
                     };
                     let (middle, right) = not_left.split_at_mut(1);
                     let unit = middle.first_mut().unwrap();
-                    let clustering_next = right.first().map(|x| &x.state.clustering);
+                    let next_partition_and_shrinkage = right
+                        .first()
+                        .map(|x| &x.state.clustering)
+                        .map(|c| (c, &shrinkage_value));
                     unit.data.impute(&unit.state, &mut rng);
                     if unit_mcmc_tuning.update_precision_response {
                         State::update_precision_response(
@@ -1083,7 +1086,7 @@ fn fit_dependent(
                             &unit.data,
                             &unit.hyperparameters,
                             &partition_distribution,
-                            clustering_next,
+                            next_partition_and_shrinkage,
                             &mut rng,
                             &mut rng2,
                         );
