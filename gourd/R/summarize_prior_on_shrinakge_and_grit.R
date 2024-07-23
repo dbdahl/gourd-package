@@ -54,7 +54,7 @@
 #' image(out$shrinkage, out$grit, out$expected_entropy, xlab = "Shrinkage", ylab = "Grit")
 #' contour(out$shrinkage, out$grit, exp(out$log_density), add = TRUE, labcex = 1.0)
 #' 
-summarize_prior_on_shrinkage_and_grit <- function(anchor, shrinkage_shape = 4, shrinkage_rate = 1, grit_shape1 = 2, grit_shape2 = 3,
+summarize_prior_on_shrinkage_and_grit <- function(anchor, shrinkage_shape = 4, shrinkage_rate = 1, grit_shape1 = 3, grit_shape2 = 3,
                                                   concentration = 1.0, shrinkage_n = 25, grit_n = 25, n_mc_samples = 100,
                                                   domain_specification = list(n_mc_samples = 1000, percentile = 0.95), n_cores = 0) {
   .Call(.summarize_prior_on_shrinkage_and_grit,

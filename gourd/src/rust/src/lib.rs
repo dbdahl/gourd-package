@@ -160,7 +160,7 @@ fn prPartition(partition: &RMatrix, prior: &RExternalPtr) {
 
 #[roxido]
 fn summarize_prior_on_shrinkage_and_grit(
-    anchor: &[i32],
+    anchor: &RVector,
     shrinkage_shape: f64,
     shrinkage_rate: f64,
     grit_shape1: f64,
@@ -172,6 +172,7 @@ fn summarize_prior_on_shrinkage_and_grit(
     domain_specification: &RList,
     n_cores: i32,
 ) {
+    let anchor = anchor.to_i32(pc).slice();
     if !(shrinkage_shape > 0.0) {
         stop!("'shrinkage_shape' should be strictly positive.");
     };
@@ -344,10 +345,9 @@ fn summarize_prior_on_shrinkage_and_grit(
                     (0..n_mc_samples).for_each(|_| {
                         partition_distribution.permutation.shuffle(&mut rng);
                         let sample = partition_distribution.sample(&mut rng);
-                        let allocation = sample.allocation();
                         let result = rand_index_core(
                             partition_distribution.anchor.allocation(),
-                            allocation,
+                            sample.allocation(),
                             1.0,
                             true,
                             &counts_truth,
