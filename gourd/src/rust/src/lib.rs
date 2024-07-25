@@ -965,15 +965,18 @@ fn fit_dependent(
         .state
         .clustering()
         .clone();
-    let mut shrinkage_value = ScalarShrinkage::new(
-        hyperparameters.shrinkage.shape / hyperparameters.shrinkage.rate.get(),
+    let shrinkage_rng = GammaRNG::new(
+        hyperparameters.shrinkage.shape.get(),
+        1.0 / hyperparameters.shrinkage.rate.get(),
     )
     .stop();
-    let grit = Grit::new(
-        hyperparameters.grit.shape1
-            / (hyperparameters.grit.shape1 + hyperparameters.grit.shape2.get()),
+    let mut shrinkage_value = ScalarShrinkage::new(shrinkage_rng.sample(&mut rng)).stop();
+    let grit_rng = BetaRNG::new(
+        hyperparameters.grit.shape1.get(),
+        hyperparameters.grit.shape2.get(),
     )
     .stop();
+    let grit = Grit::new(grit_rng.sample(&mut rng)).stop();
     let permutation = Permutation::random(all.n_items, &mut rng);
     let baseline_distribution = CrpParameters::new(
         all.n_items,
