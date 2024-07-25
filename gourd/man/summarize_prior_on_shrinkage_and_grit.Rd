@@ -9,7 +9,7 @@ summarize_prior_on_shrinkage_and_grit(
   shrinkage_shape = 4,
   shrinkage_rate = 1,
   grit_shape1 = 2,
-  grit_shape2 = 3,
+  grit_shape2 = 2,
   concentration = 1,
   shrinkage_n = 25,
   grit_n = 25,
