@@ -1266,7 +1266,9 @@ fn fit_dependent(
     let denominator = (global_mcmc_tuning.n_saves() * global_mcmc_tuning.thinning) as f64;
     results.finalize(
         permutation_n_acceptances as f64
-            / (unit_mcmc_tuning.n_permutation_updates_per_scan as f64 * denominator),
+            / (n_units as f64
+                * unit_mcmc_tuning.n_permutation_updates_per_scan as f64
+                * denominator),
         shrinkage_slice_n_evaluations as f64 / denominator,
         grit_slice_n_evaluations as f64 / denominator,
         pc,
