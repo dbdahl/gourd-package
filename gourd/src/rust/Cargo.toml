@@ -29,3 +29,6 @@ rand_pcg = "0.3.1"
 num-traits = "0.2.15"
 statrs = "0.17.1"
 fastrand = "2.0.0"
+
+[lints.clippy]
+not_unsafe_ptr_arg_deref = "allow"

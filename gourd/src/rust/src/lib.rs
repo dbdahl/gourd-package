@@ -173,19 +173,19 @@ fn summarize_prior_on_shrinkage_and_grit(
     n_cores: i32,
 ) {
     let anchor = anchor.to_i32(pc).slice();
-    if !(shrinkage_shape > 0.0) {
+    if shrinkage_shape <= 0.0 {
         stop!("'shrinkage_shape' should be strictly positive.");
     };
-    if !(shrinkage_rate > 0.0) {
+    if shrinkage_rate <= 0.0 {
         stop!("'shrinkage_rate' should be strictly positive.");
     };
     if shrinkage_n < 2 {
         stop!("'shrinkage_n' must be at least two.");
     }
-    if !(grit_shape1 > 0.0) {
+    if grit_shape1 <= 0.0 {
         stop!("'grit_shape1' should be strictly positive.");
     };
-    if !(grit_shape2 > 0.0) {
+    if grit_shape2 <= 0.0 {
         stop!("'grit_shape2' should be strictly positive.");
     };
     if grit_n < 2 {
@@ -212,7 +212,7 @@ fn summarize_prior_on_shrinkage_and_grit(
                 stop!("Element 'percentile' in 'domain_specification' should be a scalar.");
             };
             let percentile = percentile.f64();
-            if percentile < 0.0 || percentile > 1.0 {
+            if !(0.0..=1.0).contains(&percentile) {
                 stop!("Element 'percentile' is 'domain_specification' must be in [0, 1].")
             }
             let Ok(gamma_dist) = GammaRNG::new(shrinkage_shape, 1.0 / shrinkage_rate) else {
@@ -332,7 +332,7 @@ fn summarize_prior_on_shrinkage_and_grit(
             let mut partition_distribution = partition_distribution.clone();
             let mut rng = Pcg64Mcg::new(seed);
             let result = indices
-                .into_iter()
+                .iter()
                 .map(|&index| {
                     let i = index % shrinkage_n;
                     let j = index / shrinkage_n;
@@ -397,7 +397,7 @@ fn rand_index<A: AsUsize + Debug>(
     }
     let a = match a {
         Some(a) => {
-            if a < 0.0 || a > 2.0 {
+            if !(0.0..=2.0).contains(&a) {
                 return Err("Parameter 'a' must be in [0.0, 2.0].");
             }
             a
@@ -437,7 +437,7 @@ fn marginal_counter<B: AsUsize>(labels: &[B]) -> Vec<u32> {
 
 fn summarize_counts_from_rand_index(counts: &[u32]) -> f64 {
     counts
-        .into_iter()
+        .iter()
         .filter(|&&zz| zz > 0)
         .map(|&zz| zz as f64)
         .map(|x| x * x)
@@ -481,7 +481,7 @@ fn rand_index_core<A: AsUsize + Debug>(
     }
     fn entropy(counts: &[u32], n: f64) -> f64 {
         -counts
-            .into_iter()
+            .iter()
             .filter(|&&zz| zz > 0)
             .map(|&zz| zz as f64)
             .map(|x| x / n)
@@ -1068,10 +1068,8 @@ fn fit_dependent(
                             &mut rng2,
                         );
                     }
-                    if !do_hierarchical_model {
-                        if time < n_units - 1 {
-                            dists[time + 1].anchor = unit.state.clustering.clone();
-                        }
+                    if !do_hierarchical_model && time < n_units - 1 {
+                        dists[time + 1].anchor = unit.state.clustering.clone();
                     }
                     if unit_mcmc_tuning.update_clustered_coefficients {
                         State::update_clustered_coefficients(
