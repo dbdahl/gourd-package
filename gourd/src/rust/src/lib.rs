@@ -813,14 +813,12 @@ impl<'a> Results<'a> {
             unit_partitions.push(rval.slice_mut());
         }
         let anchors_rval = RMatrix::<i32>::new(n_items, n_saves, pc);
-        let permutations_rval = RMatrix::<i32>::new(n_items, n_saves, pc);
         let shrinkages_rval = RVector::<f64>::new(n_saves, pc);
         let grits_rval = RVector::<f64>::new(n_saves, pc);
         let log_likelihoods_rval = RVector::<f64>::new(n_saves, pc);
         let names = &[
             "unit_partitions",
             "anchor",
-            "permutation",
             "shrinkage",
             "grit",
             "log_likelihood",
@@ -832,10 +830,9 @@ impl<'a> Results<'a> {
         let rval = RList::with_names(names, pc); // Extra 4 items for rates after looping.
         rval.set(0, unit_partitions_rval).stop();
         rval.set(1, anchors_rval).stop();
-        rval.set(2, permutations_rval).stop();
-        rval.set(3, shrinkages_rval).stop();
-        rval.set(4, grits_rval).stop();
-        rval.set(5, log_likelihoods_rval).stop();
+        rval.set(2, shrinkages_rval).stop();
+        rval.set(3, grits_rval).stop();
+        rval.set(4, log_likelihoods_rval).stop();
         Self {
             rval,
             counter: 0,
@@ -885,12 +882,12 @@ impl<'a> Results<'a> {
         grit_slice_evaluations_rate: f64,
         pc: &Pc,
     ) {
-        self.rval.set(6, permutation_rate.to_r(pc)).stop();
+        self.rval.set(5, permutation_rate.to_r(pc)).stop();
         self.rval
-            .set(7, shrinkage_slice_evaluations_rate.to_r(pc))
+            .set(6, shrinkage_slice_evaluations_rate.to_r(pc))
             .stop();
         self.rval
-            .set(8, grit_slice_evaluations_rate.to_r(pc))
+            .set(7, grit_slice_evaluations_rate.to_r(pc))
             .stop();
         let wall_times = [
             self.timers.units.as_secs_f64(),
@@ -900,9 +897,9 @@ impl<'a> Results<'a> {
             self.timers.grit.as_secs_f64(),
         ]
         .to_r(pc);
-        let names = ["units", "anchor", "shrinkage", "grit"].to_r(pc);
+        let names = ["units", "anchor", "permutation", "shrinkage", "grit"].to_r(pc);
         wall_times.set_names(names).stop();
-        self.rval.set(9, wall_times).stop();
+        self.rval.set(8, wall_times).stop();
     }
 }
 
@@ -1005,13 +1002,40 @@ fn fit_dependent(
     {
         for _ in 0..global_mcmc_tuning.thinning {
             // Update each unit
+            fn update_permutation(
+                clustering: &Clustering,
+                partition_distribution: &mut SpParameters<CrpParameters>,
+                tuning: &McmcTuning,
+                rng: &mut Pcg64Mcg,
+            ) -> u64 {
+                let mut permutation_n_acceptances = 0;
+                if tuning.n_permutation_updates_per_scan > 0 {
+                    let k = tuning.n_items_per_permutation_update;
+                    let mut log_target_current: f64 = partition_distribution.log_pmf(clustering);
+                    for _ in 0..tuning.n_permutation_updates_per_scan {
+                        partition_distribution.permutation.partial_shuffle(k, rng);
+                        let log_target_proposal = partition_distribution.log_pmf(clustering);
+                        let log_hastings_ratio = log_target_proposal - log_target_current;
+                        if 0.0 <= log_hastings_ratio
+                            || rng.gen_range(0.0..1.0_f64).ln() < log_hastings_ratio
+                        {
+                            log_target_current = log_target_proposal;
+                            permutation_n_acceptances += 1;
+                        } else {
+                            partition_distribution.permutation.partial_shuffle_undo(k);
+                        }
+                    }
+                }
+                permutation_n_acceptances
+            }
             results.timers.units.tic();
             if do_hierarchical_model {
-                all.units
+                let (permutation_time, incremental_permutation_n_acceptances) = all
+                    .units
                     .par_iter_mut()
-                    .zip(dists.par_iter())
+                    .zip(dists.par_iter_mut())
                     .zip(rngs.par_iter_mut())
-                    .for_each(|((unit, partition_distribution), (r1, r2))| {
+                    .map(|((unit, partition_distribution), (r1, r2))| {
                         unit.state.mcmc_iteration(
                             &unit_mcmc_tuning,
                             &mut unit.data,
@@ -1019,8 +1043,29 @@ fn fit_dependent(
                             partition_distribution,
                             r1,
                             r2,
-                        )
-                    });
+                        );
+                        let mut timer = TicToc::new();
+                        timer.tic();
+                        let n_acceptances = update_permutation(
+                            &unit.state.clustering,
+                            partition_distribution,
+                            &unit_mcmc_tuning,
+                            r1,
+                        );
+                        timer.toc();
+                        (timer, n_acceptances)
+                    })
+                    .reduce(
+                        || (TicToc::new(), 0_u64),
+                        |mut a, b| {
+                            a.0.add(b.0);
+                            (a.0, a.1 + b.1)
+                        },
+                    );
+                if iteration_counter >= global_mcmc_tuning.burnin {
+                    permutation_n_acceptances += incremental_permutation_n_acceptances
+                }
+                results.timers.permutation.add(permutation_time);
             } else {
                 for time in 0..n_units {
                     let (middle, right) = all.units.split_at_mut(time).1.split_at_mut(1);
@@ -1083,29 +1128,14 @@ fn fit_dependent(
                         );
                     }
                     results.timers.permutation.tic();
-                    if unit_mcmc_tuning.n_permutation_updates_per_scan > 0 {
-                        let k = unit_mcmc_tuning.n_items_per_permutation_update;
-                        let partition_distribution = &mut dists[time];
-                        let mut log_target_current: f64 =
-                            partition_distribution.log_pmf(&unit.state.clustering);
-                        for _ in 0..unit_mcmc_tuning.n_permutation_updates_per_scan {
-                            partition_distribution
-                                .permutation
-                                .partial_shuffle(k, &mut rng);
-                            let log_target_proposal =
-                                partition_distribution.log_pmf(&unit.state.clustering);
-                            let log_hastings_ratio = log_target_proposal - log_target_current;
-                            if 0.0 <= log_hastings_ratio
-                                || rng.gen_range(0.0..1.0_f64).ln() < log_hastings_ratio
-                            {
-                                log_target_current = log_target_proposal;
-                                if iteration_counter >= global_mcmc_tuning.burnin {
-                                    permutation_n_acceptances += 1;
-                                }
-                            } else {
-                                partition_distribution.permutation.partial_shuffle_undo(k);
-                            }
-                        }
+                    let n_acceptances = update_permutation(
+                        &unit.state.clustering,
+                        &mut dists[time],
+                        &unit_mcmc_tuning,
+                        &mut rng,
+                    );
+                    if iteration_counter >= global_mcmc_tuning.burnin {
+                        permutation_n_acceptances += n_acceptances
                     }
                     results.timers.permutation.toc();
                 }

@@ -20,7 +20,7 @@ rayon = "1.7.0"
 roxido = { path="roxido" }
 dahl-randompartition = { git="https://github.com/dbdahl/rust-dahl-randompartition.git", rev="03863d870" }
 # dahl-randompartition = { path="/home/dahl/docs/devel/rust-dahl-randompartition" }
-walltime = { git="https://github.com/dbdahl/rust-dahl-walltime.git", rev="030fad7" }
+walltime = { git="https://github.com/dbdahl/rust-dahl-walltime.git", rev="df99ae9" }
 slice_sampler = { git="https://github.com/dbdahl/rust_slice_sampler.git", rev="bacf2b5" }
 nalgebra = "0.33.0"
 rand = "0.8.5"
