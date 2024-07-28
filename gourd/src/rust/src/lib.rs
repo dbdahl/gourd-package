@@ -953,6 +953,11 @@ fn fit_dependent(
         .state
         .clustering()
         .clone();
+    let shrinkage_prior_distribution = GammaPDF::new(
+        hyperparameters.shrinkage.shape.get(),
+        hyperparameters.shrinkage.rate.get(),
+    )
+    .unwrap();
     let shrinkage_rng = GammaRNG::new(
         hyperparameters.shrinkage.shape.get(),
         1.0 / hyperparameters.shrinkage.rate.get(),
@@ -962,6 +967,11 @@ fn fit_dependent(
         ScalarShrinkage::new(shrinkage_rng.sample(&mut rng)).stop(),
         all.n_items,
     );
+    let grit_prior_distribution = BetaPDF::new(
+        hyperparameters.grit.shape1.get(),
+        hyperparameters.grit.shape2.get(),
+    )
+    .unwrap();
     let grit_rng = BetaRNG::new(
         hyperparameters.grit.shape1.get(),
         hyperparameters.grit.shape2.get(),
@@ -1183,11 +1193,6 @@ fn fit_dependent(
             results.timers.shrinkage.tic();
             if let Some(w) = unit_mcmc_tuning.shrinkage_slice_step_size {
                 if let Some(reference) = hyperparameters.shrinkage.reference {
-                    let shrinkage_prior_distribution = GammaPDF::new(
-                        hyperparameters.shrinkage.shape.get(),
-                        hyperparameters.shrinkage.rate.get(),
-                    )
-                    .unwrap();
                     let tuning_parameters = stepping_out::TuningParameters::new().width(w);
                     let (_s_new, n_evaluations) =
                         stepping_out::univariate_slice_sampler_stepping_out_and_shrinkage(
@@ -1195,9 +1200,12 @@ fn fit_dependent(
                             |s| match ScalarShrinkage::new(s) {
                                 None => f64::NEG_INFINITY,
                                 Some(shrinkage) => {
-                                    dists.iter_mut().for_each(|pd| {
-                                        pd.shrinkage.rescale_by_reference(reference, shrinkage);
-                                    });
+                                    dists
+                                        .iter_mut()
+                                        .skip(if do_hierarchical_model { 0 } else { 1 })
+                                        .for_each(|pd| {
+                                            pd.shrinkage.rescale_by_reference(reference, shrinkage);
+                                        });
                                     shrinkage_prior_distribution.ln_pdf(s)
                                         + compute_log_likelihood(all, &dists)
                                 }
@@ -1220,11 +1228,6 @@ fn fit_dependent(
             // Update grit
             results.timers.grit.tic();
             if let Some(w) = unit_mcmc_tuning.grit_slice_step_size {
-                let grit_prior_distribution = BetaPDF::new(
-                    hyperparameters.grit.shape1.get(),
-                    hyperparameters.grit.shape2.get(),
-                )
-                .unwrap();
                 let tuning_parameters = stepping_out::TuningParameters::new().width(w);
                 let (_g_new, n_evaluations) =
                     stepping_out::univariate_slice_sampler_stepping_out_and_shrinkage(
