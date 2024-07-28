@@ -1074,6 +1074,7 @@ fn fit_dependent(
                         .first()
                         .map(|x| &x.state.clustering)
                         .map(|c| (c, &dists[time + 1].shrinkage[0])); // Should be 'reference' value?
+                    unit.data.impute(&unit.state, &mut rng);
                     if unit_mcmc_tuning.update_precision_response {
                         State::update_precision_response(
                             &mut unit.state.precision_response,
