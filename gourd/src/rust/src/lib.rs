@@ -882,7 +882,7 @@ impl<'a> Results<'a> {
             for (x, y) in slice.iter_mut().zip(permutation.as_slice()) {
                 *x = *y as i32 + 1;
             }
-        }
+        };
         self.shrinkages[self.counter] = shrinkage;
         self.grits[self.counter] = grit;
         self.log_likelihoods[self.counter] = log_likelihoods;
