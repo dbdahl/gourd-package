@@ -1198,12 +1198,13 @@ fn fit_dependent(
             // Update anchor
             if do_hierarchical_model {
                 results.timers.anchor.tic();
-                let mut pd = dists[0].clone();
+                let mut state = dists[0].anchor.clone();
                 let mut compute_log_likelihood = |item: usize, anchor: &Clustering| {
-                    pd.anchor = anchor.clone();
                     all.units
                         .par_iter()
-                        .fold_with(0.0, |acc, x| {
+                        .zip(dists.par_iter_mut())
+                        .fold_with(0.0, |acc, (x, pd)| {
+                            pd.anchor = anchor.clone();
                             acc + pd.log_pmf_partial(item, &x.state.clustering)
                         })
                         .sum::<f64>()
@@ -1211,16 +1212,15 @@ fn fit_dependent(
                 if global_mcmc_tuning.update_anchor {
                     update_partition_gibbs(
                         1,
-                        &mut dists[0].anchor,
+                        &mut state,
                         &anchor_update_permutation,
                         &anchor_distribution,
                         &mut compute_log_likelihood,
                         &mut rng,
                     )
                 }
-                let anchor = dists[0].anchor.clone();
-                dists.iter_mut().skip(1).for_each(|pd| {
-                    pd.anchor = anchor.clone();
+                dists.iter_mut().for_each(|pd| {
+                    pd.anchor = state.clone();
                 });
                 results.timers.anchor.toc();
             }
