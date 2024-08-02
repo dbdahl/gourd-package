@@ -922,6 +922,8 @@ fn fit_dependent(
     model_id: &str,
     all: &mut RExternalPtr,
     anchor_anchor: &RVector,
+    anchor_shrinkage: &RVector,
+    anchor_shrinkage_reference: usize,
     anchor_concentration: f64,
     baseline_concentration: f64,
     hyperparameters: &RList,
@@ -998,10 +1000,7 @@ fn fit_dependent(
         Concentration::new(baseline_concentration).stop(),
     );
     let anchor_anchor = anchor_anchor.to_i32(pc);
-    let anchor_shrinkage = Shrinkage::constant(
-        ScalarShrinkage::new(shrinkage_rng.sample(&mut rng)).stop(),
-        all.n_items,
-    );
+    let anchor_shrinkage = Shrinkage::from(anchor_shrinkage.to_f64(pc).slice()).stop();
     let anchor_grit = Grit::new(grit_rng.sample(&mut rng)).stop();
     let mut anchor_distribution = SpParameters::new(
         Clustering::from_slice(anchor_anchor.slice()),
@@ -1107,6 +1106,7 @@ fn fit_dependent(
     fn update_anchor_shrinkage(
         pd: &mut SpParameters<CrpParameters>,
         clustering: &Clustering,
+        reference: usize,
         shrinkage_prior_distribution: &GammaPDF,
         tuning: &McmcTuning,
         rng: &mut Pcg64Mcg,
@@ -1116,11 +1116,11 @@ fn fit_dependent(
             let fastrand = &mut Some(fastrand_);
             let tuning_parameters = stepping_out::TuningParameters::new().width(w);
             let (_s_new, _) = stepping_out::univariate_slice_sampler_stepping_out_and_shrinkage(
-                pd.shrinkage[0].get(),
+                pd.shrinkage[reference].get(),
                 |s| match ScalarShrinkage::new(s) {
                     None => f64::NEG_INFINITY,
                     Some(shrinkage) => {
-                        pd.shrinkage.rescale_by_reference(0, shrinkage);
+                        pd.shrinkage.rescale_by_reference(reference, shrinkage);
                         shrinkage_prior_distribution.ln_pdf(s) + pd.log_pmf(clustering)
                     }
                 },
@@ -1313,6 +1313,7 @@ fn fit_dependent(
                 update_anchor_shrinkage(
                     &mut anchor_distribution,
                     &dists[0].anchor,
+                    anchor_shrinkage_reference,
                     &shrinkage_prior_distribution,
                     &unit_mcmc_tuning,
                     &mut rng,
@@ -1381,6 +1382,7 @@ fn fit_dependent(
                     update_anchor_shrinkage(
                         &mut dists[0],
                         &all.units[0].state.clustering,
+                        anchor_shrinkage_reference,
                         &shrinkage_prior_distribution,
                         &unit_mcmc_tuning,
                         &mut rng,
