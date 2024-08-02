@@ -155,9 +155,9 @@ fit <- function(data, state, hyperparameters, partitionDistribution=CRPPartition
   result
 }
 
-fit_dependent <- function(model_name, all, anchor_concentration, baseline_concentration, hyperparameters, unit_mcmc_tuning, global_mcmc_tuning, validation_data_list) {
+fit_dependent <- function(model_name, all, anchor_anchor, anchor_concentration, baseline_concentration, hyperparameters, unit_mcmc_tuning, global_mcmc_tuning, validation_data_list) {
   all_ptr <- .Call(.all, all)
-  .Call(.fit_dependent, model_name, all_ptr, anchor_concentration, baseline_concentration, hyperparameters, unit_mcmc_tuning, global_mcmc_tuning, validation_data_list)
+  .Call(.fit_dependent, model_name, all_ptr, anchor_anchor, anchor_concentration, baseline_concentration, hyperparameters, unit_mcmc_tuning, global_mcmc_tuning, validation_data_list)
 }
 
 check_list <- function(x, arg_types) {
