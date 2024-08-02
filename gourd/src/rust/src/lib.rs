@@ -921,6 +921,7 @@ impl<'a> Results<'a> {
 fn fit_dependent(
     model_id: &str,
     all: &mut RExternalPtr,
+    anchor_anchor: &RVector,
     anchor_concentration: f64,
     baseline_concentration: f64,
     hyperparameters: &RList,
@@ -996,8 +997,20 @@ fn fit_dependent(
         all.n_items,
         Concentration::new(baseline_concentration).stop(),
     );
-    let anchor_distribution =
-        CrpParameters::new(all.n_items, Concentration::new(anchor_concentration).stop());
+    let anchor_anchor = anchor_anchor.to_i32(pc);
+    let anchor_shrinkage = Shrinkage::constant(
+        ScalarShrinkage::new(shrinkage_rng.sample(&mut rng)).stop(),
+        all.n_items,
+    );
+    let anchor_grit = Grit::new(grit_rng.sample(&mut rng)).stop();
+    let mut anchor_distribution = SpParameters::new(
+        Clustering::from_slice(anchor_anchor.slice()),
+        anchor_shrinkage,
+        Permutation::random(all.n_items, &mut rng),
+        anchor_grit,
+        CrpParameters::new(all.n_items, Concentration::new(anchor_concentration).stop()),
+    )
+    .unwrap();
     let anchor_update_permutation = Permutation::natural_and_fixed(all.n_items);
     let permutation = Permutation::random(all.n_items, &mut rng);
     let mut dists = std::iter::repeat_with(|| {
@@ -1013,7 +1026,6 @@ fn fit_dependent(
     .take(n_units)
     .collect::<Vec<_>>();
     if !do_hierarchical_model {
-        dists[0].shrinkage.set_constant(ScalarShrinkage::zero());
         for time in 0..n_units - 1 {
             dists[time + 1].anchor = all.units[time].state.clustering.clone();
         }
@@ -1090,6 +1102,68 @@ fn fit_dependent(
             }
         }
         permutation_n_acceptances
+    }
+    fn update_anchor_shrinkage(
+        pd: &mut SpParameters<CrpParameters>,
+        clustering: &Clustering,
+        shrinkage_prior_distribution: &GammaPDF,
+        tuning: &McmcTuning,
+        rng: &mut Pcg64Mcg,
+    ) {
+        if let Some(w) = tuning.shrinkage_slice_step_size {
+            let fastrand_ = fastrand::Rng::with_seed(rng.gen());
+            let fastrand = &mut Some(fastrand_);
+            let tuning_parameters = stepping_out::TuningParameters::new().width(w);
+            let (_s_new, _) = stepping_out::univariate_slice_sampler_stepping_out_and_shrinkage(
+                pd.shrinkage[0].get(),
+                |s| match ScalarShrinkage::new(s) {
+                    None => f64::NEG_INFINITY,
+                    Some(shrinkage) => {
+                        pd.shrinkage.rescale_by_reference(0, shrinkage);
+                        shrinkage_prior_distribution.ln_pdf(s) + pd.log_pmf(clustering)
+                    }
+                },
+                true,
+                &tuning_parameters,
+                fastrand,
+            );
+            // // Not necessary... see implementation of slice_sampler function.
+            // partition_distribution.shrinkage.rescale_by_reference(
+            //     global_hyperparameters.shrinkage_reference,
+            //     ScalarShrinkage::new(_s_new).unwrap(),
+            // );
+        }
+    }
+    fn update_anchor_grit(
+        pd: &mut SpParameters<CrpParameters>,
+        clustering: &Clustering,
+        grit_prior_distribution: &BetaPDF,
+        tuning: &McmcTuning,
+        rng: &mut Pcg64Mcg,
+    ) {
+        if let Some(w) = tuning.shrinkage_slice_step_size {
+            let fastrand_ = fastrand::Rng::with_seed(rng.gen());
+            let fastrand = &mut Some(fastrand_);
+            let tuning_parameters = stepping_out::TuningParameters::new().width(w);
+            let (_g_new, _) = stepping_out::univariate_slice_sampler_stepping_out_and_shrinkage(
+                pd.grit.get(),
+                |g| match Grit::new(g) {
+                    None => f64::NEG_INFINITY,
+                    Some(grit) => {
+                        pd.grit = grit;
+                        grit_prior_distribution.ln_pdf(g) + pd.log_pmf(clustering)
+                    }
+                },
+                true,
+                &tuning_parameters,
+                fastrand,
+            );
+            // // Not necessary... see implementation of slice_sampler function.
+            // partition_distribution.shrinkage.rescale_by_reference(
+            //     global_hyperparameters.shrinkage_reference,
+            //     ScalarShrinkage::new(_s_new).unwrap(),
+            // );
+        }
     }
     let mut permutation_n_acceptances: u64 = 0;
     let mut shrinkage_slice_n_evaluations: u64 = 0;
@@ -1223,6 +1297,35 @@ fn fit_dependent(
                     pd.anchor = state.clone();
                 });
                 results.timers.anchor.toc();
+                results.timers.permutation.tic();
+                if unit_mcmc_tuning.n_permutation_updates_per_scan > 0 {
+                    let _ = update_permutation(
+                        true,
+                        std::slice::from_ref(&dists[0].anchor),
+                        std::slice::from_mut(&mut anchor_distribution),
+                        &unit_mcmc_tuning,
+                        &mut rng,
+                    );
+                }
+                results.timers.permutation.toc();
+                results.timers.shrinkage.tic();
+                update_anchor_shrinkage(
+                    &mut anchor_distribution,
+                    &dists[0].anchor,
+                    &shrinkage_prior_distribution,
+                    &unit_mcmc_tuning,
+                    &mut rng,
+                );
+                results.timers.shrinkage.toc();
+                results.timers.grit.tic();
+                update_anchor_grit(
+                    &mut anchor_distribution,
+                    &dists[0].anchor,
+                    &grit_prior_distribution,
+                    &unit_mcmc_tuning,
+                    &mut rng,
+                );
+                results.timers.grit.toc();
             }
             // Helper
             fn compute_log_likelihood(all: &All, dists: &[SpParameters<CrpParameters>]) -> f64 {
@@ -1266,6 +1369,15 @@ fn fit_dependent(
                         shrinkage_slice_n_evaluations += u64::from(n_evaluations);
                     }
                 }
+                if !do_hierarchical_model {
+                    update_anchor_shrinkage(
+                        &mut anchor_distribution,
+                        &all.units[0].state.clustering,
+                        &shrinkage_prior_distribution,
+                        &unit_mcmc_tuning,
+                        &mut rng,
+                    );
+                }
             }
             results.timers.shrinkage.toc();
             // Update grit
@@ -1278,9 +1390,12 @@ fn fit_dependent(
                         |g| match Grit::new(g) {
                             None => f64::NEG_INFINITY,
                             Some(grit) => {
-                                dists.iter_mut().for_each(|pd| {
-                                    pd.grit = grit;
-                                });
+                                dists
+                                    .iter_mut()
+                                    .skip(if do_hierarchical_model { 0 } else { 1 })
+                                    .for_each(|pd| {
+                                        pd.grit = grit;
+                                    });
                                 grit_prior_distribution.ln_pdf(g)
                                     + compute_log_likelihood(all, &dists)
                             }
@@ -1296,6 +1411,15 @@ fn fit_dependent(
                 // );
                 if iteration_counter >= global_mcmc_tuning.burnin {
                     grit_slice_n_evaluations += u64::from(n_evaluations);
+                }
+                if !do_hierarchical_model {
+                    update_anchor_grit(
+                        &mut anchor_distribution,
+                        &all.units[0].state.clustering,
+                        &grit_prior_distribution,
+                        &unit_mcmc_tuning,
+                        &mut rng,
+                    );
                 }
             }
             results.timers.grit.toc();
