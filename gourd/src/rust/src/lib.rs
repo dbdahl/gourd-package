@@ -1026,6 +1026,7 @@ fn fit_dependent(
     .take(n_units)
     .collect::<Vec<_>>();
     if !do_hierarchical_model {
+        dists[0].anchor = anchor_distribution.anchor.clone();
         for time in 0..n_units - 1 {
             dists[time + 1].anchor = all.units[time].state.clustering.clone();
         }
@@ -1328,8 +1329,11 @@ fn fit_dependent(
                 results.timers.grit.toc();
             }
             // Helper
-            fn compute_log_likelihood(all: &All, dists: &[SpParameters<CrpParameters>]) -> f64 {
-                all.units
+            fn compute_log_likelihood(
+                units: &[Group],
+                dists: &[SpParameters<CrpParameters>],
+            ) -> f64 {
+                units
                     .par_iter()
                     .zip(dists.par_iter())
                     .fold_with(0.0, |acc, (x, pd)| acc + pd.log_pmf(&x.state.clustering))
@@ -1353,7 +1357,11 @@ fn fit_dependent(
                                             pd.shrinkage.rescale_by_reference(reference, shrinkage);
                                         });
                                     shrinkage_prior_distribution.ln_pdf(s)
-                                        + compute_log_likelihood(all, &dists)
+                                        + compute_log_likelihood(
+                                            &all.units
+                                                [(if do_hierarchical_model { 0 } else { 1 })..],
+                                            &dists[(if do_hierarchical_model { 0 } else { 1 })..],
+                                        )
                                 }
                             },
                             true,
@@ -1371,7 +1379,7 @@ fn fit_dependent(
                 }
                 if !do_hierarchical_model {
                     update_anchor_shrinkage(
-                        &mut anchor_distribution,
+                        &mut dists[0],
                         &all.units[0].state.clustering,
                         &shrinkage_prior_distribution,
                         &unit_mcmc_tuning,
@@ -1397,7 +1405,10 @@ fn fit_dependent(
                                         pd.grit = grit;
                                     });
                                 grit_prior_distribution.ln_pdf(g)
-                                    + compute_log_likelihood(all, &dists)
+                                    + compute_log_likelihood(
+                                        &all.units[(if do_hierarchical_model { 0 } else { 1 })..],
+                                        &dists[(if do_hierarchical_model { 0 } else { 1 })..],
+                                    )
                             }
                         },
                         true,
@@ -1414,7 +1425,7 @@ fn fit_dependent(
                 }
                 if !do_hierarchical_model {
                     update_anchor_grit(
-                        &mut anchor_distribution,
+                        &mut dists[0],
                         &all.units[0].state.clustering,
                         &grit_prior_distribution,
                         &unit_mcmc_tuning,
