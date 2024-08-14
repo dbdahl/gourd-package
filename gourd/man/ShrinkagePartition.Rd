@@ -4,7 +4,14 @@
 \alias{ShrinkagePartition}
 \title{Probabilities for the Shrinkage Partition Distribution}
 \usage{
-ShrinkagePartition(anchor, shrinkage, permutation, grit, baseline)
+ShrinkagePartition(
+  anchor,
+  shrinkage,
+  permutation,
+  grit,
+  baseline,
+  shortcut = FALSE
+)
 }
 \arguments{
 \item{anchor}{An integer vector giving the anchor partition
@@ -27,6 +34,8 @@ infinity, the partition distribution concentrates on the anchor partition.}
 representing a partition distribution.  Currently, only
 \code{\link{UniformPartition}}, \code{\link{JensenLiuPartition}} and
 \code{\link{CRPPartition}} are supported.}
+
+\item{shortcut}{Assume the baseline distribution is a CRP with zero discount?}
 }
 \value{
 An object of class \code{PartitionDistribution} representing this

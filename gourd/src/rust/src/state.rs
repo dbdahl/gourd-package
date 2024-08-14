@@ -82,7 +82,7 @@ impl State {
     }
 
     pub fn canonicalize(&mut self) {
-        let (clustering, map) = self.clustering.relabel(0, None, true);
+        let (clustering, map) = Clustering::relabel(self.clustering.allocation(), 0, None, true);
         let map = map.unwrap();
         let mut new_clustered_coefficients = Vec::with_capacity(clustering.n_clusters());
         for i in map {

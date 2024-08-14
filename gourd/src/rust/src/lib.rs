@@ -74,6 +74,7 @@ fn new_SpParameters(
     permutation: &RVector,
     grit: f64,
     baseline: &RExternalPtr,
+    shortcut: bool,
 ) {
     let anchor = Clustering::from_slice(anchor.to_i32(pc).slice());
     let shrinkage = Shrinkage::from(shrinkage.to_f64(pc).slice()).stop_str("Invalid shrinkage");
@@ -87,7 +88,7 @@ fn new_SpParameters(
             let p = NonNull::new(baseline.address() as *mut $tipe).unwrap();
             let baseline = unsafe { p.as_ref().clone() };
             RExternalPtr::encode(
-                SpParameters::new(anchor, shrinkage, permutation, grit, baseline)
+                SpParameters::new(anchor, shrinkage, permutation, grit, baseline, shortcut)
                     .stop_str("Invalid shrinkage partition parametrization"),
                 $label,
                 pc,
@@ -311,6 +312,7 @@ fn summarize_prior_on_shrinkage_and_grit(
         permutation,
         Grit::one(),
         baseline_ppf,
+        false,
     )
     .unwrap();
     let n_mc_samples_f64 = n_mc_samples as f64;
@@ -930,6 +932,7 @@ fn fit_dependent(
     unit_mcmc_tuning: &RList,
     global_mcmc_tuning: &RList,
     validation_data: &RObject,
+    shortcut: bool,
 ) {
     let do_hierarchical_model = match model_id {
         "hierarchical" => true,
@@ -1008,6 +1011,7 @@ fn fit_dependent(
         Permutation::random(all.n_items, &mut rng),
         anchor_grit,
         CrpParameters::new(all.n_items, Concentration::new(anchor_concentration).stop()),
+        shortcut,
     )
     .unwrap();
     let anchor_update_permutation = Permutation::natural_and_fixed(all.n_items);
@@ -1019,6 +1023,7 @@ fn fit_dependent(
             permutation.clone(),
             grit,
             baseline_distribution.clone(),
+            shortcut,
         )
         .unwrap()
     })

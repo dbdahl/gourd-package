@@ -19,6 +19,7 @@
 #'   representing a partition distribution.  Currently, only
 #'   \code{\link{UniformPartition}}, \code{\link{JensenLiuPartition}} and
 #'   \code{\link{CRPPartition}} are supported.
+#' @param shortcut Assume the baseline distribution is a CRP with zero discount?
 #'
 #' @return An object of class \code{PartitionDistribution} representing this
 #'   partition distribution.
@@ -26,14 +27,14 @@
 #' @example man/examples/ShrinkagePartition.R
 #' @export
 #'
-ShrinkagePartition <- function(anchor, shrinkage, permutation, grit, baseline) {
+ShrinkagePartition <- function(anchor, shrinkage, permutation, grit, baseline, shortcut = FALSE) {
   anchor <- coerceAnchor(anchor)
   nItems <- length(anchor)
   shrinkage <- coerceShrinkageVector(shrinkage, nItems)
   permutation <- coercePermutation(permutation, nItems)
   checkBaseline(baseline, nItems)
   checkGrit(grit)
-  distrEnv("ShrinkagePartition", list(nItems=nItems, anchor=anchor, shrinkage=shrinkage, permutation=permutation, .permutation=permutation-1L, grit=grit, baseline=baseline))
+  distrEnv("ShrinkagePartition", list(nItems=nItems, anchor=anchor, shrinkage=shrinkage, permutation=permutation, .permutation=permutation-1L, grit=grit, baseline=baseline, shortcut=shortcut))
 }
 
 #' @export
