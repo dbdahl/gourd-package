@@ -18,7 +18,7 @@ mkDistrPtr <- function(distr, excluded=NULL, included=NULL) {
     .Call(.new_CrpParameters, distr$nItems, distr$concentration, distr$discount)
   } else if ( inherits(distr, "ShrinkagePartition") ) {
     p <- mkDistrPtr(distr$baseline, included=supportedBaselines)
-    .Call(.new_SpParameters, distr$anchor, distr$shrinkage, distr$.permutation, distr$grit, p, distr$shortcut)
+    .Call(.new_SpParameters, distr$anchor, distr$shrinkage, distr$.permutation, distr$grit, p, distr$optimized)
   } else if ( inherits(distr,"UniformPartition") ) {
     .Call(.new_UpParameters, distr$nItems)
   } else if ( inherits(distr,"JensenLiuPartition") ) {

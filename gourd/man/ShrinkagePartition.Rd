@@ -10,7 +10,7 @@ ShrinkagePartition(
   permutation,
   grit,
   baseline,
-  shortcut = FALSE
+  optimized = TRUE
 )
 }
 \arguments{
@@ -35,7 +35,8 @@ representing a partition distribution.  Currently, only
 \code{\link{UniformPartition}}, \code{\link{JensenLiuPartition}} and
 \code{\link{CRPPartition}} are supported.}
 
-\item{shortcut}{Assume the baseline distribution is a CRP with zero discount?}
+\item{optimized}{When the baseline distribution is a CRP with zero discount,
+should optimized calculations be used?}
 }
 \value{
 An object of class \code{PartitionDistribution} representing this
