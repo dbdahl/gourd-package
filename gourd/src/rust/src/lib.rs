@@ -932,7 +932,6 @@ fn fit_dependent(
     unit_mcmc_tuning: &RList,
     global_mcmc_tuning: &RList,
     validation_data: &RObject,
-    shortcut: bool,
 ) {
     let do_hierarchical_model = match model_id {
         "hierarchical" => true,
@@ -1011,7 +1010,7 @@ fn fit_dependent(
         Permutation::random(all.n_items, &mut rng),
         anchor_grit,
         CrpParameters::new(all.n_items, Concentration::new(anchor_concentration).stop()),
-        shortcut,
+        true,
     )
     .unwrap();
     let anchor_update_permutation = Permutation::natural_and_fixed(all.n_items);
@@ -1023,7 +1022,7 @@ fn fit_dependent(
             permutation.clone(),
             grit,
             baseline_distribution.clone(),
-            shortcut,
+            true,
         )
         .unwrap()
     })
