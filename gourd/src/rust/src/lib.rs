@@ -312,7 +312,7 @@ fn summarize_prior_on_shrinkage_and_grit(
         permutation,
         Grit::one(),
         baseline_ppf,
-        false,
+        true,
     )
     .unwrap();
     let n_mc_samples_f64 = n_mc_samples as f64;

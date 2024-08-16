@@ -18,7 +18,7 @@ num_cpus = "1.13.1"
 crossbeam = "0.8.1"
 rayon = "1.7.0"
 roxido = { path="roxido" }
-dahl-randompartition = { git="https://github.com/dbdahl/rust-dahl-randompartition.git", rev="fb90342e79" }
+dahl-randompartition = { git="https://github.com/dbdahl/rust-dahl-randompartition.git", rev="76d0296cdf91" }
 # dahl-randompartition = { path="/home/dahl/docs/devel/rust-dahl-randompartition" }
 walltime = { git="https://github.com/dbdahl/rust-dahl-walltime.git", rev="df99ae9" }
 slice_sampler = { git="https://github.com/dbdahl/rust_slice_sampler.git", rev="bacf2b5" }
