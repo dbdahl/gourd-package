@@ -43,6 +43,13 @@ use std::ptr::NonNull;
 use walltime::TicToc;
 
 #[roxido]
+fn new_FixedPartitionParameters(anchor: &RVector) {
+    let anchor = Clustering::from_slice(anchor.to_i32(pc).slice());
+    let p = FixedPartitionParameters::new(anchor);
+    RExternalPtr::encode(p, "fixed", pc)
+}
+
+#[roxido]
 fn new_UpParameters(n_items: usize) {
     let p = UpParameters::new(n_items);
     RExternalPtr::encode(p, "up", pc)
@@ -65,6 +72,43 @@ fn new_CrpParameters(n_items: usize, concentration: f64, discount: f64) {
     let p = CrpParameters::new_with_discount(n_items, concentration, discount)
         .stop_str("Invalid CRP parametrization");
     RExternalPtr::encode(p, "crp", pc)
+}
+
+#[roxido]
+fn new_LspParameters(anchor: &RVector, shrinkage: f64, concentration: f64, permutation: &RVector) {
+    let anchor = Clustering::from_slice(anchor.to_i32(pc).slice());
+    let shrinkage =
+        ScalarShrinkage::new(shrinkage).unwrap_or_else(|| stop!("Invalid shrinkage value"));
+    let concentration =
+        Concentration::new(concentration).unwrap_or_else(|| stop!("Invalid concentration value"));
+    let permutation = mk_permutation(permutation, pc);
+    let p =
+        LspParameters::new_with_shrinkage(anchor, shrinkage, concentration, permutation).unwrap();
+    RExternalPtr::encode(p, "lsp", pc)
+}
+
+#[roxido]
+fn new_CppParameters(anchor: &RVector, rate: f64, baseline: &RExternalPtr, use_vi: bool, a: f64) {
+    let anchor = Clustering::from_slice(anchor.to_i32(pc).slice());
+    macro_rules! distr_macro {
+        ($tipe:ty, $label:literal) => {{
+            let p = NonNull::new(baseline.address() as *mut $tipe).unwrap();
+            let baseline = unsafe { p.as_ref().clone() };
+            RExternalPtr::encode(
+                CppParameters::new(anchor, rate, baseline, use_vi, a).unwrap(),
+                &$label,
+                pc,
+            )
+        }};
+    }
+    let tag = baseline.tag().as_scalar().stop();
+    let name = tag.str(pc);
+    match name {
+        "up" => distr_macro!(UpParameters, "cpp-up"),
+        "jlp" => distr_macro!(JlpParameters, "cpp-jlp"),
+        "crp" => distr_macro!(CrpParameters, "cpp-crp"),
+        _ => stop!("Unsupported distribution: {}", name),
+    }
 }
 
 #[roxido]
@@ -121,42 +165,6 @@ enum RandomizeShrinkage {
     Common,
     Cluster,
     Idiosyncratic,
-}
-
-#[roxido]
-fn prPartition(partition: &RMatrix, prior: &RExternalPtr) {
-    let partition = partition.to_i32(pc);
-    let matrix = partition.slice();
-    let np = partition.nrow();
-    let ni = partition.ncol();
-    let log_probs_rval = RVector::new(np, pc);
-    let log_probs_slice = log_probs_rval.slice_mut();
-    macro_rules! distr_macro {
-        ($tipe:ty) => {{
-            let p = prior.address() as *mut $tipe;
-            let distr = unsafe { NonNull::new(p).unwrap().as_mut() };
-            for i in 0..np {
-                let mut target_labels = Vec::with_capacity(ni);
-                for j in 0..ni {
-                    target_labels.push((matrix[np * j + i]).try_into().unwrap());
-                }
-                let target = Clustering::from_vector(target_labels);
-                log_probs_slice[i] = distr.log_pmf(&target);
-            }
-        }};
-    }
-    let tag = prior.tag().as_scalar().stop();
-    let name = tag.str(pc);
-    match name {
-        "crp" => distr_macro!(CrpParameters),
-        "up" => distr_macro!(UpParameters),
-        "jlp" => distr_macro!(JlpParameters),
-        "sp-up" => distr_macro!(SpParameters<UpParameters>),
-        "sp-jlp" => distr_macro!(SpParameters<JlpParameters>),
-        "sp-crp" => distr_macro!(SpParameters<CrpParameters>),
-        _ => stop!("Unsupported distribution: {}", name),
-    }
-    log_probs_rval
 }
 
 #[roxido]
@@ -602,6 +610,10 @@ fn samplePartition(
     let tag = prior.tag().as_scalar().stop();
     let name = tag.str(pc);
     match name {
+        "fixed" => distr_macro!(
+            FixedPartitionParameters,
+            (|_distr: &mut FixedPartitionParameters, _rng: &mut Pcg64Mcg| {})
+        ),
         "up" => distr_macro!(
             UpParameters,
             (|_distr: &mut UpParameters, _rng: &mut Pcg64Mcg| {})
@@ -614,6 +626,43 @@ fn samplePartition(
             CrpParameters,
             (|_distr: &mut CrpParameters, _rng: &mut Pcg64Mcg| {})
         ),
+        "lsp" => {
+            match randomize_shrinkage {
+                RandomizeShrinkage::Common | RandomizeShrinkage::Fixed => {}
+                _ => stop!("Unsupported randomize_shrinkage for this distribution"),
+            }
+            if randomize_permutation && randomize_shrinkage == RandomizeShrinkage::Common {
+                distr_macro!(
+                    LspParameters,
+                    (|distr: &mut LspParameters, rng: &mut Pcg64Mcg| {
+                        distr.permutation.shuffle(rng);
+                        let beta = BetaRNG::new(shape1.get(), shape2.get()).unwrap();
+                        distr.shrinkage = ScalarShrinkage::new(max * beta.sample(rng)).unwrap();
+                    })
+                );
+            } else if randomize_permutation {
+                distr_macro!(
+                    LspParameters,
+                    (|distr: &mut LspParameters, rng: &mut Pcg64Mcg| {
+                        distr.permutation.shuffle(rng);
+                    })
+                );
+            } else if randomize_shrinkage == RandomizeShrinkage::Common {
+                distr_macro!(
+                    LspParameters,
+                    (|distr: &mut LspParameters, rng: &mut Pcg64Mcg| {
+                        let beta = BetaRNG::new(shape1.get(), shape2.get()).unwrap();
+                        distr.shrinkage = ScalarShrinkage::new(max * beta.sample(rng)).unwrap();
+                    })
+                );
+            } else {
+                distr_macro!(
+                    LspParameters,
+                    (|_distr: &mut LspParameters, _rng: &mut Pcg64Mcg| {})
+                );
+            }
+        }
+        "cpp" => stop!("Cannot directly sample from the CPP distribution"),
         "sp-up" => {
             distr_macro!(
                 SpParameters<UpParameters>,
@@ -737,6 +786,47 @@ fn all(all: &RList) {
         n_items: n_items.unwrap(),
     };
     RExternalPtr::encode(all, "all", pc)
+}
+
+#[roxido]
+fn prPartition(partition: &RMatrix, prior: &RExternalPtr) {
+    let partition = partition.to_i32(pc);
+    let matrix = partition.slice();
+    let np = partition.nrow();
+    let ni = partition.ncol();
+    let log_probs_rval = RVector::new(np, pc);
+    let log_probs_slice = log_probs_rval.slice_mut();
+    macro_rules! distr_macro {
+        ($tipe:ty) => {{
+            let p = prior.address() as *mut $tipe;
+            let distr = unsafe { NonNull::new(p).unwrap().as_mut() };
+            for i in 0..np {
+                let mut target_labels = Vec::with_capacity(ni);
+                for j in 0..ni {
+                    target_labels.push((matrix[np * j + i]).try_into().unwrap());
+                }
+                let target = Clustering::from_vector(target_labels);
+                log_probs_slice[i] = distr.log_pmf(&target);
+            }
+        }};
+    }
+    let tag = prior.tag().as_scalar().stop();
+    let name = tag.str(pc);
+    match name {
+        "fixed" => distr_macro!(FixedPartitionParameters),
+        "up" => distr_macro!(UpParameters),
+        "jlp" => distr_macro!(JlpParameters),
+        "crp" => distr_macro!(CrpParameters),
+        "lsp" => distr_macro!(LspParameters),
+        "cpp-up" => distr_macro!(CppParameters<UpParameters>),
+        "cpp-jlp" => distr_macro!(CppParameters<JlpParameters>),
+        "cpp-crp" => distr_macro!(CppParameters<CrpParameters>),
+        "sp-up" => distr_macro!(SpParameters<UpParameters>),
+        "sp-jlp" => distr_macro!(SpParameters<JlpParameters>),
+        "sp-crp" => distr_macro!(SpParameters<CrpParameters>),
+        _ => stop!("Unsupported distribution: {}", name),
+    }
+    log_probs_rval
 }
 
 #[derive(Debug)]

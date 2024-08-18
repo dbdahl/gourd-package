@@ -14,8 +14,15 @@ mkDistrPtr <- function(distr, excluded=NULL, included=NULL) {
   stp <- function() stop(sprintf("'%s' is not supported.", paste(class(distr),collapse=",")))
   if ( ( ! is.null(excluded) ) && ( inherits(distr,excluded) ) ) stp()
   if ( ( ! is.null(included) ) && ( ! inherits(distr,included) ) ) stp()
-  if ( inherits(distr,"CRPPartition") ) {
+  if ( inherits(distr,"FixedPartition") ) {
+    .Call(.new_FixedPartitionParameters, distr$anchor)
+  } else if ( inherits(distr,"CRPPartition") ) {
     .Call(.new_CrpParameters, distr$nItems, distr$concentration, distr$discount)
+  } else if ( inherits(distr, "LocationScalePartition") ) {
+    .Call(.new_LspParameters, distr$anchor, distr$shrinkage, distr$concentration, distr$.permutation)
+  } else if ( inherits(distr, "CenteredPartition") ) {
+    p <- mkDistrPtr(distr$baseline, included=supportedBaselines)
+    .Call(.new_CppParameters, distr$anchor, distr$shrinkage, p, distr$useVI, distr$a)
   } else if ( inherits(distr, "ShrinkagePartition") ) {
     p <- mkDistrPtr(distr$baseline, included=supportedBaselines)
     .Call(.new_SpParameters, distr$anchor, distr$shrinkage, distr$.permutation, distr$grit, p, distr$optimized)

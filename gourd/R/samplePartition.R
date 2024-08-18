@@ -2,6 +2,9 @@
 #'
 #' This function samples from a partition distribution.
 #'
+#' Note that the centered partition distribution \code{\link{CenteredPartition}}
+#' is not supported.
+#'
 #' @param distr A specification of the partition distribution, i.e., an object
 #'   of class \code{PartitionDistribution} as returned by, for example, a
 #'   function such as \code{\link{CRPPartition}}.
@@ -24,7 +27,9 @@
 #' @return An integer matrix containing a partition in each row using cluster
 #'   label notation.
 #'
-#' @seealso \code{\link{CRPPartition}}, \code{\link{ShrinkagePartition}}
+#' @seealso \code{\link{CRPPartition}}, \code{\link{ShrinkagePartition}},
+#'   \code{\link{LocationScalePartition}}, \code{\link{CenteredPartition}},
+#'   \code{\link{prPartition}}
 #'
 #' @example man/examples/prPartition.R
 #'
@@ -40,6 +45,7 @@ samplePartition.default <- function(distr, nSamples, randomizePermutation=FALSE,
   nSamples <- coerceInteger(nSamples)
   if ( nSamples < 1 ) stop("'nSamples' should be at least one.")
   if ( ( length(randomizeShrinkage) != 1 ) || ( ! randomizeShrinkage %in% c("fixed","common","cluster","idiosyncratic") ) ) stop("'randomizeShrinkage' has an invalid value.")
-  p <- mkDistrPtr(distr, excluded=c())
+  if ( inherits(distr,c("LocationScalePartition")) && ( ! randomizeShrinkage %in% c("fixed","common") ) ) stop("'randomizeShrinkage' must be 'fixed' or 'common' for the LocationScalePartition distribution.")
+  p <- mkDistrPtr(distr, excluded = c("CenteredPartition"))
   .Call(.samplePartition, nSamples, distr$nItems, p, isTRUE(randomizePermutation), randomizeShrinkage, max, shape1, shape2, nCores)
 }
