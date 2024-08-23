@@ -49,6 +49,10 @@ label notation.
 \description{
 This function samples from a partition distribution.
 }
+\details{
+Note that the centered partition distribution \code{\link{CenteredPartition}}
+is not supported.
+}
 \examples{
 concentration <- 1.0
 discount <- 0.1
@@ -69,5 +73,7 @@ x <- samplePartition(distr, nSamples, nCores=1)
 prPartition(distr, x)
 }
 \seealso{
-\code{\link{CRPPartition}}, \code{\link{ShrinkagePartition}}
+\code{\link{CRPPartition}}, \code{\link{ShrinkagePartition}},
+\code{\link{LocationScalePartition}}, \code{\link{CenteredPartition}},
+\code{\link{prPartition}}
 }

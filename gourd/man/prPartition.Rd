@@ -46,5 +46,7 @@ x <- samplePartition(distr, nSamples, nCores=1)
 prPartition(distr, x)
 }
 \seealso{
-\code{\link{CRPPartition}}, \code{\link{ShrinkagePartition}}
+\code{\link{CRPPartition}}, \code{\link{ShrinkagePartition}},
+\code{\link{LocationScalePartition}}, \code{\link{CenteredPartition}},
+\code{\link{samplePartition}}
 }
