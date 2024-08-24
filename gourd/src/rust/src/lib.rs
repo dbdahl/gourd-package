@@ -1287,11 +1287,11 @@ fn fit_dependent(
             } else {
                 for time in 0..n_units {
                     let (middle, right) = all.units.split_at_mut(time).1.split_at_mut(1);
+                    let (middle_pd, right_pd) = dists.split_at_mut(time).1.split_at_mut(1);
                     let unit = middle.first_mut().unwrap();
-                    let next_partition_and_shrinkage = right
-                        .first()
-                        .map(|x| &x.state.clustering)
-                        .map(|c| (c, &dists[time + 1].shrinkage[0])); // Should be 'reference' value?
+                    let next_partition = right.first().map(|x| &x.state.clustering);
+                    let pd = middle_pd.first().unwrap();
+                    let next_distribution = right_pd.first_mut();
                     unit.data.impute(&unit.state, &mut rng);
                     if unit_mcmc_tuning.update_precision_response {
                         State::update_precision_response(
@@ -1326,14 +1326,12 @@ fn fit_dependent(
                             &permutation,
                             &unit.data,
                             &unit.hyperparameters,
-                            &dists[time],
-                            next_partition_and_shrinkage,
+                            pd,
+                            next_partition,
+                            next_distribution,
                             &mut rng,
                             &mut rng2,
                         );
-                    }
-                    if time < n_units - 1 {
-                        dists[time + 1].anchor = unit.state.clustering.clone();
                     }
                     if unit_mcmc_tuning.update_clustered_coefficients {
                         State::update_clustered_coefficients(

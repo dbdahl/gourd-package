@@ -8,7 +8,6 @@ use dahl_randompartition::distr::FullConditional;
 use dahl_randompartition::distr::ProbabilityMassFunction;
 use dahl_randompartition::mcmc::update_neal_algorithm8;
 use dahl_randompartition::perm::Permutation;
-use dahl_randompartition::prelude::ScalarShrinkage;
 use dahl_randompartition::sp::SpParameters;
 use nalgebra::{DMatrix, DVector};
 use rand::Rng;
@@ -355,7 +354,8 @@ impl State {
         data: &Data,
         hyperparameters: &Hyperparameters,
         partition_distribution: &SpParameters<CrpParameters>,
-        next_partition_and_shrinkage: Option<(&Clustering, &ScalarShrinkage)>,
+        next_partition: Option<&Clustering>,
+        mut next_distribution: Option<&mut SpParameters<CrpParameters>>,
         rng: &mut T,
         rng2: &mut T,
     ) {
@@ -395,11 +395,6 @@ impl State {
                         .map(|x| x.powi(2))
                         .sum()
             };
-        let mut partition_distribution_next = partition_distribution.clone();
-        partition_distribution_next.anchor = clustering.clone();
-        if let Some((_, s)) = next_partition_and_shrinkage {
-            partition_distribution_next.shrinkage.set_constant(*s);
-        }
         let n_updates = 1;
         for _ in 0..n_updates {
             for i in 0..clustering.n_items() {
@@ -411,9 +406,13 @@ impl State {
                     .map(|(label, log_prior)| {
                         (
                             label,
-                            if let Some((c, _)) = next_partition_and_shrinkage {
-                                partition_distribution_next.anchor.allocate(ii, label);
-                                partition_distribution_next.log_pmf(c)
+                            if let Some(c) = next_partition {
+                                if let Some(pd) = &mut next_distribution {
+                                    pd.anchor.allocate(ii, label);
+                                    pd.log_pmf(c)
+                                } else {
+                                    0.0
+                                }
                             } else {
                                 0.0
                             } + log_likelihood_contribution_fn(
@@ -427,7 +426,9 @@ impl State {
                 let pair =
                     clustering.select(labels_and_log_weights, true, false, 0, Some(rng), false);
                 clustering.allocate(ii, pair.0);
-                partition_distribution_next.anchor.allocate(ii, pair.0);
+                if let Some(pd) = &mut next_distribution {
+                    pd.anchor.allocate(ii, pair.0);
+                }
             }
         }
     }
