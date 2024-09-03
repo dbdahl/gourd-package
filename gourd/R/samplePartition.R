@@ -3,7 +3,7 @@
 #' This function samples from a partition distribution.
 #'
 #' Note that the centered partition distribution \code{\link{CenteredPartition}}
-#' is not supported.
+#' uses MCMC to sample.
 #'
 #' @param distr A specification of the partition distribution, i.e., an object
 #'   of class \code{PartitionDistribution} as returned by, for example, a
@@ -46,6 +46,6 @@ samplePartition.default <- function(distr, nSamples, randomizePermutation=FALSE,
   if ( nSamples < 1 ) stop("'nSamples' should be at least one.")
   if ( ( length(randomizeShrinkage) != 1 ) || ( ! randomizeShrinkage %in% c("fixed","common","cluster","idiosyncratic") ) ) stop("'randomizeShrinkage' has an invalid value.")
   if ( inherits(distr,c("LocationScalePartition")) && ( ! randomizeShrinkage %in% c("fixed","common") ) ) stop("'randomizeShrinkage' must be 'fixed' or 'common' for the LocationScalePartition distribution.")
-  p <- mkDistrPtr(distr, excluded = c("CenteredPartition"))
+  p <- mkDistrPtr(distr)
   .Call(.samplePartition, nSamples, distr$nItems, p, isTRUE(randomizePermutation), randomizeShrinkage, max, shape1, shape2, nCores)
 }

@@ -24,6 +24,7 @@ use dahl_randompartition::epa::EpaParameters;
 use dahl_randompartition::fixed::FixedPartitionParameters;
 use dahl_randompartition::jlp::JlpParameters;
 use dahl_randompartition::lsp::LspParameters;
+use dahl_randompartition::mcmc::update_neal_algorithm3;
 use dahl_randompartition::mcmc::update_partition_gibbs;
 use dahl_randompartition::perm::Permutation;
 use dahl_randompartition::prelude::*;
@@ -662,7 +663,42 @@ fn samplePartition(
                 );
             }
         }
-        "cpp" => stop!("Cannot directly sample from the CPP distribution"),
+        "cpp-up" => {
+            let distr = prior.decode_ref::<CppParameters<UpParameters>>();
+            let mut rng = Pcg64Mcg::from_seed(R::random_bytes::<16>());
+            let log_like = |_i: usize, _indices: &[usize]| 0.0;
+            let perm = Permutation::natural_and_fixed(n_items);
+            let mut current = distr.anchor.clone();
+            let nup = 1;
+            for i in 0..n_samples {
+                update_neal_algorithm3(nup, &mut current, &perm, distr, &log_like, &mut rng);
+                current.relabel_into_slice(1, &mut stick[(i * n_items)..((i + 1) * n_items)]);
+            }
+        }
+        "cpp-jlp" => {
+            let distr = prior.decode_ref::<CppParameters<JlpParameters>>();
+            let mut rng = Pcg64Mcg::from_seed(R::random_bytes::<16>());
+            let log_like = |_i: usize, _indices: &[usize]| 0.0;
+            let perm = Permutation::natural_and_fixed(n_items);
+            let mut current = distr.anchor.clone();
+            let nup = 1;
+            for i in 0..n_samples {
+                update_neal_algorithm3(nup, &mut current, &perm, distr, &log_like, &mut rng);
+                current.relabel_into_slice(1, &mut stick[(i * n_items)..((i + 1) * n_items)]);
+            }
+        }
+        "cpp-crp" => {
+            let distr = prior.decode_ref::<CppParameters<CrpParameters>>();
+            let mut rng = Pcg64Mcg::from_seed(R::random_bytes::<16>());
+            let log_like = |_i: usize, _indices: &[usize]| 0.0;
+            let perm = Permutation::natural_and_fixed(n_items);
+            let mut current = distr.anchor.clone();
+            let nup = 1;
+            for i in 0..n_samples {
+                update_neal_algorithm3(nup, &mut current, &perm, distr, &log_like, &mut rng);
+                current.relabel_into_slice(1, &mut stick[(i * n_items)..((i + 1) * n_items)]);
+            }
+        }
         "sp-up" => {
             distr_macro!(
                 SpParameters<UpParameters>,

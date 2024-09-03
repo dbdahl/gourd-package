@@ -51,7 +51,7 @@ This function samples from a partition distribution.
 }
 \details{
 Note that the centered partition distribution \code{\link{CenteredPartition}}
-is not supported.
+uses MCMC to sample.
 }
 \examples{
 concentration <- 1.0
