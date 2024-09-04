@@ -1,6 +1,6 @@
 Package: gourd
 Title: Shrinkage Partition Distribution
-Version: 0.2.11
+Version: 0.2.12
 Authors@R: c(person(given="David B.",family="Dahl",role=c("aut","cre"),email="dahl@stat.byu.edu",comment=c(ORCID="0000-0002-8173-1547")),
              person(given="Richard L.",family="Warr",role=c("aut"),email="warr@stat.byu.edu",comment=c(ORCID="0000-0001-8508-3105")),
              person(given="Tomas P.",family="Jensen",role=c("aut"),email="tompjensen@gmail.com",comment=c(ORCID="0009-0000-0015-3881")),

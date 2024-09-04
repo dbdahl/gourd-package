@@ -687,6 +687,10 @@ fn samplePartition(
             (|_distr: &mut CrpParameters, _rng: &mut Pcg64Mcg| {})
         ),
         "lsp" => {
+            match randomize_shrinkage {
+                RandomizeShrinkage::Common | RandomizeShrinkage::Fixed => {}
+                _ => stop!("Unsupported randomize_shrinkage for this distribution"),
+            }
             if randomize_permutation && randomize_shrinkage == RandomizeShrinkage::Common {
                 distr_macro!(
                     LspParameters,
