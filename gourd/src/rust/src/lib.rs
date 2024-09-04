@@ -519,9 +519,11 @@ fn samplePartition(
     prior: &RExternalPtr,
     randomize_permutation: bool,
     randomize_shrinkage: &str,
-    max: f64,
-    shape1: f64,
-    shape2: f64,
+    randomize_grit: bool,
+    shrinkage_shape: f64,
+    shrinkage_rate: f64,
+    grit_shape1: f64,
+    grit_shape2: f64,
     n_cores: usize,
 ) {
     let n_cores = {
@@ -545,9 +547,14 @@ fn samplePartition(
         "idiosyncratic" => RandomizeShrinkage::Idiosyncratic,
         _ => stop!("Unrecognized 'randomize_shrinkage' value"),
     };
-    let max = ScalarShrinkage::new(max).unwrap_or_else(|| stop!("'max' should be non-negative"));
-    let shape1 = Shape::new(shape1).unwrap_or_else(|| stop!("'shape1' should be greater than 0"));
-    let shape2 = Shape::new(shape2).unwrap_or_else(|| stop!("'shape2' should be greater than 0"));
+    let shrinkage_shape = Shape::new(shrinkage_shape)
+        .unwrap_or_else(|| stop!("'shrinkage_shape' should be greater than 0"));
+    let shrinkage_rate = Rate::new(shrinkage_rate)
+        .unwrap_or_else(|| stop!("'shrinkage_rate' should be greater than 0"));
+    let grit_shape1 =
+        Shape::new(grit_shape1).unwrap_or_else(|| stop!("'grit_shape1' should be greater than 0"));
+    let grit_shape2 =
+        Shape::new(grit_shape2).unwrap_or_else(|| stop!("'grit_shape2' should be greater than 0"));
     macro_rules! distr_macro {
         ($tipe: ty, $callback: tt) => {{
             let _ = crossbeam::scope(|s| {
@@ -625,10 +632,13 @@ fn samplePartition(
     fn mk_lambda_sp<D: PredictiveProbabilityFunction + Clone>(
         randomize_permutation: bool,
         randomize_shrinkage: RandomizeShrinkage,
-        max: ScalarShrinkage,
-        shape1: Shape,
-        shape2: Shape,
+        randomize_grit: bool,
+        shrinkage_shape: Shape,
+        shrinkage_rate: Rate,
+        grit_shape1: Shape,
+        grit_shape2: Shape,
     ) -> impl Fn(&mut SpParameters<D>, &mut Pcg64Mcg) {
+        let beta = BetaRNG::new(grit_shape1.get(), grit_shape2.get()).unwrap();
         move |distr: &mut SpParameters<D>, rng: &mut Pcg64Mcg| {
             if randomize_permutation {
                 distr.permutation.shuffle(rng);
@@ -636,19 +646,25 @@ fn samplePartition(
             match randomize_shrinkage {
                 RandomizeShrinkage::Fixed => {}
                 RandomizeShrinkage::Common => {
-                    distr.shrinkage.randomize_common(max, shape1, shape2, rng)
+                    distr
+                        .shrinkage
+                        .randomize_common(shrinkage_shape, shrinkage_rate, rng)
                 }
                 RandomizeShrinkage::Cluster => distr.shrinkage.randomize_common_cluster(
-                    max,
-                    shape1,
-                    shape2,
+                    shrinkage_shape,
+                    shrinkage_rate,
                     &distr.anchor,
                     rng,
                 ),
-                RandomizeShrinkage::Idiosyncratic => distr
-                    .shrinkage
-                    .randomize_idiosyncratic(max, shape1, shape2, rng),
+                RandomizeShrinkage::Idiosyncratic => {
+                    distr
+                        .shrinkage
+                        .randomize_idiosyncratic(shrinkage_shape, shrinkage_rate, rng)
+                }
             };
+            if randomize_grit {
+                distr.grit = Grit::new(beta.sample(rng)).unwrap()
+            }
         }
     }
     let tag = prior.tag().as_scalar().stop();
@@ -676,8 +692,10 @@ fn samplePartition(
                     LspParameters,
                     (|distr: &mut LspParameters, rng: &mut Pcg64Mcg| {
                         distr.permutation.shuffle(rng);
-                        let beta = BetaRNG::new(shape1.get(), shape2.get()).unwrap();
-                        distr.shrinkage = ScalarShrinkage::new(max * beta.sample(rng)).unwrap();
+                        let gamma =
+                            GammaRNG::new(shrinkage_shape.get(), 1.0 / shrinkage_rate.get())
+                                .unwrap();
+                        distr.shrinkage = ScalarShrinkage::new(gamma.sample(rng)).unwrap();
                     })
                 );
             } else if randomize_permutation {
@@ -691,8 +709,10 @@ fn samplePartition(
                 distr_macro!(
                     LspParameters,
                     (|distr: &mut LspParameters, rng: &mut Pcg64Mcg| {
-                        let beta = BetaRNG::new(shape1.get(), shape2.get()).unwrap();
-                        distr.shrinkage = ScalarShrinkage::new(max * beta.sample(rng)).unwrap();
+                        let gamma =
+                            GammaRNG::new(shrinkage_shape.get(), 1.0 / shrinkage_rate.get())
+                                .unwrap();
+                        distr.shrinkage = ScalarShrinkage::new(gamma.sample(rng)).unwrap();
                     })
                 );
             } else {
@@ -717,9 +737,11 @@ fn samplePartition(
                 (mk_lambda_sp::<UpParameters>(
                     randomize_permutation,
                     randomize_shrinkage,
-                    max,
-                    shape1,
-                    shape2
+                    randomize_grit,
+                    shrinkage_shape,
+                    shrinkage_rate,
+                    grit_shape1,
+                    grit_shape2
                 ))
             );
         }
@@ -729,9 +751,11 @@ fn samplePartition(
                 (mk_lambda_sp::<JlpParameters>(
                     randomize_permutation,
                     randomize_shrinkage,
-                    max,
-                    shape1,
-                    shape2
+                    randomize_grit,
+                    shrinkage_shape,
+                    shrinkage_rate,
+                    grit_shape1,
+                    grit_shape2
                 ))
             );
         }
@@ -741,9 +765,11 @@ fn samplePartition(
                 (mk_lambda_sp::<CrpParameters>(
                     randomize_permutation,
                     randomize_shrinkage,
-                    max,
-                    shape1,
-                    shape2
+                    randomize_grit,
+                    shrinkage_shape,
+                    shrinkage_rate,
+                    grit_shape1,
+                    grit_shape2
                 ))
             );
         }

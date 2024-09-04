@@ -9,9 +9,11 @@ samplePartition(
   nSamples,
   randomizePermutation = FALSE,
   randomizeShrinkage = c("fixed", "common", "cluster", "idiosyncratic")[1],
-  max = 4,
-  shape1 = 1,
-  shape2 = 1,
+  randomizeGrit = FALSE,
+  shrinkage_shape = 5,
+  shrinkage_rate = 1,
+  grit_shape1 = 1,
+  grit_shape2 = 1,
   nCores = 0
 )
 }
@@ -26,18 +28,25 @@ function such as \code{\link{CRPPartition}}.}
 sampled for each partition?}
 
 \item{randomizeShrinkage}{Should the shrinkage be random for each
-permutation?  Specifically, the shrinkage is the same for every
-observations and sampled from a beta distribution with parameters
-\code{shape1} and \code{shape2}, as scaled to have a maximum value of
-\code{max} (instead of 1).}
+sample?  Specifically, the shrinkage is the same for every
+observations and sampled from a gamma distribution with parameters
+\code{shrinkage_shape} and \code{shrinakge_rate}.}
 
-\item{max}{The scalar giving the maximum value of the shrinkage.}
+\item{randomizeGrit}{Should the grit of the \code{\link{ShrinkagePartition}}
+be sampled from a beta distribution for each partition? This is ignored
+for other distributions.}
 
-\item{shape1}{The first shape parameter of the beta distribution for
+\item{shrinkage_shape}{The shape parameter of the gamma distribution for
 randomizing the shrinkage.}
 
-\item{shape2}{The second shape parameter of the beta distribution for
+\item{shrinkage_rate}{The rate parameter of the gamma distribution for
 randomizing the shrinkage.}
+
+\item{grit_shape1}{The first parameter of the beta distribution for
+randomizing the grit.}
+
+\item{grit_shape2}{The first parameter of the beta distribution for
+randomizing the grit.}
 
 \item{nCores}{The number of CPU cores to use. A value of zero indicates to
 use all cores on the system.}

@@ -12,15 +12,20 @@
 #' @param randomizePermutation Should the permutation be uniformly randomly
 #'   sampled for each partition?
 #' @param randomizeShrinkage Should the shrinkage be random for each
-#'   permutation?  Specifically, the shrinkage is the same for every
-#'   observations and sampled from a beta distribution with parameters
-#'   \code{shape1} and \code{shape2}, as scaled to have a maximum value of
-#'   \code{max} (instead of 1).
-#' @param max The scalar giving the maximum value of the shrinkage.
-#' @param shape1 The first shape parameter of the beta distribution for
+#'   sample?  Specifically, the shrinkage is the same for every
+#'   observations and sampled from a gamma distribution with parameters
+#'   \code{shrinkage_shape} and \code{shrinakge_rate}.
+#' @param randomizeGrit Should the grit of the \code{\link{ShrinkagePartition}}
+#'   be sampled from a beta distribution for each partition? This is ignored
+#'   for other distributions.
+#' @param shrinkage_shape The shape parameter of the gamma distribution for
 #'   randomizing the shrinkage.
-#' @param shape2 The second shape parameter of the beta distribution for
+#' @param shrinkage_rate The rate parameter of the gamma distribution for
 #'   randomizing the shrinkage.
+#' @param grit_shape1 The first parameter of the beta distribution for
+#'   randomizing the grit.
+#' @param grit_shape2 The first parameter of the beta distribution for
+#'   randomizing the grit.
 #' @param nCores The number of CPU cores to use. A value of zero indicates to
 #'   use all cores on the system.
 #'
@@ -35,17 +40,17 @@
 #'
 #' @export
 #'
-samplePartition <- function(distr, nSamples, randomizePermutation=FALSE, randomizeShrinkage=c("fixed","common","cluster","idiosyncratic")[1], max=4, shape1=1.0, shape2=1.0, nCores=0) {
+samplePartition <- function(distr, nSamples, randomizePermutation=FALSE, randomizeShrinkage=c("fixed","common","cluster","idiosyncratic")[1], randomizeGrit=FALSE, shrinkage_shape=5.0, shrinkage_rate=1.0, grit_shape1=1.0, grit_shape2=1.0, nCores=0) {
   UseMethod("samplePartition")
 }
 
 #' @export
 #'
-samplePartition.default <- function(distr, nSamples, randomizePermutation=FALSE, randomizeShrinkage=c("fixed","common","cluster","idiosyncratic")[1], max=4, shape1=1.0, shape2=1.0, nCores=0) {
+samplePartition.default <- function(distr, nSamples, randomizePermutation=FALSE, randomizeShrinkage=c("fixed","common","cluster","idiosyncratic")[1], randomizeGrit=FALSE, shrinkage_shape=5.0, shrinkage_rate=1.0, grit_shape1=1.0, grit_shape2=1.0, nCores=0) {
   nSamples <- coerceInteger(nSamples)
   if ( nSamples < 1 ) stop("'nSamples' should be at least one.")
   if ( ( length(randomizeShrinkage) != 1 ) || ( ! randomizeShrinkage %in% c("fixed","common","cluster","idiosyncratic") ) ) stop("'randomizeShrinkage' has an invalid value.")
   if ( inherits(distr,c("LocationScalePartition")) && ( ! randomizeShrinkage %in% c("fixed","common") ) ) stop("'randomizeShrinkage' must be 'fixed' or 'common' for the LocationScalePartition distribution.")
   p <- mkDistrPtr(distr)
-  .Call(.samplePartition, nSamples, distr$nItems, p, isTRUE(randomizePermutation), randomizeShrinkage, max, shape1, shape2, nCores)
+  .Call(.samplePartition, nSamples, distr$nItems, p, isTRUE(randomizePermutation), randomizeShrinkage, randomizeGrit, shrinkage_shape, shrinkage_rate, grit_shape1, grit_shape2, nCores)
 }
