@@ -579,6 +579,49 @@ fn samplePartition(
             });
         }};
     }
+    macro_rules! cpp_macro {
+        ($tipe: ty) => {{
+            match randomize_shrinkage {
+                RandomizeShrinkage::Common | RandomizeShrinkage::Fixed => {}
+                _ => stop!("Unsupported randomize_shrinkage for this distribution"),
+            }
+            let distr = prior.decode_ref::<$tipe>();
+            let mut plan = Vec::with_capacity(n_cores);
+            let mut rng = Pcg64Mcg::from_seed(R::random_bytes::<16>());
+            for k in 0..n_cores - 1 {
+                let (left, right) =
+                    stick.split_at_mut(chunk_size + if k < np_extra { ni } else { 0 });
+                plan.push((left, distr.clone(), rng.gen::<u128>()));
+                stick = right;
+            }
+            plan.push((stick, distr.clone(), rng.gen()));
+            let log_like = |_i: usize, _indices: &[usize]| 0.0;
+            let nup = 1;
+            let _ = crossbeam::scope(|s| {
+                plan.into_iter().for_each(|p| {
+                    s.spawn(move |_| {
+                        let perm = Permutation::natural_and_fixed(n_items);
+                        let mut rng = Pcg64Mcg::new(p.2);
+                        let mut current = distr.anchor.clone();
+                        for i in 0..p.0.len() / ni {
+                            update_neal_algorithm3(
+                                nup,
+                                &mut current,
+                                &perm,
+                                distr,
+                                &log_like,
+                                &mut rng,
+                            );
+                            current.relabel_into_slice(
+                                1,
+                                &mut p.0[(i * n_items)..((i + 1) * n_items)],
+                            );
+                        }
+                    });
+                });
+            });
+        }};
+    }
     fn mk_lambda_sp<D: PredictiveProbabilityFunction + Clone>(
         randomize_permutation: bool,
         randomize_shrinkage: RandomizeShrinkage,
@@ -628,10 +671,6 @@ fn samplePartition(
             (|_distr: &mut CrpParameters, _rng: &mut Pcg64Mcg| {})
         ),
         "lsp" => {
-            match randomize_shrinkage {
-                RandomizeShrinkage::Common | RandomizeShrinkage::Fixed => {}
-                _ => stop!("Unsupported randomize_shrinkage for this distribution"),
-            }
             if randomize_permutation && randomize_shrinkage == RandomizeShrinkage::Common {
                 distr_macro!(
                     LspParameters,
@@ -664,40 +703,13 @@ fn samplePartition(
             }
         }
         "cpp-up" => {
-            let distr = prior.decode_ref::<CppParameters<UpParameters>>();
-            let mut rng = Pcg64Mcg::from_seed(R::random_bytes::<16>());
-            let log_like = |_i: usize, _indices: &[usize]| 0.0;
-            let perm = Permutation::natural_and_fixed(n_items);
-            let mut current = distr.anchor.clone();
-            let nup = 1;
-            for i in 0..n_samples {
-                update_neal_algorithm3(nup, &mut current, &perm, distr, &log_like, &mut rng);
-                current.relabel_into_slice(1, &mut stick[(i * n_items)..((i + 1) * n_items)]);
-            }
+            cpp_macro!(CppParameters<UpParameters>);
         }
         "cpp-jlp" => {
-            let distr = prior.decode_ref::<CppParameters<JlpParameters>>();
-            let mut rng = Pcg64Mcg::from_seed(R::random_bytes::<16>());
-            let log_like = |_i: usize, _indices: &[usize]| 0.0;
-            let perm = Permutation::natural_and_fixed(n_items);
-            let mut current = distr.anchor.clone();
-            let nup = 1;
-            for i in 0..n_samples {
-                update_neal_algorithm3(nup, &mut current, &perm, distr, &log_like, &mut rng);
-                current.relabel_into_slice(1, &mut stick[(i * n_items)..((i + 1) * n_items)]);
-            }
+            cpp_macro!(CppParameters<JlpParameters>);
         }
         "cpp-crp" => {
-            let distr = prior.decode_ref::<CppParameters<CrpParameters>>();
-            let mut rng = Pcg64Mcg::from_seed(R::random_bytes::<16>());
-            let log_like = |_i: usize, _indices: &[usize]| 0.0;
-            let perm = Permutation::natural_and_fixed(n_items);
-            let mut current = distr.anchor.clone();
-            let nup = 1;
-            for i in 0..n_samples {
-                update_neal_algorithm3(nup, &mut current, &perm, distr, &log_like, &mut rng);
-                current.relabel_into_slice(1, &mut stick[(i * n_items)..((i + 1) * n_items)]);
-            }
+            cpp_macro!(CppParameters<CrpParameters>);
         }
         "sp-up" => {
             distr_macro!(
