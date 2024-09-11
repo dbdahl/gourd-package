@@ -10,6 +10,7 @@ summarize_prior_on_shrinkage_and_grit(
   shrinkage_rate = 1,
   grit_shape1 = 2,
   grit_shape2 = 2,
+  use_crp = TRUE,
   concentration = 1,
   shrinkage_n = 25,
   grit_n = 25,
@@ -34,9 +35,12 @@ the grit parameter of the SP distribution.}
 \item{grit_shape2}{Second shape parameter of the beta prior distribution for
 the grit parameter of the SP distribution.}
 
-\item{concentration}{Concentration parameter of the Chinese restaurant
-process (CRP) which serves as the baseline distribution for the SP
-distribution.}
+\item{use_crp}{Use the Chinese restaurant process (CRP) which serves as the
+baseline distribution?  If \code{FALSE}, the Jensen Liu partition (JLP) is
+used instead.}
+
+\item{concentration}{Concentration parameter of the baseline distribution
+for the SP distribution.}
 
 \item{shrinkage_n}{Length of the evenly-spaced grid for the shrinkage
 parameter of the SP distribution.}

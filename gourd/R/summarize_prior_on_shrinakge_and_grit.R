@@ -17,9 +17,11 @@
 #'   the grit parameter of the SP distribution.
 #' @param grit_shape2 Second shape parameter of the beta prior distribution for
 #'   the grit parameter of the SP distribution.
-#' @param concentration Concentration parameter of the Chinese restaurant
-#'   process (CRP) which serves as the baseline distribution for the SP
-#'   distribution.
+#' @param use_crp Use the Chinese restaurant process (CRP) which serves as the
+#'   baseline distribution?  If `FALSE`, the Jensen Liu partition (JLP) is
+#'   used instead.
+#' @param concentration Concentration parameter of the baseline distribution
+#'   for the SP distribution.
 #' @param shrinkage_n Length of the evenly-spaced grid for the shrinkage
 #'   parameter of the SP distribution.
 #' @param grit_n Length of the evenly-spaced grid for the grit parameter of the
@@ -54,9 +56,11 @@
 #' image(out$shrinkage, out$grit, out$expected_entropy, xlab = "Shrinkage", ylab = "Grit")
 #' contour(out$shrinkage, out$grit, exp(out$log_density), add = TRUE, labcex = 1.0)
 #' 
-summarize_prior_on_shrinkage_and_grit <- function(anchor, shrinkage_shape = 4, shrinkage_rate = 1, grit_shape1 = 2, grit_shape2 = 2,
-                                                  concentration = 1.0, shrinkage_n = 25, grit_n = 25, n_mc_samples = 100,
-                                                  domain_specification = list(n_mc_samples = 1000, percentile = 0.95), n_cores = 0) {
+summarize_prior_on_shrinkage_and_grit <- function(
+    anchor, shrinkage_shape = 4, shrinkage_rate = 1, grit_shape1 = 2, grit_shape2 = 2,
+    use_crp = TRUE, concentration = 1.0, shrinkage_n = 25, grit_n = 25, n_mc_samples = 100,
+    domain_specification = list(n_mc_samples = 1000, percentile = 0.95), n_cores = 0) {
   .Call(.summarize_prior_on_shrinkage_and_grit,
-    anchor, shrinkage_shape, shrinkage_rate, grit_shape1, grit_shape2, concentration, shrinkage_n, grit_n, n_mc_samples, domain_specification, n_cores)
+    anchor, shrinkage_shape, shrinkage_rate, grit_shape1, grit_shape2, use_crp, concentration,
+    shrinkage_n, grit_n, n_mc_samples, domain_specification, n_cores)
 }
