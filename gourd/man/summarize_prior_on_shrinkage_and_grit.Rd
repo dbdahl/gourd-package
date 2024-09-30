@@ -16,6 +16,7 @@ summarize_prior_on_shrinkage_and_grit(
   grit_n = 25,
   n_mc_samples = 100,
   domain_specification = list(n_mc_samples = 1000, percentile = 0.95),
+  a = 1,
   n_cores = 0
 )
 }
@@ -58,6 +59,14 @@ named \code{n_mc_samples} (giving the number of samples to draw to learn the
 domain) and \code{percentile} (indicating which percentile should be used to
 determine the upper bound).}
 
+\item{a}{The argument \code{a} is a nonnegative scalar in \eqn{[0,2]} giving
+(for Binder loss) the cost of placing two items in separate clusters when in
+truth they belong to the same cluster.  Without loss of generality, the cost
+(under Binder loss) of placing two items in the same cluster when in truth
+they belong to separate clusters is fixed \code{2-a}. For VI, \code{a} has
+a similar interpretation, although is not a unit cost. See Dahl, Johnson,
+Müller (2021).}
+
 \item{n_cores}{Number of CPU cores to use, where 0 (default) indicates all
 cores.}
 }
@@ -65,9 +74,9 @@ cores.}
 A list containing five elements. Vectors \code{shrinkage} and \code{grit} give
 the locations of grid values.  Matrix \code{log_density} gives the log of the
 prior density at the combinations of shrinakge and grit values.  Likewise,
-matrices \code{expected_rand_index} and \code{expected_entropy} give expectations at
-the combinations of shrinkage and grit values.  See the examples below to
-see how to use this output.
+matrices \code{expected_vi}, \code{expected_binder}, \code{expected_rand_index}, and
+\code{expected_entropy} give expectations at the combinations of shrinkage and
+grit values.  See the examples below to see how one might use this output.
 }
 \description{
 To aid in the prior elicitation process for the shrinkage and grit parameters
@@ -88,4 +97,9 @@ if (requireNamespace("fields") ) {
 image(out$shrinkage, out$grit, out$expected_entropy, xlab = "Shrinkage", ylab = "Grit")
 contour(out$shrinkage, out$grit, exp(out$log_density), add = TRUE, labcex = 1.0)
 
+}
+\references{
+D. B. Dahl, D. J. Johnson, and P. Müller (2022), Search Algorithms and Loss
+Functions for Bayesian Clustering, \emph{Journal of Computational and
+Graphical Statistics}, 31(4), 1189-1201, \doi{10.1080/10618600.2022.2069779}.
 }

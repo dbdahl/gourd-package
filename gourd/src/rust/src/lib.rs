@@ -181,6 +181,7 @@ fn summarize_prior_on_shrinkage_and_grit(
     grit_n: usize,
     n_mc_samples: i32,
     domain_specification: &RList,
+    a: f64,
     n_cores: i32,
 ) {
     let anchor = anchor.to_i32(pc).slice();
@@ -201,6 +202,9 @@ fn summarize_prior_on_shrinkage_and_grit(
     };
     if grit_n < 2 {
         stop!("'grit_n' must be at least two.");
+    }
+    if !(0.0..=2.0).contains(&a) {
+        stop!("Parameter 'a' must be in [0.0, 2.0].");
     }
     let mut rng = Pcg64Mcg::from_seed(R::random_bytes::<16>());
     let ((shrinkage_min, shrinkage_max), (grit_min, grit_max)) = match domain_specification
@@ -269,6 +273,8 @@ fn summarize_prior_on_shrinkage_and_grit(
             "shrinkage",
             "grit",
             "log_density",
+            "expected_vi",
+            "expected_binder",
             "expected_rand_index",
             "expected_entropy",
         ],
@@ -280,13 +286,19 @@ fn summarize_prior_on_shrinkage_and_grit(
     let _ = result.set(1, grit_rval);
     let log_density_rval = RMatrix::<f64>::new(shrinkage_n, grit_n, pc);
     let _ = result.set(2, log_density_rval);
+    let expected_vi_rval = RMatrix::<f64>::new(shrinkage_n, grit_n, pc);
+    let _ = result.set(3, expected_vi_rval);
+    let expected_binder_rval = RMatrix::<f64>::new(shrinkage_n, grit_n, pc);
+    let _ = result.set(4, expected_binder_rval);
     let expected_rand_index_rval = RMatrix::<f64>::new(shrinkage_n, grit_n, pc);
-    let _ = result.set(3, expected_rand_index_rval);
+    let _ = result.set(5, expected_rand_index_rval);
     let expected_entropy_rval = RMatrix::<f64>::new(shrinkage_n, grit_n, pc);
-    let _ = result.set(4, expected_entropy_rval);
+    let _ = result.set(6, expected_entropy_rval);
     let shrinkage_slice = shrinkage_rval.slice_mut();
     let grit_slice = grit_rval.slice_mut();
     let log_density_slice = log_density_rval.slice_mut();
+    let expected_vi_slice = expected_vi_rval.slice_mut();
+    let expected_binder_slice = expected_binder_rval.slice_mut();
     let expected_rand_index_slice = expected_rand_index_rval.slice_mut();
     let expected_entropy_slice = expected_entropy_rval.slice_mut();
     let Ok(gamma_dist) = GammaPDF::new(shrinkage_shape, shrinkage_rate) else {
@@ -313,6 +325,7 @@ fn summarize_prior_on_shrinkage_and_grit(
         .collect();
     fn engine<D: PredictiveProbabilityFunction + Clone + std::marker::Sync>(
         partition_distribution: SpParameters<D>,
+        a: f64,
         n_cores: i32,
         n_mc_samples: i32,
         shrinkage_n: usize,
@@ -321,14 +334,19 @@ fn summarize_prior_on_shrinkage_and_grit(
         shrinkage_slice: &mut [f64],
         grit_slice: &mut [f64],
         log_density_slice: &mut [f64],
+        expected_vi_slice: &mut [f64],
+        expected_binder_slice: &mut [f64],
         expected_rand_index_slice: &mut [f64],
         expected_entropy_slice: &mut [f64],
         log_density_shrinkage: &[f64],
         log_density_grit: &[f64],
     ) {
         let n_mc_samples_f64 = n_mc_samples as f64;
+        let n_items = partition_distribution.anchor.n_items() as f64;
         let counts_truth = marginal_counter(partition_distribution.anchor.allocation());
-        let summarize_truth = summarize_counts_from_rand_index(&counts_truth);
+        let summarize_truth_rand_index = summarize_counts_for_rand_index(&counts_truth);
+        let summarize_truth_vi = summarize_counts_for_vi(&counts_truth, n_items);
+        let summarize_truth_binder = summarize_counts_for_binder(&counts_truth, n_items);
         let indices: Vec<_> = (0..shrinkage_n * grit_n).collect();
         let n_cores = if n_cores == 0 {
             std::thread::available_parallelism()
@@ -353,26 +371,40 @@ fn summarize_prior_on_shrinkage_and_grit(
                             .shrinkage
                             .set_constant(ScalarShrinkage::new(shrinkage_slice[i]).unwrap());
                         partition_distribution.grit.set(grit_slice[j]);
+                        let mut sum_vi = 0.0;
+                        let mut sum_binder = 0.0;
                         let mut sum_rand_index = 0.0;
                         let mut sum_entropy = 0.0;
                         (0..n_mc_samples).for_each(|_| {
                             partition_distribution.permutation.shuffle(&mut rng);
                             let sample = partition_distribution.sample(&mut rng);
-                            let result = rand_index_core(
+                            let result = partition_summary_core(
                                 partition_distribution.anchor.allocation(),
                                 sample.allocation(),
-                                1.0,
-                                true,
+                                a,
                                 &counts_truth,
-                                summarize_truth,
+                                summarize_truth_rand_index,
+                                summarize_truth_vi,
+                                summarize_truth_binder,
                             );
                             sum_rand_index += result.0;
-                            sum_entropy += result.1.unwrap();
+                            sum_vi += result.1;
+                            sum_binder += result.2;
+                            sum_entropy += result.3;
                         });
                         let log_density = log_density_shrinkage[i] + log_density_grit[j];
+                        let expected_vi = sum_vi / n_mc_samples_f64;
+                        let expected_binder = sum_binder / n_mc_samples_f64;
                         let expected_rand_index = sum_rand_index / n_mc_samples_f64;
                         let expected_entropy = sum_entropy / n_mc_samples_f64;
-                        (index, log_density, expected_rand_index, expected_entropy)
+                        (
+                            index,
+                            log_density,
+                            expected_vi,
+                            expected_binder,
+                            expected_rand_index,
+                            expected_entropy,
+                        )
                     })
                     .collect::<Vec<_>>();
                 result
@@ -381,8 +413,17 @@ fn summarize_prior_on_shrinkage_and_grit(
             .collect::<Vec<_>>()
             .iter()
             .for_each(
-                |(index, log_density, expected_rand_index, expected_entropy)| {
+                |(
+                    index,
+                    log_density,
+                    expected_vi,
+                    expected_binder,
+                    expected_rand_index,
+                    expected_entropy,
+                )| {
                     log_density_slice[*index] = *log_density;
+                    expected_vi_slice[*index] = *expected_vi;
+                    expected_binder_slice[*index] = *expected_binder;
                     expected_rand_index_slice[*index] = *expected_rand_index;
                     expected_entropy_slice[*index] = *expected_entropy;
                 },
@@ -405,6 +446,7 @@ fn summarize_prior_on_shrinkage_and_grit(
         .unwrap();
         engine(
             partition_distribution,
+            a,
             n_cores,
             n_mc_samples,
             shrinkage_n,
@@ -413,6 +455,8 @@ fn summarize_prior_on_shrinkage_and_grit(
             shrinkage_slice,
             grit_slice,
             log_density_slice,
+            expected_vi_slice,
+            expected_binder_slice,
             expected_rand_index_slice,
             expected_entropy_slice,
             &log_density_shrinkage,
@@ -431,6 +475,7 @@ fn summarize_prior_on_shrinkage_and_grit(
         .unwrap();
         engine(
             partition_distribution,
+            a,
             n_cores,
             n_mc_samples,
             shrinkage_n,
@@ -439,6 +484,8 @@ fn summarize_prior_on_shrinkage_and_grit(
             shrinkage_slice,
             grit_slice,
             log_density_slice,
+            expected_vi_slice,
+            expected_binder_slice,
             expected_rand_index_slice,
             expected_entropy_slice,
             &log_density_shrinkage,
@@ -475,7 +522,17 @@ fn rand_index<A: AsUsize + Debug>(
         }
         None => 1.0,
     };
-    Ok(rand_index_engine(labels_truth, labels_estimate, a, false).0)
+    let counts_truth = marginal_counter(labels_truth);
+    let summarize_truth_rand_index = summarize_counts_for_rand_index(&counts_truth);
+    let (counts_estimate, counts_joint, n) =
+        tabulate(labels_truth, labels_estimate, counts_truth.len());
+    Ok(rand_index_engine(
+        summarize_truth_rand_index,
+        &counts_estimate,
+        &counts_joint,
+        n,
+        a,
+    ))
 }
 
 trait AsUsize {
@@ -506,7 +563,7 @@ fn marginal_counter<B: AsUsize>(labels: &[B]) -> Vec<u32> {
     counts
 }
 
-fn summarize_counts_from_rand_index(counts: &[u32]) -> f64 {
+fn summarize_counts_for_rand_index(counts: &[u32]) -> f64 {
     counts
         .iter()
         .filter(|&&zz| zz > 0)
@@ -515,34 +572,81 @@ fn summarize_counts_from_rand_index(counts: &[u32]) -> f64 {
         .sum::<f64>()
 }
 
-fn rand_index_engine<A: AsUsize + Debug>(
-    labels_truth: &[A],
-    labels_estimate: &[A],
+fn rand_index_engine(
+    summarize_truth: f64,
+    counts_estimate: &[u32],
+    counts_joint: &[u32],
+    n: f64,
     a: f64,
-    with_entropy: bool,
-) -> (f64, Option<f64>) {
-    let counts_truth = marginal_counter(labels_truth);
-    let summarize_truth = summarize_counts_from_rand_index(&counts_truth);
-    rand_index_core(
-        labels_truth,
-        labels_estimate,
-        a,
-        with_entropy,
-        &counts_truth,
-        summarize_truth,
-    )
+) -> f64 {
+    let numerator = a * summarize_truth
+        + (2.0 - a) * summarize_counts_for_rand_index(&counts_estimate)
+        - 2.0 * summarize_counts_for_rand_index(&counts_joint);
+    1.0 - numerator / (n * (n - 1.0))
 }
 
-fn rand_index_core<A: AsUsize + Debug>(
+fn summarize_counts_for_vi(counts: &[u32], n: f64) -> f64 {
+    counts
+        .iter()
+        .filter(|&&zz| zz > 0)
+        .map(|&zz| zz as f64)
+        .map(|x| x / n)
+        .map(|p| p * p.log2())
+        .sum::<f64>()
+}
+
+fn vi_engine(
+    summarize_truth: f64,
+    counts_estimate: &[u32],
+    counts_joint: &[u32],
+    n: f64,
+    a: f64,
+) -> f64 {
+    a * summarize_truth + (2.0 - a) * summarize_counts_for_vi(counts_estimate, n)
+        - 2.0 * summarize_counts_for_vi(counts_joint, n)
+}
+
+fn summarize_counts_for_binder(counts: &[u32], n: f64) -> f64 {
+    counts
+        .iter()
+        .filter(|&&zz| zz > 0)
+        .map(|&zz| zz as f64)
+        .map(|x| x / n)
+        .map(|p| p * p)
+        .sum::<f64>()
+}
+
+fn binder_engine(
+    summarize_truth: f64,
+    counts_estimate: &[u32],
+    counts_joint: &[u32],
+    n: f64,
+    a: f64,
+) -> f64 {
+    a * summarize_truth + (2.0 - a) * summarize_counts_for_binder(counts_estimate, n)
+        - 2.0 * summarize_counts_for_binder(counts_joint, n)
+}
+
+fn summarize_counts_for_entropy(counts: &[u32], n: f64) -> f64 {
+    -counts
+        .iter()
+        .filter(|&&zz| zz > 0)
+        .map(|&zz| zz as f64)
+        .map(|x| x / n)
+        .map(|p| p * p.ln())
+        .sum::<f64>()
+}
+
+fn entropy_engine(counts_estimate: &[u32], n: f64) -> f64 {
+    summarize_counts_for_entropy(counts_estimate, n)
+}
+
+fn tabulate<A: AsUsize + Debug>(
     labels_truth: &[A],
     labels_estimate: &[A],
-    a: f64,
-    with_entropy: bool,
-    counts_truth: &[u32],
-    summarize_truth: f64,
-) -> (f64, Option<f64>) {
+    n_clusters_truth: usize,
+) -> (Vec<u32>, Vec<u32>, f64) {
     let counts_estimate = marginal_counter(labels_estimate);
-    let n_clusters_truth = counts_truth.len();
     let n_clusters_estimate = counts_estimate.len();
     let mut counts_joint = vec![0; n_clusters_truth * n_clusters_estimate];
     for (label_truth, label_estimate) in labels_truth.iter().zip(labels_estimate.iter()) {
@@ -550,26 +654,38 @@ fn rand_index_core<A: AsUsize + Debug>(
         let label_estimate = label_estimate.as_usize();
         counts_joint[n_clusters_truth * label_estimate + label_truth] += 1;
     }
-    fn entropy(counts: &[u32], n: f64) -> f64 {
-        -counts
-            .iter()
-            .filter(|&&zz| zz > 0)
-            .map(|&zz| zz as f64)
-            .map(|x| x / n)
-            .map(|p| p * p.ln())
-            .sum::<f64>()
-    }
-    let numerator = a * summarize_truth
-        + (2.0 - a) * summarize_counts_from_rand_index(&counts_estimate)
-        - 2.0 * summarize_counts_from_rand_index(&counts_joint);
     let n = labels_estimate.len() as f64;
-    let rand_index = 1.0 - numerator / (n * (n - 1.0));
-    let entropy_option = if with_entropy {
-        Some(entropy(&counts_estimate, n))
-    } else {
-        None
-    };
-    (rand_index, entropy_option)
+    (counts_estimate, counts_joint, n)
+}
+
+fn partition_summary_core<A: AsUsize + Debug>(
+    labels_truth: &[A],
+    labels_estimate: &[A],
+    a: f64,
+    counts_truth: &[u32],
+    summarize_truth_rand_index: f64,
+    summarize_truth_vi: f64,
+    summarize_truth_binder: f64,
+) -> (f64, f64, f64, f64) {
+    let (counts_estimate, counts_joint, n) =
+        tabulate(labels_truth, labels_estimate, counts_truth.len());
+    let rand_index = rand_index_engine(
+        summarize_truth_rand_index,
+        &counts_estimate,
+        &counts_joint,
+        n,
+        a,
+    );
+    let vi = vi_engine(summarize_truth_vi, &counts_estimate, &counts_joint, n, a);
+    let binder = binder_engine(
+        summarize_truth_binder,
+        &counts_estimate,
+        &counts_joint,
+        n,
+        a,
+    );
+    let entropy = entropy_engine(&counts_estimate, n);
+    (rand_index, vi, binder, entropy)
 }
 
 #[roxido]
