@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 publish = false
+rust-version = "1.67.1"
 
 [lib]
 crate-type = ["staticlib"]
@@ -27,7 +28,7 @@ rand = "0.8.5"
 rand_distr = "0.4.3"
 rand_pcg = "0.3.1"
 num-traits = "0.2.15"
-statrs = "0.17.1"
+statrs = "0.18.0"
 fastrand = "2.0.0"
 
 [lints.clippy]

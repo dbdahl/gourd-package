@@ -580,8 +580,8 @@ fn rand_index_engine(
     a: f64,
 ) -> f64 {
     let numerator = a * summarize_truth
-        + (2.0 - a) * summarize_counts_for_rand_index(&counts_estimate)
-        - 2.0 * summarize_counts_for_rand_index(&counts_joint);
+        + (2.0 - a) * summarize_counts_for_rand_index(counts_estimate)
+        - 2.0 * summarize_counts_for_rand_index(counts_joint);
     1.0 - numerator / (n * (n - 1.0))
 }
 

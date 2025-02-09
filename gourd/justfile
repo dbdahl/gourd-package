@@ -1,13 +1,25 @@
-build:
-  R CMD build .
-
-install target=default_target:
+install target = ".":
   R CMD INSTALL {{target}}
+
+build:
+  roxido build
+
+expand:
+  roxido expand --color always | bat
 
 roxygen2:
   Rscript -e "roxygen2::roxygenise()"
 
-check: roxygen2 build
-  R CMD check --as-cran $(roxido src_pkg_filename)
+api:
+  cd src/rust/roxido; cargo doc --open
 
-default_target := "."
+delete-release tag:
+  git push --delete origin {{tag}}
+  git tag -d {{tag}}
+
+new-release:
+  -just delete-release `date +"v%y.%m.%d"`
+  -just delete-release latest
+  git tag `date +"v%y.%m.%d"`
+  git tag latest
+  git push --tags

@@ -66,7 +66,7 @@
 /// ```
 pub use roxido_macro::roxido;
 
-pub mod rbindings;
+pub use rbindings;
 pub use rbindings::SEXP;
 
 use rbindings::*;
@@ -2069,6 +2069,48 @@ macro_rules! rlistlike {
             ) -> Result<(), &'static str> {
                 if index < self.len() {
                     unsafe { SET_VECTOR_ELT(self.sexp(), index.try_into().unwrap(), value.sexp()) };
+                    Ok(())
+                } else {
+                    Err("Index out of bounds.")
+                }
+            }
+
+            /// Set the value at a certain index in the R list via a closure with a mutable reference to a local Pc.
+            ///
+            /// This is slightly less efficient than `set` but is useful to avoid overflowing R's PROTECT stack for
+            /// very large lists.
+            pub fn set_with_pc<T: RObjectVariant, F: FnOnce(&mut Pc) -> &T>(
+                &mut self,
+                index: usize,
+                x: F,
+            ) -> Result<(), &'static str> {
+                if index < self.len() {
+                    let mut pc = Pc::default();
+                    unsafe {
+                        SET_VECTOR_ELT(self.sexp(), index.try_into().unwrap(), x(&mut pc).sexp())
+                    };
+                    Ok(())
+                } else {
+                    Err("Index out of bounds.")
+                }
+            }
+
+            /// Set the values in the R list via a closure with a mutable reference to a local Pc.
+            ///
+            /// This is slightly less efficient than `set` but is useful to avoid overflowing R's PROTECT stack for
+            /// very large lists.
+            pub fn set_loop_with_pc<T: RObjectVariant, F: FnMut(&mut Pc) -> &T>(
+                &mut self,
+                index: usize,
+                mut x: F,
+            ) -> Result<(), &'static str> {
+                if index < self.len() {
+                    let mut pc = Pc::default();
+                    for i in 0..self.len() {
+                        unsafe {
+                            SET_VECTOR_ELT(self.sexp(), i.try_into().unwrap(), x(&mut pc).sexp())
+                        };
+                    }
                     Ok(())
                 } else {
                     Err("Index out of bounds.")
