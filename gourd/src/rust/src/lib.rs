@@ -357,7 +357,7 @@ fn summarize_prior_on_shrinkage_and_grit(
         };
         indices
             .chunks(n_cores)
-            .map(|indices| (indices, rng.gen::<u128>()))
+            .map(|indices| (indices, rng.random::<u128>()))
             .par_bridge()
             .map(|(indices, seed)| {
                 let mut partition_distribution = partition_distribution.clone();
@@ -741,10 +741,10 @@ fn samplePartition(
                 for k in 0..n_cores - 1 {
                     let (left, right) =
                         stick.split_at_mut(chunk_size + if k < np_extra { ni } else { 0 });
-                    plan.push((left, distr.clone(), rng.gen::<u128>()));
+                    plan.push((left, distr.clone(), rng.random::<u128>()));
                     stick = right;
                 }
-                plan.push((stick, distr.clone(), rng.gen()));
+                plan.push((stick, distr.clone(), rng.random()));
                 plan.into_iter().for_each(|mut p| {
                     s.spawn(move |_| {
                         let mut rng = Pcg64Mcg::new(p.2);
@@ -774,10 +774,10 @@ fn samplePartition(
             for k in 0..n_cores - 1 {
                 let (left, right) =
                     stick.split_at_mut(chunk_size + if k < np_extra { ni } else { 0 });
-                plan.push((left, distr.clone(), rng.gen::<u128>()));
+                plan.push((left, distr.clone(), rng.random::<u128>()));
                 stick = right;
             }
-            plan.push((stick, distr.clone(), rng.gen()));
+            plan.push((stick, distr.clone(), rng.random()));
             let log_like = |_i: usize, _indices: &[usize]| 0.0;
             let nup = 1;
             let _ = crossbeam::scope(|s| {
@@ -1310,9 +1310,9 @@ fn fit_dependent(
     })
     .take(all.units.len())
     .collect();
-    let fastrand_ = fastrand::Rng::with_seed(rng.gen());
+    let fastrand_ = fastrand::Rng::with_seed(rng.random());
     let fastrand = &mut Some(fastrand_);
-    let anchor = all.units[rng.gen_range(0..all.units.len())]
+    let anchor = all.units[rng.random_range(0..all.units.len())]
         .state
         .clustering()
         .clone();
@@ -1407,7 +1407,7 @@ fn fit_dependent(
                     let log_target_proposal = partition_distribution.log_pmf(clustering);
                     let log_hastings_ratio = log_target_proposal - log_target_current;
                     if 0.0 <= log_hastings_ratio
-                        || rng.gen_range(0.0..1.0_f64).ln() < log_hastings_ratio
+                        || rng.random_range(0.0..1.0_f64).ln() < log_hastings_ratio
                     {
                         log_target_current = log_target_proposal;
                         permutation_n_acceptances += 1;
@@ -1435,7 +1435,7 @@ fn fit_dependent(
                     .sum();
                 let log_hastings_ratio = log_target_proposal - log_target_current;
                 if 0.0 <= log_hastings_ratio
-                    || rng.gen_range(0.0..1.0_f64).ln() < log_hastings_ratio
+                    || rng.random_range(0.0..1.0_f64).ln() < log_hastings_ratio
                 {
                     log_target_current = log_target_proposal;
                     permutation_n_acceptances += 1;
@@ -1460,7 +1460,7 @@ fn fit_dependent(
         rng: &mut Pcg64Mcg,
     ) {
         if let Some(w) = tuning.shrinkage_slice_step_size {
-            let fastrand_ = fastrand::Rng::with_seed(rng.gen());
+            let fastrand_ = fastrand::Rng::with_seed(rng.random());
             let fastrand = &mut Some(fastrand_);
             let tuning_parameters = stepping_out::TuningParameters::new().width(w);
             let (_s_new, _) = stepping_out::univariate_slice_sampler_stepping_out_and_shrinkage(
@@ -1491,7 +1491,7 @@ fn fit_dependent(
         rng: &mut Pcg64Mcg,
     ) {
         if let Some(w) = tuning.shrinkage_slice_step_size {
-            let fastrand_ = fastrand::Rng::with_seed(rng.gen());
+            let fastrand_ = fastrand::Rng::with_seed(rng.random());
             let fastrand = &mut Some(fastrand_);
             let tuning_parameters = stepping_out::TuningParameters::new().width(w);
             let (_g_new, _) = stepping_out::univariate_slice_sampler_stepping_out_and_shrinkage(
