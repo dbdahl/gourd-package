@@ -1,22 +1,16 @@
 ## Installation
 
-You can install the latest version from source.
-
-First install the development tools. On MacOS, install Xcode command line tools
-by running `sudo xcode-select --install`. On Windows, install
+First install the R development tools. On MacOS, install Xcode command line tools
+by running `xcode-select --install`. On Windows, install
 [Rtools](https://cran.r-project.org/bin/windows/Rtools/).
 
-Then install the `remotes` and `cargo` packages:
+Then install the `remotes` package:
 
 ```r
-install.packages(c("cargo", "remotes"))
+install.packages("remotes")
 ```
 
-Now install the Rust toolchain:
-
-```
-cargo::install(force = TRUE)
-```
+Now install the Rust compiler and toolchain as described [here](gourd/INSTALL).
 
 Finally, install the package itself:
 
