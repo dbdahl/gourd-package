@@ -64,7 +64,7 @@ impl<'a, 'b> IndicesIterator<'a, 'b> {
     }
 }
 
-impl<'a, 'b> Iterator for IndicesIterator<'a, 'b> {
+impl<'a> Iterator for IndicesIterator<'a, '_> {
     type Item = &'a usize;
     fn next(&mut self) -> Option<<Self as Iterator>::Item> {
         match self.inner.next() {
@@ -89,7 +89,7 @@ impl<'a, 'b> Iterator for IndicesIterator<'a, 'b> {
     }
 }
 
-impl<'a, 'b> ExactSizeIterator for IndicesIterator<'a, 'b> {}
+impl ExactSizeIterator for IndicesIterator<'_, '_> {}
 
 mod tests {
 

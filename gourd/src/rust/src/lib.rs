@@ -1,3 +1,4 @@
+// The 'roxido_registration' macro is called at the start of the 'lib.rs' file.
 roxido_registration!();
 use roxido::*;
 
@@ -702,12 +703,12 @@ fn samplePartition(
     grit_shape2: f64,
     n_cores: usize,
 ) {
-    let n_cores = {
-        if n_cores == 0 {
-            num_cpus::get()
-        } else {
-            n_cores
-        }
+    let n_cores = if n_cores == 0 {
+        std::thread::available_parallelism()
+            .map(|x| x.get())
+            .unwrap_or(1)
+    } else {
+        n_cores
     };
     let np = n_samples.max(1);
     let np_per_core = np / n_cores;

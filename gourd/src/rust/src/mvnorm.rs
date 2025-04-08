@@ -8,10 +8,7 @@ pub fn sample_multivariate_normal_repeatedly<R: Rng>(
     precision: DMatrix<f64>,
     rng: &mut R,
 ) -> Option<DMatrix<f64>> {
-    let lit = match prepare(precision) {
-        None => return None,
-        Some(lit) => lit,
-    };
+    let lit = prepare(precision)?;
     let u = DMatrix::from_fn(lit.nrows(), n_samples, |_, _| StandardNormal.sample(rng));
     let mut result = lit * u;
     for mut col in result.column_iter_mut() {
@@ -26,10 +23,7 @@ pub fn sample_multivariate_normal<R: Rng>(
     precision: DMatrix<f64>,
     rng: &mut R,
 ) -> Option<DVector<f64>> {
-    let lit = match prepare(precision) {
-        None => return None,
-        Some(lit) => lit,
-    };
+    let lit = prepare(precision)?;
     let u = DVector::from_fn(lit.nrows(), |_, _| StandardNormal.sample(rng));
     let result = mean + lit * u;
     Some(result)
@@ -44,10 +38,7 @@ pub fn sample_multivariate_normal_v2<R: Rng>(
     if !precision.is_square() || precision.nrows() != n {
         return None;
     }
-    let chol = match precision.cholesky() {
-        None => return None,
-        Some(chol) => chol,
-    };
+    let chol = precision.cholesky()?;
     chol.solve_mut(&mut precision_times_mean);
     let mut l_inverse = DMatrix::identity(n, n);
     chol.l_dirty()
@@ -72,10 +63,7 @@ pub fn prepare(precision: DMatrix<f64>) -> Option<DMatrix<f64>> {
     if !precision.is_square() || precision.nrows() != n {
         return None;
     }
-    let chol = match precision.cholesky() {
-        None => return None,
-        Some(chol) => chol,
-    };
+    let chol = precision.cholesky()?;
     let mut l_inverse = DMatrix::identity(n, n);
     chol.l_dirty()
         .solve_lower_triangular_unchecked_mut(&mut l_inverse);
