@@ -1,0 +1,31 @@
+This R package contains Rust code which depends on the Rust crates listed below.
+The source code is vendored in the R package and can also be found at
+https://crates.io/crates/XXXX, where XXXX is a crate name.
+The authors of these Rust crates are listed below.
+
+Alex Crichton <alex@alexcrichton.com>     : cfg-if, proc-macro2
+Andre Bogus <bogusandre@gmail.com>        : typenum
+Andreas Longva                            : nalgebra-macros
+bluss                                     : either, matrixmultiply, rawpointer
+Brendan Zabarauskas <bjzaba@yahoo.com.au> : approx
+David B. Dahl <dahl@stat.byu.edu>         : dahl-bellnumber, dahl-partition, dahl-randompartition, dahl-salso, rbindings, roxido, roxido_macro
+David Tolnay <dtolnay@gmail.com>          : paste, proc-macro2, quote, syn, unicode-ident
+Jack Wrenn <jswrenn@amazon.com>           : zerocopy, zerocopy-derive
+Jim Turner                                : ndarray
+Jorge Aparicio <jorge@japaric.io>         : libm
+Josh Stone <cuviper@gmail.com>            : autocfg, rayon, rayon-core
+Joshua Liebow-Feeser <joshlf@google.com>  : zerocopy, zerocopy-derive
+Lokathor <zefria@gmail.com>               : bytemuck, safe_arch, wide
+Michael Ma                                : statrs
+Niko Matsakis <niko@alum.mit.edu>         : rayon, rayon-core
+Paho Lurie-Gregg <paho@paholg.com>        : typenum
+R. Janis Goldschmidt                      : matrixmultiply
+Sean McArthur <sean@seanmonstar.com>      : num_cpus
+Stefan Lankes                             : hermit-abi
+Stjepan Glavina <stjepang@gmail.com>      : fastrand
+Sébastien Crozet <developer@crozet.re>    : nalgebra, nalgebra-macros, simba
+The Cranelift Project Developers          : wasi
+The CryptoCorrosion Contributors          : ppv-lite86, rand_chacha
+The Rand Project Developers               : getrandom, rand, rand_chacha, rand_core, rand_distr, rand_pcg
+The Rust Project Developers               : bitflags, libc, num-bigint, num-complex, num-integer, num-rational, num-traits, rand, rand_chacha, rand_core
+Ulrik Sverdrup "bluss"                    : ndarray

@@ -33,8 +33,7 @@ use dahl_randompartition::shrink::Shrinkage;
 use dahl_randompartition::sp::SpParameters;
 use dahl_randompartition::up::UpParameters;
 use nalgebra::{DMatrix, DVector};
-use rand::Rng;
-use rand::SeedableRng;
+use rand::{RngExt, SeedableRng};
 use rand_distr::{Beta as BetaRNG, Distribution, Gamma as GammaRNG};
 use rand_pcg::Pcg64Mcg;
 use rayon::prelude::*;
@@ -216,13 +215,17 @@ fn summarize_prior_on_shrinkage_and_grit(
                 stop!("Element 'n_mc_samples' in 'domain_specification' should be a scalar.");
             };
             let Ok(n_mc_samples) = n_mc_samples.usize() else {
-                stop!("Element 'n_mc_samples' in 'domain_specification' cannot be interpreted as positive integer.");
+                stop!(
+                    "Element 'n_mc_samples' in 'domain_specification' cannot be interpreted as positive integer."
+                );
             };
             if n_mc_samples <= 1 {
                 stop!("Element 'n_mc_samples' is 'domain_specification' must be at least 2.");
             }
             let Ok(percentile) = domain_specification.get_by_key("percentile") else {
-                stop!("Element 'percentile' must be provided when 'n_mc_samples' is provided in 'domain_specification'.");
+                stop!(
+                    "Element 'percentile' must be provided when 'n_mc_samples' is provided in 'domain_specification'."
+                );
             };
             let Ok(percentile) = percentile.as_scalar() else {
                 stop!("Element 'percentile' in 'domain_specification' should be a scalar.");
@@ -260,7 +263,9 @@ fn summarize_prior_on_shrinkage_and_grit(
                 let y = y.to_f64(pc);
                 let slice = y.slice();
                 if slice[0] >= slice[1] {
-                    stop!("The first element of '{x}' in 'domain_specification' should be less than the second element.");
+                    stop!(
+                        "The first element of '{x}' in 'domain_specification' should be less than the second element."
+                    );
                 }
                 (slice[0], slice[1])
             };
@@ -324,6 +329,7 @@ fn summarize_prior_on_shrinkage_and_grit(
             beta_dist.ln_pdf(*grit)
         })
         .collect();
+    #[expect(clippy::too_many_arguments)]
     fn engine<D: PredictiveProbabilityFunction + Clone + std::marker::Sync>(
         partition_distribution: SpParameters<D>,
         a: f64,
@@ -363,7 +369,7 @@ fn summarize_prior_on_shrinkage_and_grit(
             .map(|(indices, seed)| {
                 let mut partition_distribution = partition_distribution.clone();
                 let mut rng = Pcg64Mcg::new(seed);
-                let result = indices
+                indices
                     .iter()
                     .map(|&index| {
                         let i = index % shrinkage_n;
@@ -407,8 +413,7 @@ fn summarize_prior_on_shrinkage_and_grit(
                             expected_entropy,
                         )
                     })
-                    .collect::<Vec<_>>();
-                result
+                    .collect::<Vec<_>>()
             })
             .flatten()
             .collect::<Vec<_>>()
@@ -1866,7 +1871,12 @@ fn fit(
     if data.n_global_covariates() != state.n_global_covariates()
         || hyperparameters.n_global_covariates() != state.n_global_covariates()
     {
-        stop!("Inconsistent number of global covariates...\n    data: {}\n    state: {}\n    hyperparameters: {}", data.n_global_covariates(), state.n_global_covariates(), hyperparameters.n_global_covariates());
+        stop!(
+            "Inconsistent number of global covariates...\n    data: {}\n    state: {}\n    hyperparameters: {}",
+            data.n_global_covariates(),
+            state.n_global_covariates(),
+            hyperparameters.n_global_covariates()
+        );
     }
     if data.n_clustered_covariates() != state.n_clustered_covariates()
         || hyperparameters.n_clustered_covariates() != state.n_clustered_covariates()

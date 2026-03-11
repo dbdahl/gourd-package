@@ -65,7 +65,7 @@ trait SEXPMethods {
 
     /// # Safety
     /// Expert use only.
-    #[allow(clippy::mut_from_ref)]
+    #[expect(clippy::mut_from_ref)]
     unsafe fn transmute_mut<T: RObjectVariant, A>(self, _anchor: &A) -> &mut T;
 
     /// # Safety
@@ -110,7 +110,7 @@ pub trait RObjectVariant: Sized {
     where
         Self: Sized,
     {
-        self.sexp().transmute(self)
+        unsafe { self.sexp().transmute(self) }
     }
 
     /// # Safety
@@ -119,7 +119,7 @@ pub trait RObjectVariant: Sized {
     where
         Self: Sized,
     {
-        self.sexp().transmute_mut(self)
+        unsafe { self.sexp().transmute_mut(self) }
     }
 
     /// Duplicate an R object.
@@ -127,7 +127,7 @@ pub trait RObjectVariant: Sized {
     /// Multiple symbols may be bound to the same object, so if the usual R semantics are to
     /// apply, any code which alters one of them needs to make a copy first.
     ///
-    #[allow(clippy::mut_from_ref)]
+    #[expect(clippy::mut_from_ref)]
     fn clone<'a>(&self, pc: &'a Pc) -> &'a mut Self {
         unsafe { pc.protect_and_transmute(Rf_duplicate(self.sexp())) }
     }
@@ -206,18 +206,18 @@ pub trait RHasNames: RHasLength {
 
 /// Method for creating a scalar in R (i.e., an R vector of length one) from a value.
 pub trait RScalarConstructor<T> {
-    #[allow(clippy::mut_from_ref)]
+    #[expect(clippy::mut_from_ref)]
     fn from_value(value: T, pc: &Pc) -> &mut Self;
 }
 
 /// Methods for creating an R object from an iterator.
 pub trait RFromIterator<T> {
-    #[allow(clippy::mut_from_ref)]
+    #[expect(clippy::mut_from_ref)]
     fn from_iter1<S>(iter: S, pc: &Pc) -> &mut Self
     where
         S: IntoIterator<Item = T> + ExactSizeIterator;
 
-    #[allow(clippy::mut_from_ref)]
+    #[expect(clippy::mut_from_ref)]
     fn from_iter2<'a, 'b, S>(iter: S, pc: &'a Pc) -> &'a mut Self
     where
         S: IntoIterator<Item = &'b T> + ExactSizeIterator,
@@ -262,34 +262,34 @@ pub trait RGetSetN<T> {
 
 /// Methods for creating a new vector in R.
 pub trait RVectorConstructors<T> {
-    #[allow(clippy::mut_from_ref)]
+    #[expect(clippy::mut_from_ref)]
     fn new(length: usize, pc: &Pc) -> &mut Self;
 
-    #[allow(clippy::mut_from_ref)]
+    #[expect(clippy::mut_from_ref)]
     fn from_value(value: T, length: usize, pc: &Pc) -> &mut Self;
 
-    #[allow(clippy::mut_from_ref)]
+    #[expect(clippy::mut_from_ref)]
     fn from_array<const N: usize>(slice: [T; N], pc: &Pc) -> &mut Self;
 
-    #[allow(clippy::mut_from_ref)]
+    #[expect(clippy::mut_from_ref)]
     fn from_slice<'a>(slice: &[T], pc: &'a Pc) -> &'a mut Self;
 }
 
 /// Methods for creating a new matrix in R.
 pub trait RMatrixConstructors<T> {
-    #[allow(clippy::mut_from_ref)]
+    #[expect(clippy::mut_from_ref)]
     fn new(nrow: usize, ncol: usize, pc: &Pc) -> &mut Self;
 
-    #[allow(clippy::mut_from_ref)]
+    #[expect(clippy::mut_from_ref)]
     fn from_value(value: T, nrow: usize, ncol: usize, pc: &Pc) -> &mut Self;
 }
 
 /// Methods for creating a new array in R.
 pub trait RArrayConstructors<T> {
-    #[allow(clippy::mut_from_ref)]
+    #[expect(clippy::mut_from_ref)]
     fn new<'a>(dim: &[usize], pc: &'a Pc) -> &'a mut Self;
 
-    #[allow(clippy::mut_from_ref)]
+    #[expect(clippy::mut_from_ref)]
     fn from_value<'a>(value: T, dim: &[usize], pc: &'a Pc) -> &'a mut Self;
 }
 
@@ -384,7 +384,7 @@ impl Pc {
         Self { counter: 0.into() }
     }
 
-    #[allow(clippy::not_unsafe_ptr_arg_deref)]
+    #[expect(clippy::not_unsafe_ptr_arg_deref)]
     pub fn protect(&self, sexp: SEXP) -> SEXP {
         unsafe { Rf_protect(sexp) };
         let mut counter = self.counter.borrow_mut();
@@ -394,7 +394,7 @@ impl Pc {
 
     /// # Safety
     /// Expert use only.
-    #[allow(clippy::mut_from_ref)]
+    #[expect(clippy::mut_from_ref)]
     pub unsafe fn protect_and_transmute<T: RObjectVariant>(&self, sexp: SEXP) -> &mut T {
         let sexp = self.protect(sexp);
         unsafe { sexp.transmute_mut(self) }
@@ -407,6 +407,24 @@ impl R {
     /// Returns R's `NULL` value.
     pub fn null() -> &'static RObject {
         unsafe { R_NilValue.transmute_static() }
+    }
+
+    /// Returns R's `NULL` value.
+    #[expect(non_snake_case)]
+    pub fn NULL() -> &'static RObject {
+        unsafe { R_NilValue.transmute_static() }
+    }
+
+    /// Returns R's `TRUE` value for storage mode "integer".
+    #[expect(non_snake_case)]
+    pub fn TRUE() -> i32 {
+        Rboolean_TRUE
+    }
+
+    /// Returns R's `TRUE` value for storage mode "integer".
+    #[expect(non_snake_case)]
+    pub fn FALSE() -> i32 {
+        Rboolean_FALSE
     }
 
     /// Returns R's `NA` value for storage mode "double".
@@ -535,7 +553,7 @@ pub enum RObjectEnum<'a> {
 
 impl RObject {
     // Convert to an enumeration of the supported variants.
-    pub fn enumerate(&self) -> RObjectEnum {
+    pub fn enumerate(&self) -> RObjectEnum<'_> {
         if self.is_vector() {
             let s: &RVector = unsafe { self.transmute() };
             if s.is_scalar() {
@@ -564,15 +582,15 @@ impl RObject {
 
     /// # Safety
     /// Expert use only.
-    #[allow(clippy::not_unsafe_ptr_arg_deref)]
+    #[expect(clippy::not_unsafe_ptr_arg_deref)]
     pub unsafe fn from_sexp<A>(sexp: SEXP, anchor: &A) -> &Self {
         unsafe { sexp.transmute(anchor) }
     }
 
     /// # Safety
     /// Expert use only.
-    #[allow(clippy::not_unsafe_ptr_arg_deref)]
-    #[allow(clippy::mut_from_ref)]
+    #[expect(clippy::not_unsafe_ptr_arg_deref)]
+    #[expect(clippy::mut_from_ref)]
     pub unsafe fn from_sexp_mut<A>(sexp: SEXP, anchor: &A) -> &mut Self {
         unsafe { sexp.transmute_mut(anchor) }
     }
@@ -804,7 +822,7 @@ impl RError {
     /// Define a new R error.
     ///
     /// This does *not* throw an error.  To throw an R error, simply use the [`stop`] macro.
-    #[allow(clippy::mut_from_ref)]
+    #[expect(clippy::mut_from_ref)]
     pub fn new<'a>(message: &str, pc: &'a Pc) -> &'a mut Self {
         let list = RList::with_names(&["message", "calls"], pc);
         let _ = list.set(0, message.to_r(pc));
@@ -857,7 +875,7 @@ impl RFunction {
         let expression = pc.protect(expression);
         let mut p_out_error: i32 = 0;
         let sexp = pc.protect(unsafe {
-            R_tryEval(expression, R_GetCurrentEnv(), &mut p_out_error as *mut i32)
+            R_tryEval(expression, R_GetCurrentEnv(), std::ptr::from_mut(&mut p_out_error))
         });
         match p_out_error {
             0 => Ok(unsafe { sexp.transmute(pc) }),
@@ -1160,7 +1178,7 @@ impl<T> RScalar<T> {
 macro_rules! rscalar_constructor {
     ($tipe:ty, $code:expr) => {
         impl RScalarConstructor<$tipe> for RScalar<$tipe> {
-            #[allow(clippy::mut_from_ref)]
+            #[expect(clippy::mut_from_ref)]
             fn from_value(value: $tipe, pc: &Pc) -> &mut Self {
                 unsafe { pc.protect_and_transmute($code(value)) }
             }
@@ -1173,14 +1191,14 @@ rscalar_constructor!(i32, Rf_ScalarInteger);
 rscalar_constructor!(u8, Rf_ScalarRaw);
 
 impl RScalarConstructor<bool> for RScalar<bool> {
-    #[allow(clippy::mut_from_ref)]
+    #[expect(clippy::mut_from_ref)]
     fn from_value(value: bool, pc: &Pc) -> &mut Self {
         unsafe { pc.protect_and_transmute(Rf_ScalarLogical(R::as_logical(value))) }
     }
 }
 
 impl RScalarConstructor<&str> for RScalar<char> {
-    #[allow(clippy::mut_from_ref)]
+    #[expect(clippy::mut_from_ref)]
     fn from_value<'a>(value: &str, pc: &'a Pc) -> &'a mut Self {
         unsafe { pc.protect_and_transmute(Rf_ScalarString(pc.protect(charsxp_from_str(value)))) }
     }
@@ -1685,14 +1703,14 @@ impl RVector<char> {
 }
 
 impl RVectorConstructors<&str> for RVector<char> {
-    #[allow(clippy::mut_from_ref)]
+    #[expect(clippy::mut_from_ref)]
     fn new(length: usize, pc: &Pc) -> &mut Self {
         unsafe {
             pc.protect_and_transmute(Rf_allocVector(STRSXP, length.try_into().stop_str(TOO_LONG)))
         }
     }
 
-    #[allow(clippy::mut_from_ref)]
+    #[expect(clippy::mut_from_ref)]
     fn from_value<'a>(value: &str, length: usize, pc: &'a Pc) -> &'a mut Self {
         let length_i32 = length.try_into().stop_str(TOO_LONG);
         let vec = pc.protect(unsafe { Rf_allocVector(STRSXP, length_i32) });
@@ -1706,7 +1724,7 @@ impl RVectorConstructors<&str> for RVector<char> {
         unsafe { vec.transmute_mut(pc) }
     }
 
-    #[allow(clippy::mut_from_ref)]
+    #[expect(clippy::mut_from_ref)]
     fn from_array<'a, const N: usize>(array: [&str; N], pc: &'a Pc) -> &'a mut Self {
         let result = Self::new(array.len(), pc);
         for (index, value) in array.iter().enumerate() {
@@ -1715,7 +1733,7 @@ impl RVectorConstructors<&str> for RVector<char> {
         result
     }
 
-    #[allow(clippy::mut_from_ref)]
+    #[expect(clippy::mut_from_ref)]
     fn from_slice<'a>(slice: &[&str], pc: &'a Pc) -> &'a mut Self {
         let result = Self::new(slice.len(), pc);
         for (index, value) in slice.iter().enumerate() {
@@ -1792,7 +1810,7 @@ impl<T> RMatrix<T> {
     }
 
     /// Transpose the matrix.
-    #[allow(clippy::mut_from_ref)]
+    #[expect(clippy::mut_from_ref)]
     pub fn transpose<'a>(&self, pc: &'a Pc) -> &'a mut Self {
         let transposed = self.clone(pc);
         let mut dim = transposed.dim();
@@ -2132,7 +2150,7 @@ macro_rules! rlistlike {
             /// This allows Rust's [`HashMap`] methods to be used on the contents
             /// of the list, while still retaining the original list within
             /// the RListMap struct in the robj field.
-            pub fn make_map(&self) -> RListMap {
+            pub fn make_map(&self) -> RListMap<'_> {
                 let mut map = HashMap::new();
                 let names = self.get_names();
                 let len = names.len();
@@ -2154,14 +2172,14 @@ rlistlike!(RList);
 rlistlike!(RDataFrame);
 
 impl RList {
-    #[allow(clippy::mut_from_ref)]
+    #[expect(clippy::mut_from_ref)]
     pub fn new(length: usize, pc: &Pc) -> &mut Self {
         unsafe {
             pc.protect_and_transmute(Rf_allocVector(VECSXP, length.try_into().stop_str(TOO_LONG)))
         }
     }
 
-    #[allow(clippy::mut_from_ref)]
+    #[expect(clippy::mut_from_ref)]
     pub fn with_names<'a>(names: &[&str], pc: &'a Pc) -> &'a mut Self {
         let result = Self::new(names.len(), pc);
         unsafe {
@@ -2175,9 +2193,8 @@ impl RExternalPtr {
     /// Move Rust object to an R external pointer.
     ///
     /// This *method* moves a Rust object to an R external pointer and then, as far as Rust is concerned, leaks the memory.
-    /// Thus the programmer is then responsible to release the memory by calling [`RExternalPtr::decode_val`]
-    /// unless `managed_By_r` is `true`.
-    #[allow(clippy::mut_from_ref)]
+    /// R will automatically free the memory when the associated R object is collected.
+    #[expect(clippy::mut_from_ref)]
     pub fn encode<'a, T>(x: T, tag: &str, pc: &'a Pc) -> &'a mut Self {
         Self::encode_full(x, tag.to_r(pc), true, pc)
     }
@@ -2186,8 +2203,8 @@ impl RExternalPtr {
     ///
     /// This *method* moves a Rust object to an R external pointer and then, as far as Rust is concerned, leaks the memory.
     /// Thus the programmer is then responsible to release the memory by calling [`RExternalPtr::decode_val`]
-    /// unless `managed_By_r` is `true`.
-    #[allow(clippy::mut_from_ref)]
+    /// unless `managed_by_r` is `true`.
+    #[expect(clippy::mut_from_ref)]
     pub fn encode_full<'a, T>(
         x: T,
         tag: &impl RObjectVariant,
@@ -2203,12 +2220,14 @@ impl RExternalPtr {
             ));
             if managed_by_r {
                 unsafe extern "C" fn free<S>(sexp: SEXP) {
-                    let addr = R_ExternalPtrAddr(sexp);
-                    if addr.as_ref().is_none() {
-                        return;
+                    unsafe {
+                        let addr = R_ExternalPtrAddr(sexp);
+                        if addr.as_ref().is_none() {
+                            return;
+                        }
+                        let _ = Box::from_raw(addr as *mut S);
+                        R_ClearExternalPtr(sexp);
                     }
-                    let _ = Box::from_raw(addr as *mut S);
-                    R_ClearExternalPtr(sexp);
                 }
                 Rf_setAttrib(sexp, R_AtsignSymbol, R_AtsignSymbol);
                 R_RegisterCFinalizerEx(sexp, Some(free::<T>), 0);
@@ -2217,9 +2236,41 @@ impl RExternalPtr {
         }
     }
 
+    /// Reconstitute an Rust object into an R external pointer.
+    ///
+    /// This *method* moves a Rust object to an R external pointer.
+    #[expect(clippy::mut_from_ref)]
+    pub fn reencode<'a, T, F: FnOnce(&RObject) -> T>(&mut self, f: F) {
+        unsafe {
+            if self.is_null() {
+                let ptr = Box::into_raw(Box::new(f(self.tag())));
+                R_SetExternalPtrAddr(self.sexp(), ptr as *mut c_void);
+                if Rf_getAttrib(self.sexp(), R_AtsignSymbol) == R_AtsignSymbol {
+                    unsafe extern "C" fn free<S>(sexp: SEXP) {
+                        unsafe {
+                            let addr = R_ExternalPtrAddr(sexp);
+                            if addr.as_ref().is_none() {
+                                return;
+                            }
+                            let _ = Box::from_raw(addr as *mut S);
+                            R_ClearExternalPtr(sexp);
+                        }
+                    }
+                    Rf_setAttrib(self.sexp(), R_AtsignSymbol, R_AtsignSymbol);
+                    R_RegisterCFinalizerEx(self.sexp(), Some(free::<T>), 0);
+                }
+            }
+        }
+    }
+
     /// Check if an external pointer is managed by R.
     pub fn is_managed_by_r(&self) -> bool {
         unsafe { Rf_getAttrib(self.sexp(), R_AtsignSymbol) == R_AtsignSymbol }
+    }
+
+    /// Check if an external pointer is null.
+    pub fn is_null(&self) -> bool {
+        self.address().is_null()
     }
 
     /// Move an R external pointer to a Rust object.
@@ -2260,8 +2311,10 @@ impl RExternalPtr {
     /// Despite the use of a static lifetime here, the reference is only valid as long as R's
     /// garbage collector has not reclaimed the underlying object's memory.
     pub unsafe fn decode_ref_static<T>(&self) -> &'static T {
-        let ptr = R_ExternalPtrAddr(self.sexp()) as *mut T;
-        ptr.as_ref().unwrap()
+        unsafe {
+            let ptr = R_ExternalPtrAddr(self.sexp()) as *mut T;
+            ptr.as_ref().unwrap()
+        }
     }
 
     /// Obtain a mutable reference to a Rust object from an R external pointer.
@@ -2282,13 +2335,20 @@ impl RExternalPtr {
     /// Despite the use of a static lifetime here, the reference is only valid as long as R's
     /// garbage collector has not reclaimed the underlying object's memory.
     pub unsafe fn decode_mut_static<T>(&mut self) -> &'static mut T {
-        let ptr = R_ExternalPtrAddr(self.sexp()) as *mut T;
-        ptr.as_mut().unwrap()
+        unsafe {
+            let ptr = R_ExternalPtrAddr(self.sexp()) as *mut T;
+            ptr.as_mut().unwrap()
+        }
     }
 
     /// Get the memory address of the external pointer.
     pub fn address(&self) -> *mut c_void {
         unsafe { R_ExternalPtrAddr(self.sexp()) }
+    }
+
+    /// Get the memory address of the external pointer.
+    pub fn set_address(&self, addr: &mut c_void) {
+        unsafe { R_SetExternalPtrAddr(self.sexp(), addr) }
     }
 
     /// Register the external pointer to be finalized.
@@ -2312,6 +2372,22 @@ impl RExternalPtr {
     pub fn tag(&self) -> &RObject {
         unsafe { R_ExternalPtrTag(self.sexp()).transmute(self) }
     }
+
+    /// Get &str tag for an R external pointer.
+    ///
+    /// This method gets the &str tag associated with an R external pointer, which was set by [`RObject::as_external_ptr`].
+    /// It turns the empty string "" if the tag is not a character vector of length one.
+    ///
+    pub fn tag_str(&self) -> &str {
+        let tag = self.tag();
+        let Ok(tag) = tag.as_scalar() else {
+            return "";
+        };
+        let Ok(tag) = tag.as_char() else {
+            return "";
+        };
+        tag.get().unwrap_or("")
+    }
 }
 
 // Conversions
@@ -2327,35 +2403,35 @@ pub trait FromR<T: RObjectVariant, U> {
 /// Create a mutable reference to an R object from a Rust object.
 pub trait ToR<T: RObjectVariant> {
     /// Create a new R object.
-    #[allow(clippy::mut_from_ref)]
+    #[expect(clippy::mut_from_ref)]
     fn to_r(self, pc: &Pc) -> &mut T;
 }
 
 /// Create a mutable reference to an R object from a Rust object.
 pub trait ToR1<T: RObjectVariant> {
     /// Convert to an R object.
-    #[allow(clippy::mut_from_ref)]
+    #[expect(clippy::mut_from_ref)]
     fn to_r(self, pc: &Pc) -> &mut T;
 }
 
 /// Create a mutable reference to an R object from a Rust object.
 pub trait ToR2<T: RObjectVariant> {
     /// Convert to an R object.
-    #[allow(clippy::mut_from_ref)]
+    #[expect(clippy::mut_from_ref)]
     fn to_r(self, pc: &Pc) -> &mut T;
 }
 
 /// Create a reference to an R object from a reference to Rust object.
 pub trait ToRRef<T: RObjectVariant> {
     /// Convert to an R object.
-    #[allow(clippy::mut_from_ref)]
+    #[expect(clippy::mut_from_ref)]
     fn to_r<'a>(&self, pc: &'a Pc) -> &'a mut T;
 }
 
 /// Create an R object from a Rust object.
 pub trait ToRNoMut<T: RObjectVariant> {
     /// Convert to an R object.
-    #[allow(clippy::mut_from_ref)]
+    #[expect(clippy::mut_from_ref)]
     fn to_r(self, pc: &Pc) -> &T;
 }
 
@@ -2366,7 +2442,7 @@ impl ToRNoMut<RObject> for () {
 }
 
 impl ToRNoMut<RObject> for SEXP {
-    #[allow(clippy::not_unsafe_ptr_arg_deref)]
+    #[expect(clippy::not_unsafe_ptr_arg_deref)]
     fn to_r(self, pc: &Pc) -> &RObject {
         unsafe { self.transmute::<RObject, Pc>(pc) }
     }
@@ -2453,7 +2529,7 @@ pub fn __private_print(x: &str, newline: bool, use_stdout: bool) -> bool {
         newline,
         use_stdout,
     };
-    let y_ptr = &mut y as *mut DummyFat as *mut c_void;
+    let y_ptr = std::ptr::from_mut(&mut y).cast::<c_void>();
     extern "C" fn print_fn(y_ptr: *mut c_void) {
         unsafe {
             let y_ptr = y_ptr as *mut DummyFat;
@@ -2557,7 +2633,7 @@ pub struct RStopHelper(pub String);
 ///
 /// Set the `RUST_BACKTRACE` environment variable to see a stack trace.
 #[macro_export]
-#[allow(clippy::crate_in_macro_def)]
+#[expect(clippy::crate_in_macro_def)]
 macro_rules! stop {
     () => {
         match std::env::var("RUST_BACKTRACE") {
@@ -2658,7 +2734,7 @@ impl<T> UnwrapOrStop<T> for Option<T> {
 }
 
 #[doc(hidden)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn __private_set_custom_panic_hook() -> SEXP {
     let default_panic = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {

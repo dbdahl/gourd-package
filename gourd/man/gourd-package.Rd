@@ -14,40 +14,12 @@ Implementation of the distribution introduced in our paper "Dependent Random Par
 Authors:
 \itemize{
   \item Richard L. Warr \email{warr@stat.byu.edu} (\href{https://orcid.org/0000-0001-8508-3105}{ORCID})
-  \item Tomas P. Jensen \email{tompjensen@gmail.com} (\href{https://orcid.org/0009-0000-0015-3881}{ORCID})
+  \item Thomas P. Jensen \email{tompjensen@gmail.com} (\href{https://orcid.org/0009-0000-0015-3881}{ORCID})
 }
 
 Other contributors:
 \itemize{
-  \item Alex Crichton \email{alex@alexcrichton.com} (Rust crates: cfg-if, proc-macro2) [contributor]
-  \item Andre Bogus \email{bogusandre@gmail.com} (Rust crate: typenum) [contributor]
-  \item Andreas Longva (Rust crate: nalgebra-macros) [contributor]
-  \item Andrew Gallant \email{jamslam@gmail.com} (Rust crate: byteorder) [contributor]
-  \item Brendan Zabarauskas \email{bjzaba@yahoo.com.au} (Rust crate: approx) [contributor]
-  \item David B. Dahl \email{dahl@stat.byu.edu} (Rust crates: dahl-bellnumber, dahl-partition, dahl-randompartition, dahl-salso, rbindings, roxido, roxido_macro) [contributor]
-  \item David Tolnay \email{dtolnay@gmail.com} (Rust crates: paste, proc-macro2, quote, syn, unicode-ident) [contributor]
-  \item Jack Wrenn \email{jswrenn@amazon.com} (Rust crates: zerocopy, zerocopy-derive) [contributor]
-  \item Jim Turner (Rust crate: ndarray) [contributor]
-  \item Jorge Aparicio \email{jorge@japaric.io} (Rust crate: libm) [contributor]
-  \item Josh Stone \email{cuviper@gmail.com} (Rust crates: autocfg, rayon, rayon-core) [contributor]
-  \item Joshua Liebow-Feeser \email{joshlf@google.com} (Rust crates: zerocopy, zerocopy-derive) [contributor]
-  \item Lokathor \email{zefria@gmail.com} (Rust crates: bytemuck, safe_arch, wide) [contributor]
-  \item Michael Ma (Rust crate: statrs) [contributor]
-  \item Microsoft (Rust crates: windows-targets, windows_aarch64_gnullvm, windows_aarch64_msvc, windows_i686_gnu, windows_i686_gnullvm, windows_i686_msvc, windows_x86_64_gnu, windows_x86_64_gnullvm, windows_x86_64_msvc) [contributor]
-  \item Niko Matsakis \email{niko@alum.mit.edu} (Rust crates: rayon, rayon-core) [contributor]
-  \item Paho Lurie-Gregg \email{paho@paholg.com} (Rust crate: typenum) [contributor]
-  \item R. Janis Goldschmidt (Rust crate: matrixmultiply) [contributor]
-  \item Sean McArthur \email{sean@seanmonstar.com} (Rust crate: num_cpus) [contributor]
-  \item Stefan Lankes (Rust crate: hermit-abi) [contributor]
-  \item Stjepan Glavina \email{stjepang@gmail.com} (Rust crate: fastrand) [contributor]
-  \item Sébastien Crozet \email{developer@crozet.re} (Rust crates: nalgebra, nalgebra-macros) [contributor]
-  \item The Cranelift Project Developers (Rust crate: wasi) [contributor]
-  \item The CryptoCorrosion Contributors (Rust crates: ppv-lite86, rand_chacha) [contributor]
-  \item The Rand Project Developers (Rust crates: getrandom, rand, rand_chacha, rand_core, rand_distr, rand_pcg) [contributor]
-  \item The Rust Project Developers (Rust crates: bitflags, libc, num-bigint, num-complex, num-integer, num-rational, num-traits, rand, rand_chacha, rand_core) [contributor]
-  \item Ulrik Sverdrup "bluss" (Rust crate: ndarray) [contributor]
-  \item bluss (Rust crates: either, matrixmultiply, rawpointer) [contributor]
-  \item sebcrozet \email{developer@crozet.re} (Rust crate: simba) [contributor]
+  \item Authors of the dependency Rust crates (see inst/AUTHORS file for details) [contributor]
 }
 
 }
