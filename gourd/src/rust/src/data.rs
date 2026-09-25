@@ -28,7 +28,12 @@ impl Data {
         if global_covariates.nrows() != n_observations
             || clustered_covariates.nrows() != n_observations
         {
-            return Err(format!("Inconsistent number of row...\n    response: {}\n    global_covariates: {}\n    clustered_covariates: {}", n_observations, global_covariates.nrows(), clustered_covariates.nrows()));
+            return Err(format!(
+                "Inconsistent number of row...\n    response: {}\n    global_covariates: {}\n    clustered_covariates: {}",
+                n_observations,
+                global_covariates.nrows(),
+                clustered_covariates.nrows()
+            ));
         }
         let membership_generator = MembershipGenerator::new(item_sizes);
         if membership_generator.n_observations() != n_observations {

@@ -34,8 +34,9 @@ impl State {
         }
         if clustered_coefficients.len() != clustering.max_label() + 1 {
             return Err(format!(
-                "Number of clusters indicated by number of clustered coefficients ({}) does not match the number indicated by the clustering ({})"
-                    , clustered_coefficients.len(), clustering.max_label()+1
+                "Number of clusters indicated by number of clustered coefficients ({}) does not match the number indicated by the clustering ({})",
+                clustered_coefficients.len(),
+                clustering.max_label() + 1
             ));
         }
         let ncol = clustered_coefficients[0].len();

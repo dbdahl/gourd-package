@@ -1,6 +1,6 @@
+use num_traits::Zero;
 use num_traits::cast::AsPrimitive;
 use num_traits::int::PrimInt;
-use num_traits::Zero;
 use rand_distr::num_traits;
 use roxido::*;
 use std::ops::AddAssign;

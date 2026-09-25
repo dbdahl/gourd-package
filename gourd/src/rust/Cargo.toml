@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 publish = false
-rust-version = "1.88"
+rust-version = "1.85.1"
 
 [lib]
 crate-type = ["staticlib"]
@@ -18,11 +18,11 @@ lto = "thin"
 crossbeam = "0.8.1"
 rayon = "1.7.0"
 roxido = { path="roxido" }
-dahl-randompartition = { git="https://github.com/dbdahl/rust-dahl-randompartition.git", rev="56edec838" }
+dahl-randompartition = { git="https://github.com/dbdahl/rust-dahl-randompartition.git", rev="eb9ab9420" }
 # dahl-randompartition = { path="/home/dahl/docs/devel/rust-dahl-randompartition" }
 walltime = { git="https://github.com/dbdahl/rust-dahl-walltime.git", rev="0c7b7000d" }
-slice_sampler = { git="https://github.com/dbdahl/rust_slice_sampler.git", rev="5b845c4" }
-nalgebra = "0.34.0"
+slice_sampler = { git="https://github.com/dbdahl/rust_slice_sampler.git", rev="aa8f4ec" }
+nalgebra = "0.33.3"
 rand = "0.10.0"
 rand_distr = "0.6.0"
 rand_pcg = "0.10.0"
