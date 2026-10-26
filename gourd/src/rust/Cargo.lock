@@ -107,8 +107,9 @@ checksum = "a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6"
 
 [[package]]
 name = "dahl-bellnumber"
-version = "0.1.2"
-source = "git+https://github.com/dbdahl/rust-dahl-bellnumber.git?rev=792af17#792af17f6d7ce02a421b6a16f5f0aad85baaab8e"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aa97d7ef5de16b4cf342fcc33085a821440075f05b8888bfb8be810beaf1873b"
 dependencies = [
  "approx",
  "num-bigint",
@@ -118,8 +119,9 @@ dependencies = [
 
 [[package]]
 name = "dahl-partition"
-version = "0.5.5"
-source = "git+https://github.com/dbdahl/rust-dahl-partition.git?rev=dbb59e5#dbb59e5015868a29866977b39f8ef695ba3c8420"
+version = "0.5.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "012fe28c367f9999af491a5c862ae341f78f33c4c4cce93f066d65a09808fc46"
 dependencies = [
  "rand 0.10.3",
 ]
@@ -127,7 +129,7 @@ dependencies = [
 [[package]]
 name = "dahl-randompartition"
 version = "0.1.0"
-source = "git+https://github.com/dbdahl/rust-dahl-randompartition.git?rev=eb9ab9420#eb9ab94204444d6ff59262579d54f8e815a1b4f5"
+source = "git+https://github.com/dbdahl/rust-dahl-randompartition.git?rev=cd122a97b68#cd122a97b68428b82da4099f44bde032b92aa565"
 dependencies = [
  "dahl-bellnumber",
  "dahl-salso",
@@ -141,8 +143,9 @@ dependencies = [
 
 [[package]]
 name = "dahl-salso"
-version = "0.6.9"
-source = "git+https://github.com/dbdahl/rust-dahl-salso.git?rev=cdabc9c#cdabc9c7ac208e5bbab2d599fae5caa605a91ef4"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4e3dd710896c9de75324879c56f529d277bb5f8071c239da4745b019f9149365"
 dependencies = [
  "approx",
  "crossbeam",
@@ -154,9 +157,9 @@ dependencies = [
 
 [[package]]
 name = "either"
-version = "1.18.0"
+version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "252afb9ae5eaa683babdc6a068b3f5726eb19e05070c731f9b2a23a7c3e8ed34"
+checksum = "0e9c71c2167ca323c882b99918929403426e2373ea17242ff5653e0d5e1058be"
 
 [[package]]
 name = "fastrand"
@@ -189,9 +192,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.189"
+version = "0.2.191"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
+checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
 
 [[package]]
 name = "libm"
@@ -558,9 +561,9 @@ checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
 
 [[package]]
 name = "unicode-ident"
-version = "1.0.26"
+version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d245f478577f809a851594d02313b640fb437e0bb33866753cff937863096954"
+checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
 
 [[package]]
 name = "walltime"
@@ -585,18 +588,18 @@ dependencies = [
 
 [[package]]
 name = "zerocopy"
-version = "0.8.58"
+version = "0.8.63"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c17e8fafad82b542ff3717217ecdc736231b59e387768c9630123b4ce4d2db44"
+checksum = "e5fe1f8f1b06191a00962174c61aa5005e0bb391a6d80d07e24d115c01a92ed8"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.58"
+version = "0.8.63"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "595f56e044df4f46a0c9a626f65c3d99eb8488f7e8a8baa12dd76326d9710bf2"
+checksum = "863ad3ac83293fb4d740aedbfdc9240dd8d1a50c1099acd76ce80ce7c7230c7f"
 dependencies = [
  "proc-macro2",
  "quote",
